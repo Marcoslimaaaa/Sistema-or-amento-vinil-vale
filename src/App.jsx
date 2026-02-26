@@ -57,7 +57,7 @@ const calcA=(pool,spa,wMode,walls)=>{
 };
 
 // ═══ COMPONENTS ═══
-const navy="#0a1f44",blue="#0055a4",gold="#e8b100",goldL="#fdf3d1";
+const navy="#0a1f44",blue="#0055a4",gold="#e8b100",goldL="#fdf3d1",lBg="#f4f7fc";
 
 // ═══ THEME ═══
 const themes={
