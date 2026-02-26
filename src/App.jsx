@@ -129,39 +129,40 @@ const QP=({d,onBack})=>{
       const html=getHTML();if(!html){setPdfStatus("Erro");return}
       const clientName=(d.client.name||"Cliente").replace(/\s+/g,"_").replace(/[^\w\-]/g,"");
       const blob=new Blob([html],{type:"text/html;charset=utf-8"});
-      const file=new File([blob],`Orcamento_VinilVale_${clientName}.html`,{type:"text/html"});
+      const fileName=`Orcamento_VinilVale_${clientName}.html`;
 
-      // Tentar Web Share API (funciona bem em celular)
-      if(navigator.canShare&&navigator.canShare({files:[file]})){
-        await navigator.share({files:[file],title:"Orçamento Vinil Vale",text:`Orçamento - ${d.client.name||"Cliente"}`});
-        setPdfStatus("✅ Compartilhado!");
-        setTimeout(()=>setPdfStatus(""),3000);
-        return;
+      // Detectar mobile
+      const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+      // Mobile: tentar Web Share API
+      if(isMobile&&navigator.canShare){
+        try{
+          const file=new File([blob],fileName,{type:"text/html"});
+          if(navigator.canShare({files:[file]})){
+            await navigator.share({files:[file],title:"Orçamento Vinil Vale",text:`Orçamento - ${d.client.name||"Cliente"}`});
+            setPdfStatus("✅ Compartilhado!");
+            setTimeout(()=>setPdfStatus(""),3000);
+            return;
+          }
+        }catch{}
       }
 
-      // Fallback: download via link
+      // Desktop e fallback: download direto
       const url=URL.createObjectURL(blob);
       const a=document.createElement("a");
-      a.href=url;
-      a.download=file.name;
-      a.style.display="none";
-      document.body.appendChild(a);
-      a.click();
+      a.href=url;a.download=fileName;a.style.display="none";
+      document.body.appendChild(a);a.click();
       setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url)},1000);
       setPdfStatus("✅ Baixado! Abra e salve como PDF");
       setTimeout(()=>setPdfStatus(""),5000);
     }catch(e){
-      // Último fallback: abre em data URI
       try{
         const html=getHTML();
-        const dataUri="data:text/html;charset=utf-8,"+encodeURIComponent(html);
-        window.open(dataUri,"_blank");
-        setPdfStatus("✅ Aberto! Use Ctrl+P / ⋮ → Imprimir");
+        const w=window.open("","_blank");
+        if(w){w.document.write(html);w.document.close();setPdfStatus("✅ Aberto! Use Ctrl+P");}
+        else{setPdfStatus("❌ Popup bloqueado");}
         setTimeout(()=>setPdfStatus(""),5000);
-      }catch(e2){
-        setPdfStatus("Use: ⋮ menu → Imprimir nesta página");
-        setTimeout(()=>setPdfStatus(""),5000);
-      }
+      }catch{setPdfStatus("❌ Erro: "+String(e));setTimeout(()=>setPdfStatus(""),5000)}
     }
   };
 
