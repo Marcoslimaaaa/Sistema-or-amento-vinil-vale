@@ -21,9 +21,10 @@ const CAT=[
 ];
 // un: "m²" = custo por m² (usa área total), "ml" = custo por metro linear (usa perímetro), "un" = custo unitário
 const mkItems=()=>[
-  {id:1,n:"Vinil ACQUALINER",q:1,c:0,m:0,nt:"Estampa à escolha",on:true,un:"m²"},
+  {id:1,n:"Vinil ACQUALINER",q:1,c:0,m:0,nt:"Resistência até 32°C · Estampa à escolha",on:true,un:"m²"},
   {id:2,n:"Manta Acrílica 0,6mm",q:1,c:4.65,m:40,nt:"só chão",on:true,un:"chao"},
   {id:3,n:"Perfil Rígido",q:1,c:6.32,m:40,nt:"R$379/60m",on:true,un:"ml"},
+  {id:15,n:"Kit Flangeamento",q:1,c:39.67,m:40,nt:"Perfil flangeamento p/ dispositivos",on:true,un:"un"},
   {id:4,n:"Filtro Império IP60",q:1,c:1586,m:35,nt:"1.0CV",on:true,un:"un"},
   {id:5,n:"Dreno Fundo",q:2,c:74.90,m:40,nt:"Sibrape",on:true,un:"un"},
   {id:6,n:"Disp. Retorno 2\"",q:2,c:22.90,m:40,nt:"",on:true,un:"un"},
@@ -168,7 +169,7 @@ const QP=({d,onBack})=>{
             </div>
             <div style={{display:"flex",justifyContent:"center",gap:"8px",flexWrap:"wrap",fontSize:"8.5px"}}>
               <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Formato:</b> {d.poolFmt}</span>
-              <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Vinil:</b> ACQUALINER {d.vinilT}</span>
+              <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Vinil:</b> ACQUALINER {d.vinilT} · Resist. até 32°C</span>
               <span style={{background:goldL,padding:"2px 7px",borderRadius:"10px",border:`1px solid ${gold}`}}><b>Estampa:</b> {d.stamp||"À escolha"}</span>
               <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Chão:</b> {ar.chao}m² <b>Paredes:</b> {ar.par}m²</span>
             </div>
@@ -238,6 +239,7 @@ export default function App(){
   const [fb,setFb]=useState("");
   const [catO,setCatO]=useState(false);
   const [catQ,setCatQ]=useState("");
+  const [viewContract,setVC]=useState(null); // for viewing a contract
 
   const inc=items.filter(i=>i.on);
   // Calculate effective quantity based on unit type
@@ -261,7 +263,9 @@ export default function App(){
   const apM=()=>{setItems(p=>p.map(i=>({...i,m:gM})));setFb("Margem aplicada!");setTimeout(()=>setFb(""),1500)};
 
   const gData=()=>({client,pool,items,guar,ci,pay,totOv:String(total),vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,wMode,walls});
-  const save=()=>{const d=gData();setHist(p=>[{id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp},...p]);setFb("Salvo!");setTimeout(()=>setFb(""),2000)};
+  const save=()=>{const d=gData();setHist(p=>[{id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"},...p]);setFb("Salvo!");setTimeout(()=>setFb(""),2000)};
+  const toClient=id=>{setHist(p=>p.map(q=>q.id===id?{...q,status:"cliente",closedDate:new Date().toLocaleDateString("pt-BR")}:q));setFb("✅ Cliente fechado!");setTimeout(()=>setFb(""),2000)};
+  const toBack=id=>{setHist(p=>p.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q));setFb("Voltou p/ lead");setTimeout(()=>setFb(""),2000)};
   const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8"});setWM(d.wMode||"regular");setWalls(d.walls||[]);setTab("cliente");setFb("Carregado!");setTimeout(()=>setFb(""),1500)};
   const delQ=id=>{setHist(p=>p.filter(q=>q.id!==id));setFb("Excluído!");setTimeout(()=>setFb(""),1500)};
 
@@ -284,7 +288,7 @@ export default function App(){
       </div>
 
       <div style={{display:"flex",padding:"0 14px",background:t.tabBg,borderBottom:`1px solid ${t.cardBorder}`,overflowX:"auto"}}>
-        {[["cliente","👤","Cliente"],["piscina","🏊","Piscina"],["itens","🛒","Custos"],["garantias","🛡","Garantias"],["pagamento","💰","Valor"],["historico","📋","Salvos"]].map(([k,ic,lb])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} t={t}>{lb}</Tab>)}
+        {[["cliente","👤","Cliente"],["piscina","🏊","Piscina"],["itens","🛒","Custos"],["garantias","🛡","Garantias"],["pagamento","💰","Valor"],["historico","📋","Salvos"],["contratos","📝","Contratos"]].map(([k,ic,lb])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} t={t}>{lb}</Tab>)}
       </div>
 
       <div style={{padding:"14px"}}>
@@ -409,15 +413,148 @@ export default function App(){
           </div>
         </Card>}
 
-        {/* HISTÓRICO */}
-        {tab==="historico"&&<Card t={t}><ST icon="📋">Orçamentos Salvos</ST>
-          {hist.length===0?<div style={{textAlign:"center",padding:"24px",color:t.textMuted}}><div style={{fontSize:"28px"}}>📭</div><div style={{fontSize:"11px"}}>Nenhum salvo.</div></div>:
-          <div style={{display:"flex",flexDirection:"column",gap:"5px"}}>{hist.map(q=>(
-            <div key={q.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:t.sectionBg,borderRadius:"7px",border:"1.5px solid #e2e8f0"}} onMouseEnter={e=>e.currentTarget.style.borderColor=blue} onMouseLeave={e=>e.currentTarget.style.borderColor="#e2e8f0"}>
-              <div onClick={()=>load(q)} style={{flex:1,cursor:"pointer"}}><div style={{fontSize:"12px",fontWeight:"700"}}>{q.cN||"Sem nome"} {q.stamp?`· ${q.stamp}`:""}</div><div style={{fontSize:"9px",color:t.textMuted}}>{q.date} · {SVC.find(t=>t.id===q.type)?.label} · {q.ps}m · {q.cC}</div></div>
-              <div style={{display:"flex",alignItems:"center",gap:"8px"}}><div style={{fontSize:"14px",fontWeight:"800",color:blue}}>{fmt(parseFloat(q.tot)||0)}</div><Btn onClick={()=>load(q)} style={{fontSize:"9px",padding:"3px 6px",background:blue,color:"#fff",border:"none"}}>Abrir</Btn><button onClick={e=>{e.stopPropagation();delQ(q.id)}} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"13px"}}>🗑</button></div>
-            </div>
-          ))}</div>}
+        {/* HISTÓRICO - LEADS vs CLIENTES */}
+        {tab==="historico"&&<Card t={t}><ST icon="📋">Orçamentos</ST>
+          {hist.length===0?<div style={{textAlign:"center",padding:"24px",color:t.textMuted}}><div style={{fontSize:"28px"}}>📭</div><div style={{fontSize:"11px"}}>Nenhum salvo.</div></div>:<>
+          {/* LEADS */}
+          <div style={{marginBottom:"16px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"8px"}}><span style={{fontSize:"16px"}}>📊</span><span style={{fontSize:"12px",fontWeight:"700",color:"#f59e0b"}}>Leads / Orçamentos ({hist.filter(q=>q.status!=="cliente").length})</span></div>
+            {hist.filter(q=>q.status!=="cliente").length===0?<div style={{fontSize:"10px",color:t.textMuted,padding:"8px",textAlign:"center"}}>Nenhum lead</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>{hist.filter(q=>q.status!=="cliente").map(q=>(
+              <div key={q.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:t.sectionBg,borderRadius:"7px",border:`1.5px solid ${t.cardBorder}`,borderLeft:"3px solid #f59e0b"}}>
+                <div onClick={()=>load(q)} style={{flex:1,cursor:"pointer"}}><div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{q.cN||"Sem nome"} {q.stamp?`· ${q.stamp}`:""}</div><div style={{fontSize:"8.5px",color:t.textMuted}}>{q.date} · {SVC.find(s=>s.id===q.type)?.label} · {q.ps}m · {q.cC}</div></div>
+                <div style={{display:"flex",alignItems:"center",gap:"5px"}}><div style={{fontSize:"13px",fontWeight:"800",color:blue}}>{fmt(parseFloat(q.tot)||0)}</div>
+                  <Btn onClick={()=>toClient(q.id)} style={{fontSize:"8px",padding:"3px 7px",background:"#16a34a",color:"#fff",border:"none"}}>✅ Fechou</Btn>
+                  <Btn onClick={()=>load(q)} style={{fontSize:"8px",padding:"3px 5px",background:blue,color:"#fff",border:"none"}}>Abrir</Btn>
+                  <button onClick={e=>{e.stopPropagation();delQ(q.id)}} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>🗑</button>
+                </div>
+              </div>
+            ))}</div>}
+          </div>
+          {/* CLIENTES */}
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"8px"}}><span style={{fontSize:"16px"}}>🤝</span><span style={{fontSize:"12px",fontWeight:"700",color:"#16a34a"}}>Clientes Fechados ({hist.filter(q=>q.status==="cliente").length})</span></div>
+            {hist.filter(q=>q.status==="cliente").length===0?<div style={{fontSize:"10px",color:t.textMuted,padding:"8px",textAlign:"center"}}>Nenhum cliente fechado</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>{hist.filter(q=>q.status==="cliente").map(q=>(
+              <div key={q.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:t.sectionBg,borderRadius:"7px",border:`1.5px solid ${t.cardBorder}`,borderLeft:"3px solid #16a34a"}}>
+                <div onClick={()=>load(q)} style={{flex:1,cursor:"pointer"}}><div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>🤝 {q.cN||"Sem nome"} {q.stamp?`· ${q.stamp}`:""}</div><div style={{fontSize:"8.5px",color:t.textMuted}}>{q.date} · Fechou: {q.closedDate||"—"} · {q.ps}m · {q.cC}</div></div>
+                <div style={{display:"flex",alignItems:"center",gap:"5px"}}><div style={{fontSize:"13px",fontWeight:"800",color:"#16a34a"}}>{fmt(parseFloat(q.tot)||0)}</div>
+                  <Btn onClick={()=>{setVC(q);setTab("contratos")}} style={{fontSize:"8px",padding:"3px 7px",background:"#7c3aed",color:"#fff",border:"none"}}>📝 Contrato</Btn>
+                  <Btn onClick={()=>toBack(q.id)} style={{fontSize:"8px",padding:"3px 5px",background:"#f59e0b",color:"#fff",border:"none"}}>↩ Lead</Btn>
+                  <Btn onClick={()=>load(q)} style={{fontSize:"8px",padding:"3px 5px",background:blue,color:"#fff",border:"none"}}>Abrir</Btn>
+                </div>
+              </div>
+            ))}</div>}
+          </div>
+          </>}
+        </Card>}
+
+        {/* CONTRATOS */}
+        {tab==="contratos"&&<Card t={t}><ST icon="📝">Contratos</ST>
+          {(()=>{
+            const clientes=hist.filter(q=>q.status==="cliente");
+            if(clientes.length===0)return <div style={{textAlign:"center",padding:"24px",color:t.textMuted}}><div style={{fontSize:"28px"}}>📝</div><div style={{fontSize:"11px"}}>Nenhum cliente fechado ainda.</div><div style={{fontSize:"10px",color:t.textMuted,marginTop:"4px"}}>Vá em "Salvos" e clique "Fechou" em um orçamento.</div></div>;
+
+            const sel=viewContract||clientes[0];
+            const d=sel.data;
+            const incItems=d.items.filter(i=>i.on);
+            const totalVal=parseFloat(sel.tot)||0;
+            const today=new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"});
+
+            const dlContract=()=>{
+              const el=document.getElementById("contract-doc");if(!el)return;
+              const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Contrato - ${d.client.name||"Cliente"}</title><style>*{margin:0;box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-family:'Times New Roman',serif;background:#fff;padding:20mm 25mm;font-size:12px;line-height:1.6;color:#000}@page{size:A4;margin:15mm 20mm}h1,h2{text-align:center}p{text-align:justify;margin-bottom:8px}</style></head><body>${el.innerHTML}<script>window.onload=function(){setTimeout(function(){window.print()},600)}<\/script></body></html>`;
+              const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+              const url=URL.createObjectURL(blob);
+              const a=document.createElement("a");a.href=url;a.download=`Contrato_${(d.client.name||"Cliente").replace(/\s+/g,"_")}.html`;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),1000);
+            };
+
+            return <>
+              {clientes.length>1&&<div style={{display:"flex",gap:"4px",marginBottom:"12px",flexWrap:"wrap"}}>{clientes.map(c=><button key={c.id} onClick={()=>setVC(c)} style={{padding:"4px 10px",borderRadius:"14px",border:`1.5px solid ${sel.id===c.id?blue:t.cardBorder}`,background:sel.id===c.id?blue:"transparent",color:sel.id===c.id?"#fff":t.text,fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>{c.cN||"Sem nome"}</button>)}</div>}
+
+              <div style={{display:"flex",justifyContent:"flex-end",gap:"6px",marginBottom:"10px"}}>
+                <Btn onClick={dlContract} style={{background:"linear-gradient(135deg,#16a34a,#15803d)",color:"#fff",border:"none",padding:"8px 16px",fontSize:"12px",fontWeight:"700"}}>📥 Baixar Contrato</Btn>
+              </div>
+
+              <div id="contract-doc" style={{background:"#fff",color:"#000",padding:"24px",borderRadius:"8px",border:`1px solid ${t.cardBorder}`,fontSize:"11px",lineHeight:"1.7",fontFamily:"'Times New Roman',Georgia,serif"}}>
+                <div style={{textAlign:"center",marginBottom:"16px"}}>
+                  <div style={{fontSize:"14px",fontWeight:"700",letterSpacing:"1px"}}>VINIL VALE</div>
+                  <div style={{fontSize:"10px"}}>REVESTIMENTOS E CAPAS PARA PISCINAS LTDA</div>
+                  <div style={{fontSize:"9px",color:"#555"}}>{CO.addr}</div>
+                  <div style={{fontSize:"9px",color:"#555"}}>Fones: {CO.ph1} / {CO.ph2} · {CO.email}</div>
+                  <div style={{fontSize:"9px",color:"#555"}}>CNPJ: {CO.cnpj} · IE: {CO.ie}</div>
+                  <div style={{fontSize:"9px",color:"#555",marginTop:"4px"}}>PROPOSTA – {d.propNum||"—"}</div>
+                </div>
+
+                <div style={{textAlign:"center",fontSize:"13px",fontWeight:"700",margin:"14px 0",textDecoration:"underline"}}>CONTRATO DE PRESTAÇÃO DE SERVIÇOS</div>
+
+                <p style={{textAlign:"justify",marginBottom:"10px"}}><b>CONTRATADA:</b> Vinil Vale Revestimentos e Capas para Piscinas Ltda.<br/>Endereço: {CO.addr}<br/>CNPJ: {CO.cnpj}<br/>Inscrição Estadual: {CO.ie}<br/>Telefone: {CO.ph1} / {CO.ph2}<br/>E-mail: {CO.email}</p>
+
+                <p style={{textAlign:"justify",marginBottom:"10px"}}><b>CONTRATANTE:</b> {d.client.name||"_______________"}<br/>Endereço: {d.client.address||"_______________"} – {d.client.city||"_______________"}<br/>CEP: {d.client.cep||"_______________"}<br/>RG: {d.client.rg||"_______________"}<br/>CPF/CNPJ: {d.client.cpf||"_______________"}<br/>Fone: {d.client.phone||"_______________"}<br/>E-mail: {d.client.email||"_______________"}</p>
+
+                <div style={{fontSize:"12px",fontWeight:"700",textAlign:"center",margin:"12px 0",textDecoration:"underline"}}>OBJETO DO CONTRATO</div>
+
+                <p style={{textAlign:"justify"}}><b>1. SERVIÇOS CONTRATADOS</b></p>
+                <p style={{textAlign:"justify"}}>A CONTRATADA compromete-se a realizar os seguintes serviços no endereço: {d.client.address||"___"} – {d.client.city||"___"}</p>
+                <p style={{textAlign:"justify",fontWeight:"600"}}>Detalhamento dos Serviços:</p>
+                <div style={{paddingLeft:"16px",marginBottom:"10px"}}>{incItems.map((it,i)=><div key={i} style={{marginBottom:"2px"}}>• {it.n}{it.q>1?` (${it.q}x)`:""}{it.nt?` — ${it.nt}`:""}</div>)}</div>
+                <p style={{textAlign:"justify"}}>Obs: Ficando fora desse orçamento: {d.ci?.join(", ")||"itens por conta do cliente conforme orçamento"}.</p>
+
+                <p style={{textAlign:"justify",marginTop:"10px"}}><b>2. GARANTIA E ASSISTÊNCIA TÉCNICA</b></p>
+                <p style={{textAlign:"justify"}}>2.1. Da Garantia: A CONTRATADA oferece garantia de {d.guar?.filter(g=>g.on).map(g=>`${g.y} anos para ${g.it}`).join(", ")||"conforme especificado no orçamento"}. A garantia do material (bolsão de vinil) é de 3 anos contra defeitos de fabricação, conforme termos do fabricante ACQUALINER.</p>
+                <p style={{textAlign:"justify"}}>2.2. Da Assistência Técnica: Em caso de chamado para assistência, a CONTRATADA terá um prazo de até 10 (dez) dias úteis para realizar a vistoria técnica no local. A garantia cobre apenas defeitos de instalação quando a instalação seja feita pela fabricante Vinil Vale Revestimentos. Caso a vistoria identifique que o problema decorre de fatores externos (infiltração, mau uso, intervenção de terceiros, desequilíbrio químico, etc.), será apresentado orçamento separado para o reparo.</p>
+                <p style={{textAlign:"justify"}}>2.3. Exclusões Específicas de Revestimento: A garantia não cobre:</p>
+                <div style={{paddingLeft:"16px",marginBottom:"8px"}}>
+                  <div>• Levantamento de manta ou bolsão causado por infiltração de água externa (lençol freático ou falta de drenagem adequada).</div>
+                  <div>• Rugas ou manchas causadas por desequilíbrio químico da água (pH fora do padrão ou excesso de cloro).</div>
+                  <div>• Danos causados pelo esvaziamento da piscina sem supervisão da CONTRATADA.</div>
+                  <div>• Intervenções ou reparos realizados por terceiros não autorizados, o que acarretará a extinção automática da cobertura.</div>
+                </div>
+
+                <p style={{textAlign:"justify"}}><b>3. OBRIGAÇÕES DO CONTRATANTE</b></p>
+                <div style={{paddingLeft:"16px",marginBottom:"8px"}}>
+                  <div>3.1. Realizar o pagamento dos serviços prestados conforme condições estabelecidas na cláusula "4 – Pagamento";</div>
+                  <div>3.2. Garantir o acesso livre ao local da execução dos serviços durante o período acordado;</div>
+                  <div>3.3. Cumprir integralmente as recomendações técnicas repassadas pela CONTRATADA para conservação do produto instalado.</div>
+                  <div>3.4. Fica obrigatório enviar o contrato assinado com as testemunhas para o e-mail: {CO.email}</div>
+                </div>
+
+                <p style={{textAlign:"justify"}}><b>4. PAGAMENTO</b></p>
+                <p style={{textAlign:"justify"}}>4.1. O valor total acordado é de {fmt(totalVal)}, conforme condições de pagamento definidas no orçamento.</p>
+
+                <p style={{textAlign:"justify"}}><b>5. PRAZO DE EXECUÇÃO</b></p>
+                <p style={{textAlign:"justify"}}>5.1. Os serviços contratados serão executados no prazo máximo de {d.execDays||"20"} dias úteis da alvenaria, e o vinil para instalação 10 dias úteis contados a partir da medição detalhada da piscina.</p>
+                <p style={{textAlign:"justify"}}>5.2. Caso ocorram atrasos decorrentes de fatores climáticos, dificuldades técnicas não previstas ou situações excepcionais, haverá negociação imediata de novo prazo entre as partes.</p>
+
+                <p style={{textAlign:"justify"}}><b>6. CONFIDENCIALIDADE</b></p>
+                <p style={{textAlign:"justify"}}>6.1. A CONTRATADA compromete-se a manter sigilo absoluto de todas as informações e documentos aos quais tiver acesso durante a execução do contrato.</p>
+
+                <p style={{textAlign:"justify"}}><b>7. PENALIDADES</b></p>
+                <p style={{textAlign:"justify"}}>7.1. O descumprimento das obrigações contratuais sujeitará a parte infratora ao pagamento de multa equivalente a 10% do valor total do contrato, acrescidos de juros e correção monetária aplicáveis.</p>
+
+                <p style={{textAlign:"justify"}}><b>8. DISPOSIÇÕES GERAIS</b></p>
+                <p style={{textAlign:"justify"}}>8.1. Este documento representa o acordo integral entre as partes, revogando quaisquer acordos prévios verbais ou escritos sobre seu objeto.</p>
+                <p style={{textAlign:"justify"}}>8.2. Qualquer alteração deverá ser formalizada por escrito e assinada pelas partes contratantes.</p>
+                <p style={{textAlign:"justify"}}>8.3. Este contrato é regido pelas leis brasileiras, sendo eleito o Foro da Comarca de Registro-SP para dirimir quaisquer controvérsias oriundas deste instrumento.</p>
+
+                <div style={{textAlign:"center",margin:"20px 0 14px"}}><b>Registro-SP, {today}</b></div>
+
+                <div style={{marginTop:"30px"}}>
+                  <div style={{borderTop:"1px solid #000",width:"60%",margin:"0 auto",textAlign:"center",paddingTop:"4px"}}><b>Vinil Vale Revestimentos e Capas para Piscinas Ltda.</b><br/>CNPJ: {CO.cnpj}</div>
+                </div>
+                <div style={{marginTop:"30px"}}>
+                  <div style={{borderTop:"1px solid #000",width:"60%",margin:"0 auto",textAlign:"center",paddingTop:"4px"}}><b>{d.client.name||"________________________"}</b><br/>CPF: {d.client.cpf||"________________________"}</div>
+                </div>
+                <div style={{marginTop:"24px"}}>
+                  <div style={{fontWeight:"700"}}>TESTEMUNHAS:</div>
+                  <div style={{display:"flex",justifyContent:"space-between",marginTop:"20px"}}>
+                    <div style={{borderTop:"1px solid #000",width:"45%",textAlign:"center",paddingTop:"4px"}}>Nome: _______________ CPF: _______________</div>
+                    <div style={{borderTop:"1px solid #000",width:"45%",textAlign:"center",paddingTop:"4px"}}>Nome: _______________ CPF: _______________</div>
+                  </div>
+                </div>
+              </div>
+            </>;
+          })()}
         </Card>}
       </div>
     </div>
