@@ -238,7 +238,7 @@ export default function App(){
   const t=themes[dark?"dark":"light"];
   const [tab,setTab]=useState("cliente");
   const [svcType,setST2]=useState("construcao");
-  const [propNum,setPN]=useState("");
+  const [propNum,setPN]=useState(()=>{const d=new Date();return String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear()});
   const [poolFmt,setPF]=useState("Retangular");
   const [vinilT,setVT]=useState("0,7mm");
   const [stamp,setSt]=useState("");
