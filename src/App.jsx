@@ -102,7 +102,7 @@ const Btn=({children,onClick,style:sx})=><button onClick={onClick} style={{paddi
 const DarkToggle=({dark,onToggle})=><button onClick={onToggle} style={{width:"38px",height:"22px",borderRadius:"11px",border:"none",background:dark?"#475569":"#cbd5e1",cursor:"pointer",position:"relative",transition:"background .3s"}}><div style={{width:"18px",height:"18px",borderRadius:"50%",background:dark?"#0f172a":"#fff",position:"absolute",top:"2px",left:dark?"18px":"2px",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px"}}>{dark?"🌙":"☀️"}</div></button>;
 
 // ═══ PDF PREVIEW ═══
-const QP=({d,onBack})=>{
+const QP=({d,onBack,onSave})=>{
   const inc=(d.items||[]).filter(i=>i.on);
   const pool=d.pool||{length:"0",width:"0",depth:"0"};
   const spa=d.spa||{on:false,length:"0",width:"0",depth:"0"};
@@ -144,6 +144,7 @@ const QP=({d,onBack})=>{
           if(navigator.canShare({files:[file]})){
             await navigator.share({files:[file],title:"Orçamento Vinil Vale",text:`Orçamento - ${d.client.name||"Cliente"}`});
             setPdfStatus("✅ Compartilhado!");
+            if(onSave)onSave();
             setTimeout(()=>setPdfStatus(""),3000);
             return;
           }
@@ -157,6 +158,7 @@ const QP=({d,onBack})=>{
       document.body.appendChild(a);a.click();
       setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url)},1000);
       setPdfStatus("✅ Baixado! Abra e salve como PDF");
+      if(onSave)onSave();
       setTimeout(()=>setPdfStatus(""),5000);
     }catch(e){
       try{
@@ -330,7 +332,7 @@ export default function App(){
   const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8"});setWM(d.wMode||"regular");setWalls(d.walls||[]);setTab("cliente");setFb("Carregado!");setTimeout(()=>setFb(""),1500)};
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);setFb("Excluído!");setTimeout(()=>setFb(""),1500)};
 
-  if(view==="quote")return <QP d={gData()} onBack={()=>setView("editor")}/>;
+  if(view==="quote")return <QP d={gData()} onBack={()=>setView("editor")} onSave={()=>{const d=gData();const nh=[{id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"},...hist];setHist(nh);saveLS(nh)}}/>;
 
   const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};
 
