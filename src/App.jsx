@@ -242,7 +242,7 @@ export default function App(){
   const [poolFmt,setPF]=useState("Retangular");
   const [vinilT,setVT]=useState("0,7mm");
   const [stamp,setSt]=useState("");
-  const [execDays,setED]=useState("20");
+  const [execDays,setED]=useState("60 a 90");
   const [gM,setGM]=useState(40);
   const [client,setCl]=useState({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:""});
   const uc=f=>v=>setCl(p=>({...p,[f]:v}));
@@ -267,7 +267,25 @@ export default function App(){
   const [pay,setPay]=useState(IPAY);
   const [mo,setMO]=useState("15000");
   const [totOv,setTO]=useState("");
-  const [hist,setHist]=useState(()=>{try{const s=localStorage.getItem("vv_hist");return s?JSON.parse(s):[];}catch{return[]}});
+  const [hist,setHist]=useState([]);
+  const [histLoaded,setHL]=useState(false);
+
+  // Cloud storage + localStorage fallback
+  const loadHist=async()=>{
+    try{
+      if(window.storage){
+        const r=await window.storage.get("vv_hist");
+        if(r&&r.value){const d=JSON.parse(r.value);setHist(d);setHL(true);return}
+      }
+    }catch{}
+    try{const s=localStorage.getItem("vv_hist");if(s){setHist(JSON.parse(s))}}catch{}
+    setHL(true);
+  };
+  const saveLS=async(h)=>{
+    try{localStorage.setItem("vv_hist",JSON.stringify(h))}catch{}
+    try{if(window.storage){await window.storage.set("vv_hist",JSON.stringify(h))}}catch{}
+  };
+  useState(()=>{loadHist()});
   const [fb,setFb]=useState("");
   const [catO,setCatO]=useState(false);
   const [catQ,setCatQ]=useState("");
@@ -275,7 +293,6 @@ export default function App(){
   const [ce,setCE]=useState({servicos:[],obs:"",garantias:"",valor:"",prazo:"20",data:"",novoServico:""});
   const uce=f=>v=>setCE(p=>({...p,[f]:v}));
   const initCE=(q)=>{const d=q.data;const inc=(d.items||[]).filter(i=>i.on);setCE({servicos:inc.map(it=>it.n+(it.q>1?` (${it.q}x)`:"")),obs:(d.ci||[]).join(", ")||"Materiais de alvenaria e hidráulico, pedra de borda, água para enchimento, remoção de entulho",garantias:(d.guar||[]).filter(g=>g.on).map(g=>`${g.y} anos para ${g.it}`).join(", "),valor:fmt(parseFloat(q.tot)||0),prazo:d.execDays||"20",data:new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"}),novoServico:""})};
-  const saveLS=(h)=>{try{localStorage.setItem("vv_hist",JSON.stringify(h))}catch{}};
   const exportCSV=()=>{
     const rows=[["Status","Nome","Telefone","Cidade"]];
     hist.forEach(q=>{const c=q.data?.client||{};rows.push([q.status==="cliente"?"Cliente":"Lead",c.name||"",c.phone||"",c.city||""])});
@@ -328,7 +345,7 @@ export default function App(){
             <Btn onClick={()=>setView("quote")} style={{background:"#fff",color:blue,fontWeight:"700"}}>📄 Orçamento</Btn>
           </div>
         </div>
-        <div style={{display:"flex",gap:"5px",marginTop:"10px",flexWrap:"wrap"}}>{SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(mkItems(sv.id));setG(mkG(sv.id));setCI(mkCI(sv.id))}} style={{padding:"5px 10px",borderRadius:"16px",border:"1.5px solid rgba(255,255,255,.3)",background:svcType===sv.id?"rgba(255,255,255,.2)":"transparent",color:"#fff",fontSize:"10px",fontWeight:svcType===sv.id?"700":"400",cursor:"pointer"}}>{sv.icon} {sv.label}</button>)}</div>
+        <div style={{display:"flex",gap:"5px",marginTop:"10px",flexWrap:"wrap"}}>{SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(mkItems(sv.id));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20")}} style={{padding:"5px 10px",borderRadius:"16px",border:"1.5px solid rgba(255,255,255,.3)",background:svcType===sv.id?"rgba(255,255,255,.2)":"transparent",color:"#fff",fontSize:"10px",fontWeight:svcType===sv.id?"700":"400",cursor:"pointer"}}>{sv.icon} {sv.label}</button>)}</div>
       </div>
 
       <div style={{display:"flex",padding:"0 14px",background:t.tabBg,borderBottom:`1px solid ${t.cardBorder}`,overflowX:"auto"}}>
