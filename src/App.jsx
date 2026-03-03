@@ -776,45 +776,7 @@ export default function App(){
             <div style={{marginTop:"16px",padding:"12px",background:t.sectionBg,borderRadius:"8px",border:`1px solid ${t.cardBorder}`}}>
               <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"8px"}}>Importar Nota Fiscal (XML ou PDF)</div>
               <div style={{fontSize:"9px",color:t.textMuted,marginBottom:"6px"}}>Selecione o XML ou PDF da NFe</div>
-              <input type="file" accept=".xml,.pdf" onChange={async(e)=>{const file=e.target.files?.[0];if(!file)return;
-                const isXML=file.name.toLowerCase().endsWith(".xml");
-                const isPDF=file.name.toLowerCase().endsWith(".pdf");
-                try{
-                  if(isXML){
-                    const txt=await file.text();const parser=new DOMParser();const xml=parser.parseFromString(txt,"text/xml");const prods=xml.querySelectorAll("det");const nfNum=xml.querySelector("nNF")?.textContent||"NF";const entries=[];prods.forEach(det=>{const xProd=det.querySelector("xProd")?.textContent||"";const qCom=parseFloat(det.querySelector("qCom")?.textContent||"0");const vUnCom=parseFloat(det.querySelector("vUnCom")?.textContent||"0");const match=CAT.find(p=>xProd.toLowerCase().includes(p.n.toLowerCase().split(" ")[0]));if(match)entries.push({catId:match.id,qty:String(qCom),cost:String(vUnCom)})});if(entries.length>0){addStock(entries,"NF "+nfNum);setFbMsg("NF XML importada! "+entries.length+" itens")}else{setFbMsg("Nenhum produto reconhecido no XML");setTimeout(()=>setFbMsg(""),3000)}
-                  } else if(isPDF){
-                    setFbMsg("Lendo PDF...");
-                    const arrBuf=await file.arrayBuffer();
-                    if(!window.pdfjsLib){const sc=document.createElement("script");sc.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";document.head.appendChild(sc);await new Promise(r=>{sc.onload=r;setTimeout(r,5000)})}
-                    if(window.pdfjsLib){
-                      window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-                      const pdf=await window.pdfjsLib.getDocument({data:arrBuf}).promise;
-                      let fullText="";
-                      for(let pg=1;pg<=pdf.numPages;pg++){const page=await pdf.getPage(pg);const tc=await page.getTextContent();fullText+=tc.items.map(i=>i.str).join(" ")+"
-"}
-                      const entries=[];const lines=fullText.split("
-");
-                      CAT.forEach(p=>{
-                        const words=p.n.toLowerCase().split(" ");
-                        const mainWord=words.find(w=>w.length>3)||words[0];
-                        lines.forEach(line=>{
-                          const ll=line.toLowerCase();
-                          if(ll.includes(mainWord)){
-                            const nums=line.match(/(\d+[.,]?\d*)/g);
-                            if(nums&&nums.length>=1){
-                              const qty=parseFloat(nums[0].replace(",","."))||1;
-                              const cost=nums.length>=2?parseFloat(nums[nums.length-1].replace(",","."))||0:0;
-                              if(!entries.find(e=>e.catId===p.id))entries.push({catId:p.id,qty:String(qty),cost:String(cost)});
-                            }
-                          }
-                        });
-                      });
-                      if(entries.length>0){setEntItems(entries);setFbMsg("PDF lido! "+entries.length+" itens encontrados. Confira e clique Dar Entrada");setTimeout(()=>setFbMsg(""),5000)}
-                      else{setFbMsg("Nenhum produto reconhecido no PDF");setTimeout(()=>setFbMsg(""),3000)}
-                    }else{setFbMsg("Erro ao carregar leitor PDF");setTimeout(()=>setFbMsg(""),3000)}
-                  }
-                }catch(err){console.error(err);setFbMsg("Erro ao ler arquivo: "+err.message);setTimeout(()=>setFbMsg(""),3000)}
-                e.target.value=""}} style={{fontSize:"11px",color:t.text}}/>
+              <input type="file" accept=".xml,.pdf" onChange={async(e)=>{const file=e.target.files?.[0];if(!file)return;const isXML=file.name.toLowerCase().endsWith(".xml");const isPDF=file.name.toLowerCase().endsWith(".pdf");try{if(isXML){const txt=await file.text();const parser=new DOMParser();const xml=parser.parseFromString(txt,"text/xml");const prods=xml.querySelectorAll("det");const nfNum=xml.querySelector("nNF")?.textContent||"NF";const entries=[];prods.forEach(det=>{const xProd=det.querySelector("xProd")?.textContent||"";const qCom=parseFloat(det.querySelector("qCom")?.textContent||"0");const vUnCom=parseFloat(det.querySelector("vUnCom")?.textContent||"0");const match=CAT.find(p=>xProd.toLowerCase().includes(p.n.toLowerCase().split(" ")[0]));if(match)entries.push({catId:match.id,qty:String(qCom),cost:String(vUnCom)})});if(entries.length>0){addStock(entries,"NF "+nfNum);setFbMsg("NF importada! "+entries.length+" itens")}else{setFbMsg("Nenhum produto no XML");setTimeout(()=>setFbMsg(""),3000)}}else if(isPDF){setFbMsg("Lendo PDF...");const arrBuf=await file.arrayBuffer();if(!window.pdfjsLib){const sc=document.createElement("script");sc.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";document.head.appendChild(sc);await new Promise(r=>{sc.onload=r;setTimeout(r,5000)})}if(window.pdfjsLib){window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";const pdf=await window.pdfjsLib.getDocument({data:arrBuf}).promise;let fullText="";for(let pg=1;pg<=pdf.numPages;pg++){const page=await pdf.getPage(pg);const tc=await page.getTextContent();fullText+=tc.items.map(it=>it.str).join(" ")+" "}const entries2=[];CAT.forEach(p=>{const mw=p.n.toLowerCase().split(" ").find(w=>w.length>3)||p.n.toLowerCase().split(" ")[0];if(fullText.toLowerCase().includes(mw)){entries2.push({catId:p.id,qty:"1",cost:String(p.p)})}});if(entries2.length>0){setEntItems(entries2);setFbMsg("PDF lido! "+entries2.length+" itens. Confira e clique Dar Entrada")}else{setFbMsg("Nenhum produto no PDF")}}else{setFbMsg("Erro leitor PDF")}}}catch(err){setFbMsg("Erro: "+err.message)}setTimeout(()=>setFbMsg(""),4000);e.target.value=""}} style={{fontSize:"11px",color:t.text}}/>
             </div></>}
           {stkTab==="historico"&&<>
             <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"8px"}}>Movimentacoes</div>
