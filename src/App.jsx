@@ -332,9 +332,22 @@ export default function App(){
     try{
       const colRef=fbFns.collection(fb.db,"users",user.uid,"orcamentos");
       const unsub=fbFns.onSnapshot(colRef,(snap)=>{
-        const data=snap.docs.map(d=>({id:d.id,...d.data()}));
-        setHist(data);setHL(true);
-        try{localStorage.setItem("vv_hist",JSON.stringify(data))}catch{}
+        const cloudData=snap.docs.map(d=>({id:d.id,...d.data()}));
+        if(cloudData.length>0){
+          setHist(cloudData);setHL(true);
+          try{localStorage.setItem("vv_hist",JSON.stringify(cloudData))}catch{}
+        } else {
+          // Cloud empty — migrate localStorage data to Firestore
+          const localData=hist.length>0?hist:(()=>{try{const s=localStorage.getItem("vv_hist");return s?JSON.parse(s):[];}catch{return[]}})();
+          if(localData.length>0){
+            localData.forEach(item=>{
+              try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"orcamentos",String(item.id)),JSON.parse(JSON.stringify(item)))}catch{}
+            });
+            setHist(localData);setHL(true);
+          } else {
+            setHL(true);
+          }
+        }
       });
       return ()=>unsub();
     }catch(e){console.error("Firestore sync error:",e)}
