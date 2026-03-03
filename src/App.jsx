@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 
 // Firebase config
 const FB_CFG = {
-  apiKey: "AIzaSyCER8ykaRuFLh2dDUE3yLscq-pFGZNLrD8",
+  apiKey: "AIzaSyCER8yKaRuFLh2dDUE3yLscq-pFGZNLrD8",
   authDomain: "sistema-vinil-vale.firebaseapp.com",
   projectId: "sistema-vinil-vale",
   storageBucket: "sistema-vinil-vale.firebasestorage.app",
