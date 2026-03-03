@@ -364,6 +364,70 @@ export default function App(){
   const doGoogle=async()=>{if(!fbReady||!fb.auth||!fb.GoogleProvider)return;setLErr("");try{const provider=new fb.GoogleProvider();await fbFns.signInWithPopup(fb.auth,provider)}catch(e){if(e.code!=="auth/popup-closed-by-user")setLErr("Erro Google: "+e.message)}};
   const doLogout=()=>{if(fbReady&&fb.auth)fbFns.signOut(fb.auth);else setUser(null)};
   const [fbMsg,setFbMsg]=useState("");
+  // ═══ ESTOQUE ═══
+  const [stk,setStk]=useState(()=>{
+    const init={};CAT.forEach(p=>{init[p.id]={qty:0,minQty:2,lastCost:p.p}});return init;
+  });
+  const [stkLog,setStkLog]=useState([]);
+  const [stkFilter,setStkF]=useState("");
+  const [stkTab,setStkTab]=useState("estoque");
+  const [entItems,setEntItems]=useState([{catId:"",qty:"",cost:""}]);
+
+  useEffect(()=>{
+    if(!user||!fbReady||!fb.db||user.uid==="local")return;
+    try{
+      const stkRef=fbFns.doc(fb.db,"users",user.uid,"config","estoque");
+      const unsub=fbFns.onSnapshot(stkRef,(snap)=>{
+        if(snap.exists()){const d=snap.data();if(d.items)setStk(d.items);if(d.log)setStkLog(d.log)}
+      });
+      return ()=>unsub();
+    }catch{}
+  },[user,fbReady]);
+
+  const saveStk=async(newStk,newLog)=>{
+    setStk(newStk);if(newLog)setStkLog(newLog);
+    if(fbReady&&fb.db&&user&&user.uid!=="local"){
+      try{await fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","estoque"),{items:newStk,log:newLog||stkLog})}catch(e){console.error("saveStk:",e)}
+    }
+  };
+
+  const addStock=(entries,nfRef)=>{
+    const ns={...stk};const nl=[...stkLog];
+    entries.forEach(e=>{
+      if(!e.catId||!e.qty)return;
+      const q=parseFloat(e.qty)||0;const c=parseFloat(e.cost)||0;
+      if(!ns[e.catId])ns[e.catId]={qty:0,minQty:2,lastCost:c};
+      ns[e.catId].qty=(ns[e.catId].qty||0)+q;
+      if(c>0)ns[e.catId].lastCost=c;
+      const item=CAT.find(p=>p.id===e.catId);
+      nl.unshift({type:"entrada",catId:e.catId,name:item?.n||e.catId,qty:q,cost:c,nf:nfRef||"",date:new Date().toLocaleDateString("pt-BR"),ts:Date.now()});
+    });
+    saveStk(ns,nl);setFbMsg("📦 Estoque atualizado!");setTimeout(()=>setFbMsg(""),2000);
+  };
+
+  const removeStock=(items2,clientName,mode)=>{
+    const ns={...stk};const nl=[...stkLog];
+    items2.forEach(i=>{
+      if(!i.catId)return;
+      const q=parseFloat(i.qty)||0;
+      if(!ns[i.catId])ns[i.catId]={qty:0,minQty:2,lastCost:0};
+      ns[i.catId].qty=Math.max(0,(ns[i.catId].qty||0)-q);
+      const item=CAT.find(p=>p.id===i.catId);
+      nl.unshift({type:"saida",catId:i.catId,name:item?.n||i.catId,qty:q,client:clientName,mode,date:new Date().toLocaleDateString("pt-BR"),ts:Date.now()});
+    });
+    saveStk(ns,nl);
+  };
+
+  const autoStockOut=(q)=>{
+    const d=q.data;if(!d||!d.items)return;
+    const inc=d.items.filter(i=>i.on);
+    const stkItems=[];
+    inc.forEach(i=>{
+      const match=CAT.find(p=>p.n===i.n);
+      if(match)stkItems.push({catId:match.id,qty:i.q||1});
+    });
+    if(stkItems.length>0)removeStock(stkItems,q.cN||"Cliente","auto");
+  };
   const [catO,setCatO]=useState(false);
   const [catQ,setCatQ]=useState("");
   const [viewContract,setVC]=useState(null);
@@ -480,7 +544,7 @@ export default function App(){
       </div>
 
       <div style={{display:"flex",padding:"0 14px",background:t.tabBg,borderBottom:`1px solid ${t.cardBorder}`,overflowX:"auto"}}>
-        {[["cliente","👤","Cliente"],["piscina","🏊","Piscina"],["itens","🛒","Custos"],["garantias","🛡","Garantias"],["pagamento","💰","Valor"],["historico","📋","Salvos"],["crm","📈","CRM"],["contratos","📝","Contratos"]].map(([k,ic,lb])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} t={t}>{lb}</Tab>)}
+        {[["cliente","👤","Cliente"],["piscina","🏊","Piscina"],["itens","🛒","Custos"],["garantias","🛡","Garantias"],["pagamento","💰","Valor"],["historico","📋","Salvos"],["crm","📈","CRM"],["estoque","📦","Estoque"],["contratos","📝","Contratos"]].map(([k,ic,lb])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} t={t}>{lb}</Tab>)}
       </div>
 
       <div style={{padding:"14px"}}>
@@ -618,7 +682,7 @@ export default function App(){
                 <div style={{display:"flex",alignItems:"center",gap:"5px"}}><div style={{fontSize:"13px",fontWeight:"800",color:blue}}>{fmt(parseFloat(q.tot)||0)}</div>
                   <Btn onClick={()=>sendOrcWA(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#128c7e",color:"#fff",border:"none"}}>📨 PDF</Btn>
                   <Btn onClick={()=>msgWA(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#25d366",color:"#fff",border:"none"}}>📱 Zap</Btn>
-                  <Btn onClick={()=>toClient(q.id)} style={{fontSize:"8px",padding:"3px 7px",background:"#16a34a",color:"#fff",border:"none"}}>✅ Fechou</Btn>
+                  <Btn onClick={()=>{if(confirm("Dar baixa no estoque automaticamente?")){toClient(q.id,true)}else{toClient(q.id,false)}}} style={{fontSize:"8px",padding:"3px 7px",background:"#16a34a",color:"#fff",border:"none"}}>✅ Fechou</Btn>
                   <Btn onClick={()=>load(q)} style={{fontSize:"8px",padding:"3px 5px",background:blue,color:"#fff",border:"none"}}>Abrir</Btn>
                   <button onClick={e=>{e.stopPropagation();delQ(q.id)}} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>🗑</button>
                 </div>
@@ -680,6 +744,87 @@ export default function App(){
               </div>
             })}
           </div>
+          </>}
+        </Card>}
+
+        {/* ESTOQUE */}
+        {tab==="estoque"&&<Card t={t}><ST icon="📦">Estoque</ST>
+          <div style={{display:"flex",gap:"5px",marginBottom:"12px"}}>
+            {[["estoque","📦","Estoque"],["entrada","📥","Entrada"],["historico","📜","Movim."]].map(([k,ic,lb])=><button key={k} onClick={()=>setStkTab(k)} style={{padding:"5px 10px",borderRadius:"8px",border:`1.5px solid ${stkTab===k?blue:"#e2e8f0"}`,background:stkTab===k?blue+"15":"transparent",color:stkTab===k?blue:t.textSec,fontSize:"10px",fontWeight:"700",cursor:"pointer"}}>{ic} {lb}</button>)}
+          </div>
+          {stkTab==="estoque"&&<>
+            <input value={stkFilter} onChange={e=>setStkF(e.target.value)} placeholder="Buscar produto..." style={{width:"100%",padding:"6px 10px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",marginBottom:"10px",background:t.inputBg,color:t.text,outline:"none"}}/>
+            <div style={{fontSize:"9px",color:t.textMuted,marginBottom:"6px"}}>{Object.values(stk).filter(s=>s.qty>0).length} itens em estoque</div>
+            <div style={{display:"flex",flexDirection:"column",gap:"3px",maxHeight:"400px",overflow:"auto"}}>
+              {CAT.filter(p=>!stkFilter||p.n.toLowerCase().includes(stkFilter.toLowerCase())||p.c.toLowerCase().includes(stkFilter.toLowerCase())).map(p=>{const s=stk[p.id]||{qty:0,minQty:2,lastCost:p.p};const low=s.qty>0&&s.qty<=s.minQty;const zero=s.qty<=0;return <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 8px",background:zero?"#fef2f2":low?"#fffbeb":t.sectionBg,borderRadius:"6px",border:`1px solid ${zero?"#fecaca":low?"#fde68a":t.cardBorder}`}}>
+                <div style={{flex:1}}><span style={{fontSize:"7px",background:t.stampBg,color:blue,padding:"1px 4px",borderRadius:"3px",fontWeight:"600",marginRight:"4px"}}>{p.c}</span><span style={{fontSize:"11px",fontWeight:"600",color:t.text}}>{p.n}</span><div style={{fontSize:"8px",color:t.textMuted}}>Custo: {fmt(s.lastCost)}</div></div>
+                <div style={{display:"flex",alignItems:"center",gap:"6px"}}><div style={{fontSize:"16px",fontWeight:"800",color:zero?"#dc2626":low?"#f59e0b":"#16a34a",minWidth:"35px",textAlign:"right"}}>{s.qty}</div><span style={{fontSize:"8px",color:t.textMuted}}>{p.un}</span>
+                  <div style={{display:"flex",gap:"2px"}}><button onClick={()=>{const ns={...stk};if(!ns[p.id])ns[p.id]={qty:0,minQty:2,lastCost:p.p};ns[p.id].qty++;saveStk(ns)}} style={{width:"20px",height:"20px",borderRadius:"4px",border:"none",background:"#16a34a",color:"#fff",fontSize:"11px",cursor:"pointer",fontWeight:"700"}}>+</button><button onClick={()=>{const ns={...stk};if(!ns[p.id])ns[p.id]={qty:0,minQty:2,lastCost:p.p};ns[p.id].qty=Math.max(0,ns[p.id].qty-1);saveStk(ns)}} style={{width:"20px",height:"20px",borderRadius:"4px",border:"none",background:"#dc2626",color:"#fff",fontSize:"11px",cursor:"pointer",fontWeight:"700"}}>-</button></div>
+                </div></div>})}
+            </div></>}
+          {stkTab==="entrada"&&<>
+            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"8px"}}>Entrada de Mercadoria</div>
+            <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
+              {entItems.map((ei,idx)=><div key={idx} style={{display:"flex",gap:"5px",alignItems:"center"}}>
+                <select value={ei.catId} onChange={e=>{const n=[...entItems];n[idx].catId=e.target.value;setEntItems(n)}} style={{flex:2,padding:"5px",border:`1px solid ${t.cardBorder}`,borderRadius:"5px",fontSize:"10px",background:t.inputBg,color:t.text}}><option value="">Selecionar...</option>{CAT.map(p=><option key={p.id} value={p.id}>{p.c} - {p.n}</option>)}</select>
+                <input value={ei.qty} onChange={e=>{const n=[...entItems];n[idx].qty=e.target.value;setEntItems(n)}} placeholder="Qtd" style={{width:"50px",padding:"5px",border:`1px solid ${t.cardBorder}`,borderRadius:"5px",fontSize:"10px",textAlign:"center",background:t.inputBg,color:t.text}}/>
+                <input value={ei.cost} onChange={e=>{const n=[...entItems];n[idx].cost=e.target.value;setEntItems(n)}} placeholder="R$ un." style={{width:"70px",padding:"5px",border:`1px solid ${t.cardBorder}`,borderRadius:"5px",fontSize:"10px",textAlign:"center",background:t.inputBg,color:t.text}}/>
+                <button onClick={()=>setEntItems(p=>p.filter((_,i)=>i!==idx))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>X</button>
+              </div>)}
+            </div>
+            <div style={{display:"flex",gap:"5px",marginTop:"8px"}}><Btn onClick={()=>setEntItems(p=>[...p,{catId:"",qty:"",cost:""}])}>+ Item</Btn><Btn onClick={()=>{const valid=entItems.filter(e=>e.catId&&e.qty);if(valid.length===0){setFbMsg("Adicione itens");setTimeout(()=>setFbMsg(""),2000);return}addStock(valid,"Manual");setEntItems([{catId:"",qty:"",cost:""}])}} style={{background:"#16a34a",color:"#fff",border:"none"}}>Dar Entrada</Btn></div>
+            <div style={{marginTop:"16px",padding:"12px",background:t.sectionBg,borderRadius:"8px",border:`1px solid ${t.cardBorder}`}}>
+              <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"8px"}}>Importar Nota Fiscal (XML ou PDF)</div>
+              <div style={{fontSize:"9px",color:t.textMuted,marginBottom:"6px"}}>Selecione o XML ou PDF da NFe</div>
+              <input type="file" accept=".xml,.pdf" onChange={async(e)=>{const file=e.target.files?.[0];if(!file)return;
+                const isXML=file.name.toLowerCase().endsWith(".xml");
+                const isPDF=file.name.toLowerCase().endsWith(".pdf");
+                try{
+                  if(isXML){
+                    const txt=await file.text();const parser=new DOMParser();const xml=parser.parseFromString(txt,"text/xml");const prods=xml.querySelectorAll("det");const nfNum=xml.querySelector("nNF")?.textContent||"NF";const entries=[];prods.forEach(det=>{const xProd=det.querySelector("xProd")?.textContent||"";const qCom=parseFloat(det.querySelector("qCom")?.textContent||"0");const vUnCom=parseFloat(det.querySelector("vUnCom")?.textContent||"0");const match=CAT.find(p=>xProd.toLowerCase().includes(p.n.toLowerCase().split(" ")[0]));if(match)entries.push({catId:match.id,qty:String(qCom),cost:String(vUnCom)})});if(entries.length>0){addStock(entries,"NF "+nfNum);setFbMsg("NF XML importada! "+entries.length+" itens")}else{setFbMsg("Nenhum produto reconhecido no XML");setTimeout(()=>setFbMsg(""),3000)}
+                  } else if(isPDF){
+                    setFbMsg("Lendo PDF...");
+                    const arrBuf=await file.arrayBuffer();
+                    if(!window.pdfjsLib){const sc=document.createElement("script");sc.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";document.head.appendChild(sc);await new Promise(r=>{sc.onload=r;setTimeout(r,5000)})}
+                    if(window.pdfjsLib){
+                      window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+                      const pdf=await window.pdfjsLib.getDocument({data:arrBuf}).promise;
+                      let fullText="";
+                      for(let pg=1;pg<=pdf.numPages;pg++){const page=await pdf.getPage(pg);const tc=await page.getTextContent();fullText+=tc.items.map(i=>i.str).join(" ")+"
+"}
+                      const entries=[];const lines=fullText.split("
+");
+                      CAT.forEach(p=>{
+                        const words=p.n.toLowerCase().split(" ");
+                        const mainWord=words.find(w=>w.length>3)||words[0];
+                        lines.forEach(line=>{
+                          const ll=line.toLowerCase();
+                          if(ll.includes(mainWord)){
+                            const nums=line.match(/(\d+[.,]?\d*)/g);
+                            if(nums&&nums.length>=1){
+                              const qty=parseFloat(nums[0].replace(",","."))||1;
+                              const cost=nums.length>=2?parseFloat(nums[nums.length-1].replace(",","."))||0:0;
+                              if(!entries.find(e=>e.catId===p.id))entries.push({catId:p.id,qty:String(qty),cost:String(cost)});
+                            }
+                          }
+                        });
+                      });
+                      if(entries.length>0){setEntItems(entries);setFbMsg("PDF lido! "+entries.length+" itens encontrados. Confira e clique Dar Entrada");setTimeout(()=>setFbMsg(""),5000)}
+                      else{setFbMsg("Nenhum produto reconhecido no PDF");setTimeout(()=>setFbMsg(""),3000)}
+                    }else{setFbMsg("Erro ao carregar leitor PDF");setTimeout(()=>setFbMsg(""),3000)}
+                  }
+                }catch(err){console.error(err);setFbMsg("Erro ao ler arquivo: "+err.message);setTimeout(()=>setFbMsg(""),3000)}
+                e.target.value=""}} style={{fontSize:"11px",color:t.text}}/>
+            </div></>}
+          {stkTab==="historico"&&<>
+            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"8px"}}>Movimentacoes</div>
+            {stkLog.length===0?<div style={{textAlign:"center",padding:"16px",color:t.textMuted,fontSize:"11px"}}>Nenhuma movimentacao</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:"3px",maxHeight:"400px",overflow:"auto"}}>
+              {stkLog.slice(0,50).map((log,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 8px",background:t.sectionBg,borderRadius:"5px",border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${log.type==="entrada"?"#16a34a":"#dc2626"}`}}>
+                <div><div style={{fontSize:"10px",fontWeight:"700",color:t.text}}>{log.type==="entrada"?"IN":"OUT"} {log.name}</div><div style={{fontSize:"8px",color:t.textMuted}}>{log.date} {log.nf?" - "+log.nf:""} {log.client?" - "+log.client:""} {log.mode==="auto"?"(auto)":""}</div></div>
+                <div style={{fontSize:"13px",fontWeight:"800",color:log.type==="entrada"?"#16a34a":"#dc2626"}}>{log.type==="entrada"?"+":"-"}{log.qty}</div>
+              </div>)}
+            </div>}
           </>}
         </Card>}
 
