@@ -1,6 +1,41 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
-const VER="v4.1";
+// Firebase config
+const FB_CFG = {
+  apiKey: "AIzaSyCER8ykaRuFLh2dDUE3yLscq-pFGZNLrD8",
+  authDomain: "sistema-vinil-vale.firebaseapp.com",
+  projectId: "sistema-vinil-vale",
+  storageBucket: "sistema-vinil-vale.firebasestorage.app",
+  messagingSenderId: "647283579644",
+  appId: "1:647283579644:web:7f606a1a6e5c271160ff3d"
+};
+
+// Firebase lazy loader — works on Vercel (npm), falls back to local on artifact
+let fb = { ready: false, db: null, auth: null, storage: null };
+let fbFns = {};
+const initFB = async () => {
+  if (fb.ready) return fb.ready;
+  try {
+    const app = await import("firebase/app");
+    const fs = await import("firebase/firestore");
+    const au = await import("firebase/auth");
+    const st = await import("firebase/storage");
+    const fbApp = app.initializeApp(FB_CFG);
+    fb = { ready: true, db: fs.getFirestore(fbApp), auth: au.getAuth(fbApp), storage: st.getStorage(fbApp) };
+    fbFns = { ...fs, ...au, ...st };
+    return true;
+  } catch (e) { console.log("Firebase não disponível, usando modo local"); return false; }
+};
+
+const VER="v4.4";
+const PIPE=[
+  {id:"lead",label:"Lead",icon:"📊",color:"#f59e0b"},
+  {id:"orcamento",label:"Orçamento",icon:"📄",color:"#3b82f6"},
+  {id:"negociacao",label:"Negociação",icon:"🤝",color:"#8b5cf6"},
+  {id:"fechou",label:"Fechou",icon:"✅",color:"#16a34a"},
+  {id:"execucao",label:"Em Execução",icon:"🔨",color:"#f97316"},
+  {id:"concluido",label:"Concluído",icon:"🏁",color:"#06b6d4"},
+];
 const CO={name:"Vinil Vale Revestimentos e Capas para Piscinas Ltda",short:"Vinil Vale",addr:"Rodovia SP 139, KM 3, s/n, Jardim Hatori II, Registro-SP",cnpj:"42.749.688/0001-57",ie:"574.128.060.119",ph1:"(13) 99730-5949",ph2:"(13) 99678-1966",email:"vinilvale@hotmail.com",insta:"@vinilvaleoficial"};
 const SVC=[{id:"construcao",label:"Construção de Piscina",icon:"🏗️"},{id:"revestimento",label:"Revestimento em Vinil",icon:"🎨"},{id:"reforma",label:"Reforma de Piscina",icon:"🔧"}];
 const PFMT=["Retangular","Retangular irregular","Formato L","Oval","Feijão","Com prainha","Com Spa","Personalizado"];
@@ -269,26 +304,52 @@ export default function App(){
   const [pay,setPay]=useState(IPAY);
   const [mo,setMO]=useState("15000");
   const [totOv,setTO]=useState("");
-  const [hist,setHist]=useState([]);
+  const [hist,setHist]=useState(()=>{try{const s=localStorage.getItem("vv_hist");return s?JSON.parse(s):[];}catch{return[]}});
   const [histLoaded,setHL]=useState(false);
+  const [user,setUser]=useState(null);
+  const [authLoading,setAL]=useState(true);
+  const [fbReady,setFBR]=useState(false);
+  const [loginEmail,setLE]=useState("");
+  const [loginPass,setLP]=useState("");
+  const [loginErr,setLErr]=useState("");
+  const [loginMode,setLM]=useState("login");
 
-  // Cloud storage + localStorage fallback
-  const loadHist=async()=>{
-    try{
-      if(window.storage){
-        const r=await window.storage.get("vv_hist");
-        if(r&&r.value){const d=JSON.parse(r.value);setHist(d);setHL(true);return}
+  // Init Firebase on mount
+  useEffect(()=>{
+    initFB().then(ok=>{
+      setFBR(ok);
+      if(ok&&fb.auth){
+        fbFns.onAuthStateChanged(fb.auth,(u)=>{setUser(u);setAL(false)});
+      } else {
+        setUser({uid:"local",email:"local@vinilvale"});setAL(false);
       }
-    }catch{}
-    try{const s=localStorage.getItem("vv_hist");if(s){setHist(JSON.parse(s))}}catch{}
-    setHL(true);
-  };
-  const saveLS=async(h)=>{
-    try{localStorage.setItem("vv_hist",JSON.stringify(h))}catch{}
-    try{if(window.storage){await window.storage.set("vv_hist",JSON.stringify(h))}}catch{}
-  };
-  useState(()=>{loadHist()});
-  const [fb,setFb]=useState("");
+    });
+  },[]);
+
+  // Firestore sync when user logs in
+  useEffect(()=>{
+    if(!user||!fbReady||!fb.db||user.uid==="local")return;
+    try{
+      const colRef=fbFns.collection(fb.db,"users",user.uid,"orcamentos");
+      const unsub=fbFns.onSnapshot(colRef,(snap)=>{
+        const data=snap.docs.map(d=>({id:d.id,...d.data()}));
+        setHist(data);setHL(true);
+        try{localStorage.setItem("vv_hist",JSON.stringify(data))}catch{}
+      });
+      return ()=>unsub();
+    }catch(e){console.error("Firestore sync error:",e)}
+  },[user,fbReady]);
+
+  // Save helpers
+  const saveFS=async(item)=>{if(!fbReady||!fb.db||!user||user.uid==="local")return;try{await fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"orcamentos",String(item.id)),JSON.parse(JSON.stringify(item)))}catch(e){console.error("saveFS:",e)}};
+  const delFS=async(id)=>{if(!fbReady||!fb.db||!user||user.uid==="local")return;try{await fbFns.deleteDoc(fbFns.doc(fb.db,"users",user.uid,"orcamentos",String(id)))}catch(e){console.error("delFS:",e)}};
+  const saveLS=(h)=>{try{localStorage.setItem("vv_hist",JSON.stringify(h))}catch{}};
+
+  // Auth handlers
+  const doLogin=async()=>{if(!fbReady||!fb.auth)return;setLErr("");try{await fbFns.signInWithEmailAndPassword(fb.auth,loginEmail,loginPass)}catch(e){setLErr(e.code==="auth/invalid-credential"?"Email ou senha incorretos":e.code==="auth/user-not-found"?"Usuário não encontrado":"Erro: "+e.message)}};
+  const doRegister=async()=>{if(!fbReady||!fb.auth)return;setLErr("");try{await fbFns.createUserWithEmailAndPassword(fb.auth,loginEmail,loginPass)}catch(e){setLErr(e.code==="auth/email-already-in-use"?"Email já cadastrado":e.code==="auth/weak-password"?"Senha fraca (mín. 6 caracteres)":"Erro: "+e.message)}};
+  const doLogout=()=>{if(fbReady&&fb.auth)fbFns.signOut(fb.auth);else setUser(null)};
+  const [fbMsg,setFbMsg]=useState("");
   const [catO,setCatO]=useState(false);
   const [catQ,setCatQ]=useState("");
   const [viewContract,setVC]=useState(null);
@@ -297,11 +358,11 @@ export default function App(){
   const initCE=(q)=>{const d=q.data;const inc=(d.items||[]).filter(i=>i.on);setCE({servicos:inc.map(it=>it.n+(it.q>1?` (${it.q}x)`:"")),obs:(d.ci||[]).join(", ")||"Materiais de alvenaria e hidráulico, pedra de borda, água para enchimento, remoção de entulho",garantias:(d.guar||[]).filter(g=>g.on).map(g=>`${g.y} anos para ${g.it}`).join(", "),valor:fmt(parseFloat(q.tot)||0),prazo:d.execDays||"20",data:new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"}),novoServico:""})};
   const exportCSV=()=>{
     const rows=[["Status","Nome","Telefone","Cidade"]];
-    hist.forEach(q=>{const c=q.data?.client||{};rows.push([q.status==="cliente"?"Cliente":"Lead",c.name||"",c.phone||"",c.city||""])});
+    hist.forEach(q=>{const c=q.data?.client||{};rows.push([["cliente","fechou","execucao","concluido"].includes(q.status)?"Cliente":"Lead",c.name||"",c.phone||"",c.city||""])});
     const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
     const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
     const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`vinil_vale_dados_${new Date().toISOString().slice(0,10)}.csv`;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),1000);
-    setFb("📊 CSV exportado!");setTimeout(()=>setFb(""),2000);
+    setFbMsg("📊 CSV exportado!");setTimeout(()=>setFbMsg(""),2000);
   };
 
   const inc=items.filter(i=>i.on);
@@ -323,16 +384,65 @@ export default function App(){
   const ri=id=>setItems(p=>p.filter(i=>i.id!==id));
   const addC=pr=>setItems(p=>[...p,{id:Date.now(),n:pr.n,q:1,c:pr.p,m:gM,nt:pr.s,on:true,un:pr.un||"un"}]);
   const addM=()=>setItems(p=>[...p,{id:Date.now(),n:"Novo item",q:1,c:0,m:gM,nt:"",on:true,un:"un"}]);
-  const apM=()=>{setItems(p=>p.map(i=>({...i,m:gM})));setFb("Margem aplicada!");setTimeout(()=>setFb(""),1500)};
+  const apM=()=>{setItems(p=>p.map(i=>({...i,m:gM})));setFbMsg("Margem aplicada!");setTimeout(()=>setFbMsg(""),1500)};
 
   const gData=()=>({client,pool,items,guar,ci,pay,totOv:String(total),vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,wMode,walls});
-  const save=()=>{const d=gData();const nh=[{id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"},...hist];setHist(nh);saveLS(nh);setFb("Salvo!");setTimeout(()=>setFb(""),2000)};
-  const toClient=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"cliente",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);setFb("✅ Cliente fechado!");setTimeout(()=>setFb(""),2000)};
-  const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);setFb("Voltou p/ lead");setTimeout(()=>setFb(""),2000)};
-  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8"});setWM(d.wMode||"regular");setWalls(d.walls||[]);setTab("cliente");setFb("Carregado!");setTimeout(()=>setFb(""),1500)};
-  const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);setFb("Excluído!");setTimeout(()=>setFb(""),1500)};
+  const save=()=>{const d=gData();const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setFbMsg("Salvo!");setTimeout(()=>setFbMsg(""),2000)};
+  const toClient=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg("✅ Cliente fechado!");setTimeout(()=>setFbMsg(""),2000)};
+  const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
+  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8"});setWM(d.wMode||"regular");setWalls(d.walls||[]);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
+  const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
+  const movePipe=(id,stage)=>{const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
+  const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const url=`https://wa.me/55${num}${msg?`?text=${encodeURIComponent(msg)}`:""}`;window.open(url,"_blank")};
+  const sendOrcWA=(q)=>{
+    const d=q.data;const c=d?.client||{};const inc=(d?.items||[]).filter(i=>i.on);
+    const p=d?.pool||{};const pay2=d?.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
+    const tot=parseFloat(q.tot)||0;
+    const clientName=(c.name||"Cliente").replace(/\s+/g,"_").replace(/[^\w\-]/g,"");
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;box-sizing:border-box;-webkit-print-color-adjust:exact!important}body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;padding:16mm;font-size:13px;line-height:1.7;color:#111}@page{size:A4;margin:10mm}.hdr{background:#0a1f44;color:#fff;padding:16px 24px;border-radius:8px;text-align:center;margin-bottom:16px}.hdr h1{font-size:22px;color:#e8b100;margin:0}.info{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:12px;font-size:13px}.tbl{width:100%;border-collapse:collapse;margin:12px 0}.tbl th{background:#0055a4;color:#fff;padding:6px 10px;text-align:left;font-size:11px}.tbl td{padding:5px 10px;border-bottom:1px solid #e2e8f0;font-size:12px}.tot{background:linear-gradient(135deg,#0055a4,#003d7a);color:#fff;border-radius:8px;padding:16px;text-align:center;font-size:26px;font-weight:800;margin:16px 0}.ft{text-align:center;font-size:10px;color:#888;margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px}</style></head><body>
+<div class="hdr"><h1>VINIL VALE</h1><div style="font-size:11px;margin-top:4px">Revestimentos e Capas para Piscinas</div><div style="font-size:10px;opacity:.7;margin-top:2px">CNPJ: ${CO.cnpj} · ${CO.ph1} / ${CO.ph2}</div></div>
+<div style="font-size:11px;text-align:right;color:#666;margin-bottom:8px">Proposta nº ${d?.propNum||"—"} · Válido por 15 dias</div>
+<div class="info"><b>Cliente:</b> ${c.name||"—"}<br><b>Tel:</b> ${c.phone||"—"} · <b>Email:</b> ${c.email||"—"}<br><b>End:</b> ${c.address||"—"} – ${c.city||"—"}</div>
+<div class="info"><b>Piscina:</b> ${p.length||0}×${p.width||0}×${p.depth||0}m · ${d?.poolFmt||""}<br><b>Vinil:</b> ACQUALINER ${d?.vinilT||""} · Resist. até 32°C${d?.stamp?` · <b>Estampa:</b> ${d.stamp}`:""}</div>
+<div style="font-size:14px;font-weight:700;margin:14px 0 8px">Serviços Inclusos</div>
+<table class="tbl"><tr><th>Item</th><th>Obs</th><th>Qtd</th></tr>${inc.map(i=>`<tr><td><b>${i.n}</b></td><td style="color:#666;font-style:italic">${i.nt||""}</td><td>${i.q>1?i.q+"x":"1"}</td></tr>`).join("")}</table>
+<div class="tot">${fmt(tot)}</div>
+<div class="info" style="font-size:12px"><b>Formas de Pagamento:</b><br>💚 Pix/Dinheiro: ${pay2.pixD}% desc. = <b>${fmt(tot*(1-pay2.pixD/100))}</b><br>💳 Cartão: até ${pay2.noFee}x s/juros<br>📋 Parcelado: ${pay2.entPct}% + ${pay2.balPct}%<br>₿ Bitcoin: ${pay2.btcD}% desc. = <b>${fmt(tot*(1-pay2.btcD/100))}</b></div>
+<div style="margin-top:12px;font-size:12px"><b>Prazo de execução:</b> ${d?.execDays||"20"} dias úteis</div>
+<div class="ft">${CO.name}<br>${CO.addr} · ${CO.ph1} / ${CO.ph2}<br>${CO.email} · ${CO.insta}</div>
+<script>window.onload=function(){setTimeout(function(){window.print()},800)}<\/script></body></html>`;
+    const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;a.download=`Orcamento_VinilVale_${clientName}.html`;a.style.display="none";
+    document.body.appendChild(a);a.click();
+    setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url)},1000);
+    setFbMsg("📥 PDF baixado! Agora clique 📱Zap p/ enviar");setTimeout(()=>setFbMsg(""),4000);
+  };
+  const msgWA=(q)=>{
+    const c=q.data?.client||{};const tot=parseFloat(q.tot)||0;
+    const msg=`Olá ${c.name||""}! 😊\n\nSegue seu orçamento da *Vinil Vale*:\n\n🏊 *${SVC.find(s=>s.id===q.type)?.label||"Serviço"}*\n📐 Piscina: ${q.ps}m\n${q.stamp?`🎨 Estampa: ${q.stamp}\n`:""}💰 *Valor: ${fmt(tot)}*\n\n📋 Proposta nº ${q.data?.propNum||""}\n⏰ Válido por 15 dias\n\n📎 *Segue o PDF em anexo!*\n\nQualquer dúvida estamos à disposição! 🤙`;
+    openWA(c.phone,msg);
+  };
 
-  if(view==="quote")return <QP d={gData()} onBack={()=>setView("editor")} onSave={()=>{const d=gData();const nh=[{id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"},...hist];setHist(nh);saveLS(nh)}}/>;
+  // Auth loading
+  if(authLoading)return <div style={{display:"flex",justifyContent:"center",alignItems:"center",minHeight:"100vh",background:"#0a1f44"}}><div style={{textAlign:"center",color:"#fff"}}><div style={{fontSize:"32px",marginBottom:"12px"}}>🏊</div><div style={{fontSize:"18px",fontWeight:"700"}}>VINIL VALE</div><div style={{fontSize:"11px",opacity:.6,marginTop:"4px"}}>Carregando...</div></div></div>;
+
+  // Login screen
+  if(!user)return <div style={{display:"flex",justifyContent:"center",alignItems:"center",minHeight:"100vh",background:"linear-gradient(135deg,#001d3d,#0055a4 60%,#0077cc)",padding:"20px"}}>
+    <div style={{background:"#fff",borderRadius:"16px",padding:"32px",maxWidth:"360px",width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+      <div style={{textAlign:"center",marginBottom:"24px"}}><div style={{fontSize:"36px"}}>🏊</div><div style={{fontSize:"22px",fontWeight:"800",color:"#0a1f44",marginTop:"8px"}}>VINIL VALE</div><div style={{fontSize:"11px",color:"#666"}}>Sistema de Orçamentos v4.4</div></div>
+      <div style={{display:"flex",gap:"8px",marginBottom:"16px"}}><button onClick={()=>setLM("login")} style={{flex:1,padding:"8px",borderRadius:"8px",border:"none",background:loginMode==="login"?"#0055a4":"#f1f5f9",color:loginMode==="login"?"#fff":"#666",fontWeight:"700",fontSize:"12px",cursor:"pointer"}}>Entrar</button><button onClick={()=>setLM("register")} style={{flex:1,padding:"8px",borderRadius:"8px",border:"none",background:loginMode==="register"?"#0055a4":"#f1f5f9",color:loginMode==="register"?"#fff":"#666",fontWeight:"700",fontSize:"12px",cursor:"pointer"}}>Criar Conta</button></div>
+      <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
+        <input value={loginEmail} onChange={e=>setLE(e.target.value)} placeholder="E-mail" type="email" style={{padding:"10px 14px",border:"1.5px solid #e2e8f0",borderRadius:"8px",fontSize:"14px",outline:"none"}}/>
+        <input value={loginPass} onChange={e=>setLP(e.target.value)} placeholder="Senha" type="password" onKeyDown={e=>e.key==="Enter"&&(loginMode==="login"?doLogin():doRegister())} style={{padding:"10px 14px",border:"1.5px solid #e2e8f0",borderRadius:"8px",fontSize:"14px",outline:"none"}}/>
+        {loginErr&&<div style={{fontSize:"11px",color:"#dc2626",background:"#fef2f2",padding:"8px",borderRadius:"6px"}}>{loginErr}</div>}
+        <button onClick={loginMode==="login"?doLogin:doRegister} style={{padding:"12px",background:"linear-gradient(135deg,#0055a4,#003d7a)",color:"#fff",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"700",cursor:"pointer"}}>{loginMode==="login"?"🔑 Entrar":"📝 Criar Conta"}</button>
+      </div>
+      <div style={{textAlign:"center",marginTop:"16px",fontSize:"10px",color:"#999"}}>Seus dados ficam sincronizados na nuvem ☁️</div>
+    </div>
+  </div>;
+
+  if(view==="quote")return <QP d={gData()} onBack={()=>setView("editor")} onSave={()=>{const d=gData();const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item)}}/>;
 
   const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};
 
@@ -340,9 +450,9 @@ export default function App(){
     <div style={{fontFamily:"'Segoe UI',sans-serif",maxWidth:"920px",margin:"0 auto",background:t.bg,minHeight:"100vh",color:t.text,transition:"background .3s,color .3s"}}>
       <div style={{background:`linear-gradient(135deg,#001d3d,${blue} 60%,#0077cc)`,padding:"14px 18px",color:"#fff"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"6px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:"10px"}}><div><div style={{fontSize:"17px",fontWeight:"800"}}>💧 VINIL VALE</div><div style={{fontSize:"9px",opacity:.7}}>{CO.insta} · {VER}</div></div><DarkToggle dark={dark} onToggle={()=>setDark(p=>!p)}/></div>
+          <div style={{display:"flex",alignItems:"center",gap:"10px"}}><div><div style={{fontSize:"17px",fontWeight:"800"}}>💧 VINIL VALE</div><div style={{fontSize:"9px",opacity:.7}}>{user?.email?.split("@")[0]} · {VER}</div></div><DarkToggle dark={dark} onToggle={()=>setDark(p=>!p)}/><button onClick={doLogout} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:"6px",padding:"4px 8px",color:"#fff",fontSize:"9px",cursor:"pointer",fontWeight:"600"}}>Sair</button></div>
           <div style={{display:"flex",gap:"5px",alignItems:"center",flexWrap:"wrap"}}>
-            {fb&&<span style={{background:"rgba(255,255,255,.2)",padding:"4px 8px",borderRadius:"5px",fontSize:"10px",fontWeight:"600"}}>✅ {fb}</span>}
+            {fbMsg&&<span style={{background:"rgba(255,255,255,.2)",padding:"4px 8px",borderRadius:"5px",fontSize:"10px",fontWeight:"600"}}>✅ {fbMsg}</span>}
             <Btn onClick={save} style={{background:"rgba(255,255,255,.12)",color:"#fff",border:"1px solid rgba(255,255,255,.25)"}}>💾 Salvar</Btn>
             <Btn onClick={()=>setView("quote")} style={{background:"#fff",color:blue,fontWeight:"700"}}>📄 Orçamento</Btn>
           </div>
@@ -351,7 +461,7 @@ export default function App(){
       </div>
 
       <div style={{display:"flex",padding:"0 14px",background:t.tabBg,borderBottom:`1px solid ${t.cardBorder}`,overflowX:"auto"}}>
-        {[["cliente","👤","Cliente"],["piscina","🏊","Piscina"],["itens","🛒","Custos"],["garantias","🛡","Garantias"],["pagamento","💰","Valor"],["historico","📋","Salvos"],["contratos","📝","Contratos"]].map(([k,ic,lb])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} t={t}>{lb}</Tab>)}
+        {[["cliente","👤","Cliente"],["piscina","🏊","Piscina"],["itens","🛒","Custos"],["garantias","🛡","Garantias"],["pagamento","💰","Valor"],["historico","📋","Salvos"],["crm","📈","CRM"],["contratos","📝","Contratos"]].map(([k,ic,lb])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} t={t}>{lb}</Tab>)}
       </div>
 
       <div style={{padding:"14px"}}>
@@ -481,12 +591,14 @@ export default function App(){
           {hist.length===0?<div style={{textAlign:"center",padding:"24px",color:t.textMuted}}><div style={{fontSize:"28px"}}>📭</div><div style={{fontSize:"11px"}}>Nenhum salvo.</div></div>:<>
           {/* LEADS */}
           <div style={{marginBottom:"16px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"8px"}}><span style={{fontSize:"16px"}}>📊</span><span style={{fontSize:"12px",fontWeight:"700",color:"#f59e0b"}}>Leads / Orçamentos ({hist.filter(q=>q.status!=="cliente").length})</span></div>
-            {hist.filter(q=>q.status!=="cliente").length===0?<div style={{fontSize:"10px",color:t.textMuted,padding:"8px",textAlign:"center"}}>Nenhum lead</div>:
-            <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>{hist.filter(q=>q.status!=="cliente").map(q=>(
+            <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"8px"}}><span style={{fontSize:"16px"}}>📊</span><span style={{fontSize:"12px",fontWeight:"700",color:"#f59e0b"}}>Leads / Orçamentos ({hist.filter(q=>!["cliente","fechou","execucao","concluido"].includes(q.status)).length})</span></div>
+            {hist.filter(q=>!["cliente","fechou","execucao","concluido"].includes(q.status)).length===0?<div style={{fontSize:"10px",color:t.textMuted,padding:"8px",textAlign:"center"}}>Nenhum lead</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>{hist.filter(q=>!["cliente","fechou","execucao","concluido"].includes(q.status)).map(q=>(
               <div key={q.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:t.sectionBg,borderRadius:"7px",border:`1.5px solid ${t.cardBorder}`,borderLeft:"3px solid #f59e0b"}}>
                 <div onClick={()=>load(q)} style={{flex:1,cursor:"pointer"}}><div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{q.cN||"Sem nome"} {q.stamp?`· ${q.stamp}`:""}</div><div style={{fontSize:"8.5px",color:t.textMuted}}>{q.date} · {SVC.find(s=>s.id===q.type)?.label} · {q.ps}m · {q.cC}</div></div>
                 <div style={{display:"flex",alignItems:"center",gap:"5px"}}><div style={{fontSize:"13px",fontWeight:"800",color:blue}}>{fmt(parseFloat(q.tot)||0)}</div>
+                  <Btn onClick={()=>sendOrcWA(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#128c7e",color:"#fff",border:"none"}}>📨 PDF</Btn>
+                  <Btn onClick={()=>msgWA(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#25d366",color:"#fff",border:"none"}}>📱 Zap</Btn>
                   <Btn onClick={()=>toClient(q.id)} style={{fontSize:"8px",padding:"3px 7px",background:"#16a34a",color:"#fff",border:"none"}}>✅ Fechou</Btn>
                   <Btn onClick={()=>load(q)} style={{fontSize:"8px",padding:"3px 5px",background:blue,color:"#fff",border:"none"}}>Abrir</Btn>
                   <button onClick={e=>{e.stopPropagation();delQ(q.id)}} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>🗑</button>
@@ -496,9 +608,9 @@ export default function App(){
           </div>
           {/* CLIENTES */}
           <div>
-            <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"8px"}}><span style={{fontSize:"16px"}}>🤝</span><span style={{fontSize:"12px",fontWeight:"700",color:"#16a34a"}}>Clientes Fechados ({hist.filter(q=>q.status==="cliente").length})</span></div>
-            {hist.filter(q=>q.status==="cliente").length===0?<div style={{fontSize:"10px",color:t.textMuted,padding:"8px",textAlign:"center"}}>Nenhum cliente fechado</div>:
-            <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>{hist.filter(q=>q.status==="cliente").map(q=>(
+            <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"8px"}}><span style={{fontSize:"16px"}}>🤝</span><span style={{fontSize:"12px",fontWeight:"700",color:"#16a34a"}}>Clientes Fechados ({hist.filter(q=>["cliente","fechou","execucao","concluido"].includes(q.status)).length})</span></div>
+            {hist.filter(q=>["cliente","fechou","execucao","concluido"].includes(q.status)).length===0?<div style={{fontSize:"10px",color:t.textMuted,padding:"8px",textAlign:"center"}}>Nenhum cliente fechado</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>{hist.filter(q=>["cliente","fechou","execucao","concluido"].includes(q.status)).map(q=>(
               <div key={q.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:t.sectionBg,borderRadius:"7px",border:`1.5px solid ${t.cardBorder}`,borderLeft:"3px solid #16a34a"}}>
                 <div onClick={()=>load(q)} style={{flex:1,cursor:"pointer"}}><div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>🤝 {q.cN||"Sem nome"} {q.stamp?`· ${q.stamp}`:""}</div><div style={{fontSize:"8.5px",color:t.textMuted}}>{q.date} · Fechou: {q.closedDate||"—"} · {q.ps}m · {q.cC}</div><div style={{fontSize:"8px",color:t.textMuted}}>CPF: {q.data?.client?.cpf||"—"} · RG: {q.data?.client?.rg||"—"} · Tel: {q.data?.client?.phone||"—"}</div></div>
                 <div style={{display:"flex",alignItems:"center",gap:"5px"}}><div style={{fontSize:"13px",fontWeight:"800",color:"#16a34a"}}>{fmt(parseFloat(q.tot)||0)}</div>
@@ -512,10 +624,50 @@ export default function App(){
           </>}
         </Card>}
 
+        {/* CRM PIPELINE */}
+        {tab==="crm"&&<Card t={t}><ST icon="📈">Pipeline de Vendas</ST>
+          {hist.length===0?<div style={{textAlign:"center",padding:"24px",color:t.textMuted}}><div style={{fontSize:"28px"}}>📈</div><div style={{fontSize:"11px"}}>Nenhum orçamento salvo ainda.</div></div>:<>
+          {/* RESUMO */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px",marginBottom:"16px"}}>
+            <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",textAlign:"center",border:`1px solid ${t.cardBorder}`}}><div style={{fontSize:"20px",fontWeight:"800",color:blue}}>{hist.length}</div><div style={{fontSize:"8px",color:t.textMuted,fontWeight:"600"}}>TOTAL</div></div>
+            <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",textAlign:"center",border:`1px solid ${t.cardBorder}`}}><div style={{fontSize:"20px",fontWeight:"800",color:"#16a34a"}}>{hist.filter(q=>["fechou","execucao","concluido"].includes(q.status)).length}</div><div style={{fontSize:"8px",color:t.textMuted,fontWeight:"600"}}>FECHADOS</div></div>
+            <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",textAlign:"center",border:`1px solid ${t.cardBorder}`}}><div style={{fontSize:"20px",fontWeight:"800",color:"#f59e0b"}}>{fmt(hist.filter(q=>["fechou","execucao","concluido"].includes(q.status)).reduce((s,q)=>s+(parseFloat(q.tot)||0),0))}</div><div style={{fontSize:"8px",color:t.textMuted,fontWeight:"600"}}>FATURAMENTO</div></div>
+          </div>
+          {/* PIPELINE COLUMNS */}
+          <div style={{display:"flex",gap:"8px",overflowX:"auto",paddingBottom:"8px"}}>
+            {PIPE.map(stage=>{
+              const items=hist.filter(q=>(q.status||"lead")===stage.id||(stage.id==="fechou"&&["cliente","fechou","execucao","concluido"].includes(q.status)));
+              return <div key={stage.id} style={{minWidth:"160px",flex:1}}>
+                <div style={{background:stage.color+"22",borderRadius:"8px 8px 0 0",padding:"8px 10px",borderBottom:`3px solid ${stage.color}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{fontSize:"11px",fontWeight:"700",color:stage.color}}>{stage.icon} {stage.label}</div>
+                  <div style={{fontSize:"10px",fontWeight:"800",color:stage.color,background:stage.color+"22",borderRadius:"10px",padding:"1px 6px"}}>{items.length}</div>
+                </div>
+                <div style={{background:t.sectionBg,borderRadius:"0 0 8px 8px",padding:"6px",minHeight:"60px",border:`1px solid ${t.cardBorder}`,borderTop:"none",display:"flex",flexDirection:"column",gap:"4px"}}>
+                  {items.length===0?<div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",padding:"12px"}}>—</div>:
+                  items.map(q=><div key={q.id} style={{background:t.card,borderRadius:"6px",padding:"8px",border:`1px solid ${t.cardBorder}`,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
+                    <div style={{fontSize:"10px",fontWeight:"700",color:t.text,marginBottom:"2px"}}>{q.cN||"Sem nome"}</div>
+                    <div style={{fontSize:"8px",color:t.textMuted,marginBottom:"4px"}}>{q.data?.client?.city||""} · {q.ps}m</div>
+                    <div style={{fontSize:"12px",fontWeight:"800",color:stage.color,marginBottom:"6px"}}>{fmt(parseFloat(q.tot)||0)}</div>
+                    <div style={{display:"flex",gap:"3px",flexWrap:"wrap"}}>
+                      <button onClick={()=>msgWA(q)} style={{fontSize:"8px",padding:"2px 5px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📱 Zap</button>
+                      <button onClick={()=>sendOrcWA(q)} style={{fontSize:"8px",padding:"2px 5px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📨 PDF</button>
+                      {stage.id!=="concluido"&&<select value="" onChange={e=>{if(e.target.value)movePipe(q.id,e.target.value);e.target.value=""}} style={{fontSize:"8px",padding:"2px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer"}}>
+                        <option value="">Mover →</option>
+                        {PIPE.filter(p=>p.id!==stage.id&&p.id!==(q.status||"lead")).map(p=><option key={p.id} value={p.id}>{p.icon} {p.label}</option>)}
+                      </select>}
+                    </div>
+                  </div>)}
+                </div>
+              </div>
+            })}
+          </div>
+          </>}
+        </Card>}
+
         {/* CONTRATOS */}
         {tab==="contratos"&&<Card t={t}><ST icon="📝">Contratos</ST>
           {(()=>{
-            const clientes=hist.filter(q=>q.status==="cliente");
+            const clientes=hist.filter(q=>["cliente","fechou","execucao","concluido"].includes(q.status));
             if(clientes.length===0)return <div style={{textAlign:"center",padding:"24px",color:t.textMuted}}><div style={{fontSize:"28px"}}>📝</div><div style={{fontSize:"11px"}}>Nenhum cliente fechado ainda.</div><div style={{fontSize:"10px",color:t.textMuted,marginTop:"4px"}}>Vá em "Salvos" e clique "Fechou" em um orçamento.</div></div>;
 
             const sel=viewContract||clientes[0];
