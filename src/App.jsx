@@ -2,12 +2,12 @@ import { useState, useEffect } from "react";
 
 // Firebase config
 const FB_CFG = {
-  apiKey: "AIzaSyCER8yKaRuFLh2dDUE3yLscq-pFGZNLrD8",
+  apiKey: "AIzaSyCER8yKsRuFLh2GDUE3yLscq-pFGZNlrG0",
   authDomain: "sistema-vinil-vale.firebaseapp.com",
   projectId: "sistema-vinil-vale",
   storageBucket: "sistema-vinil-vale.firebasestorage.app",
-  messagingSenderId: "647283579644",
-  appId: "1:647283579644:web:7f606a1a6e5c271160ff3d"
+  messagingSenderId: "847282557064",
+  appId: "1:847282557064:web:76502a1a6e5c2711650f3d"
 };
 
 // Firebase lazy loader — works on Vercel (npm), falls back to local on artifact
