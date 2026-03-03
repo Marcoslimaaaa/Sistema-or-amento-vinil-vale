@@ -21,7 +21,7 @@ const initFB = async () => {
     const au = await import("firebase/auth");
     const st = await import("firebase/storage");
     const fbApp = app.initializeApp(FB_CFG);
-    fb = { ready: true, db: fs.getFirestore(fbApp), auth: au.getAuth(fbApp), storage: st.getStorage(fbApp) };
+    fb = { ready: true, db: fs.getFirestore(fbApp), auth: au.getAuth(fbApp), storage: st.getStorage(fbApp), GoogleProvider: au.GoogleAuthProvider };
     fbFns = { ...fs, ...au, ...st };
     return true;
   } catch (e) { console.log("Firebase não disponível, usando modo local"); return false; }
@@ -361,6 +361,7 @@ export default function App(){
   // Auth handlers
   const doLogin=async()=>{if(!fbReady||!fb.auth)return;setLErr("");try{await fbFns.signInWithEmailAndPassword(fb.auth,loginEmail,loginPass)}catch(e){setLErr(e.code==="auth/invalid-credential"?"Email ou senha incorretos":e.code==="auth/user-not-found"?"Usuário não encontrado":"Erro: "+e.message)}};
   const doRegister=async()=>{if(!fbReady||!fb.auth)return;setLErr("");try{await fbFns.createUserWithEmailAndPassword(fb.auth,loginEmail,loginPass)}catch(e){setLErr(e.code==="auth/email-already-in-use"?"Email já cadastrado":e.code==="auth/weak-password"?"Senha fraca (mín. 6 caracteres)":"Erro: "+e.message)}};
+  const doGoogle=async()=>{if(!fbReady||!fb.auth||!fb.GoogleProvider)return;setLErr("");try{const provider=new fb.GoogleProvider();await fbFns.signInWithPopup(fb.auth,provider)}catch(e){if(e.code!=="auth/popup-closed-by-user")setLErr("Erro Google: "+e.message)}};
   const doLogout=()=>{if(fbReady&&fb.auth)fbFns.signOut(fb.auth);else setUser(null)};
   const [fbMsg,setFbMsg]=useState("");
   const [catO,setCatO]=useState(false);
@@ -450,6 +451,11 @@ export default function App(){
         <input value={loginPass} onChange={e=>setLP(e.target.value)} placeholder="Senha" type="password" onKeyDown={e=>e.key==="Enter"&&(loginMode==="login"?doLogin():doRegister())} style={{padding:"10px 14px",border:"1.5px solid #e2e8f0",borderRadius:"8px",fontSize:"14px",outline:"none"}}/>
         {loginErr&&<div style={{fontSize:"11px",color:"#dc2626",background:"#fef2f2",padding:"8px",borderRadius:"6px"}}>{loginErr}</div>}
         <button onClick={loginMode==="login"?doLogin:doRegister} style={{padding:"12px",background:"linear-gradient(135deg,#0055a4,#003d7a)",color:"#fff",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"700",cursor:"pointer"}}>{loginMode==="login"?"🔑 Entrar":"📝 Criar Conta"}</button>
+        <div style={{display:"flex",alignItems:"center",gap:"10px",margin:"4px 0"}}><div style={{flex:1,height:"1px",background:"#e2e8f0"}}/><span style={{fontSize:"10px",color:"#999"}}>ou</span><div style={{flex:1,height:"1px",background:"#e2e8f0"}}/></div>
+        <button onClick={doGoogle} style={{padding:"12px",background:"#fff",color:"#333",border:"1.5px solid #e2e8f0",borderRadius:"8px",fontSize:"13px",fontWeight:"600",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",width:"100%"}}>
+          <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          Entrar com Google
+        </button>
       </div>
       <div style={{textAlign:"center",marginTop:"16px",fontSize:"10px",color:"#999"}}>Seus dados ficam sincronizados na nuvem ☁️</div>
     </div>
