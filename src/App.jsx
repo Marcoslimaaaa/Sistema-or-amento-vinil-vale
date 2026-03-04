@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 // Firebase config
@@ -374,7 +374,7 @@ export default function App(){
   const [stkLog,setStkLog]=useState([]);
   const [stkFilter,setStkF]=useState("");
   const [stkCat,setStkCat]=useState("todos");
-  const [stkSort,setStkSort]=useState("disponivel");
+  const stkOrderRef=React.useRef([]);
   const [stkTab,setStkTab]=useState("dashboard");
   const [entItems,setEntItems]=useState([{catId:"",qty:"",cost:""}]);
   const [fornecedores,setFornec]=useState([]);
@@ -811,13 +811,13 @@ export default function App(){
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px",flexWrap:"wrap",gap:"4px"}}>
               <div style={{fontSize:"9px",color:t.textMuted}}>{Object.values(stk).filter(s=>s.qty>0).length} itens em estoque</div>
               <div style={{display:"flex",gap:"3px"}}>
-                <button onClick={()=>setStkSort(p=>p==="disponivel"?"nome":"disponivel")} style={{fontSize:"7px",padding:"2px 5px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer"}}>{stkSort==="disponivel"?"Ordenar: Qtd":"Ordenar: Nome"}</button>
-                <Btn onClick={()=>saveStk(stk)} style={{fontSize:"7px",padding:"2px 6px",background:"#0055a4",color:"#fff",border:"none"}}>Salvar</Btn>
+                
+                <Btn onClick={()=>{saveStk(stk);stkOrderRef.current._key="";setFbMsg("Salvo!");setTimeout(()=>setFbMsg(""),2000)}} style={{fontSize:"7px",padding:"2px 6px",background:"#0055a4",color:"#fff",border:"none"}}>Salvar</Btn>
                 <Btn onClick={()=>{if(confirm("Zerar TODO o estoque?")){const ns={};CAT.forEach(p=>{ns[p.id]={qty:0,minQty:2,lastCost:stk[p.id]?.lastCost||p.p}});saveStk(ns,[...stkLog,{type:"saida",name:"ZERADO",qty:0,date:new Date().toLocaleDateString("pt-BR"),ts:Date.now(),mode:"zerar"}]);setFbMsg("Estoque zerado!");setTimeout(()=>setFbMsg(""),2000)}}} style={{fontSize:"7px",padding:"2px 6px",background:"#dc2626",color:"#fff",border:"none"}}>Zerar Tudo</Btn>
               </div>
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:"3px",maxHeight:"400px",overflow:"auto"}}>
-              {(()=>{const fl=CAT.filter(p=>(stkCat==="todos"||p.c===stkCat)&&(!stkFilter||p.n.toLowerCase().includes(stkFilter.toLowerCase())));if(stkSort==="disponivel")return [...fl].sort((a,b)=>{const sa=stk[a.id]?.qty||0;const sb=stk[b.id]?.qty||0;return sb-sa});if(stkSort==="nome")return [...fl].sort((a,b)=>a.n.localeCompare(b.n));return fl})().map(p=>{const s=stk[p.id]||{qty:0,minQty:2,lastCost:p.p};const low=s.qty>0&&s.qty<=s.minQty;const zero=s.qty<=0;return <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 8px",background:zero?"#fef2f2":low?"#fffbeb":t.sectionBg,borderRadius:"6px",border:`1px solid ${zero?"#fecaca":low?"#fde68a":t.cardBorder}`}}>
+              {(()=>{const filtered=CAT.filter(p=>(stkCat==="todos"||p.c===stkCat)&&(!stkFilter||p.n.toLowerCase().includes(stkFilter.toLowerCase())));const key=stkCat+"|"+stkFilter;if(stkOrderRef.current._key!==key){stkOrderRef.current={_key:key,ids:filtered.map(p=>p.id).sort((a,b)=>(stk[b]?.qty||0)-(stk[a]?.qty||0))};};return stkOrderRef.current.ids.map(id=>filtered.find(p=>p.id===id)).filter(Boolean)})().map(p=>{const s=stk[p.id]||{qty:0,minQty:2,lastCost:p.p};const low=s.qty>0&&s.qty<=s.minQty;const zero=s.qty<=0;return <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 8px",background:zero?"#fef2f2":low?"#fffbeb":t.sectionBg,borderRadius:"6px",border:`1px solid ${zero?"#fecaca":low?"#fde68a":t.cardBorder}`}}>
                 <div style={{flex:1}}><span style={{fontSize:"7px",background:t.stampBg,color:blue,padding:"1px 4px",borderRadius:"3px",fontWeight:"600",marginRight:"4px"}}>{p.c}</span><span style={{fontSize:"11px",fontWeight:"600",color:t.text}}>{p.n}</span><div style={{fontSize:"8px",color:t.textMuted}}>Custo: {fmt(s.lastCost)}</div></div>
                 <div style={{display:"flex",alignItems:"center",gap:"6px"}}><div style={{fontSize:"16px",fontWeight:"800",color:zero?"#dc2626":low?"#f59e0b":"#16a34a",minWidth:"35px",textAlign:"right"}}>{s.qty}</div><span style={{fontSize:"8px",color:t.textMuted}}>{p.un}</span>
                   <div style={{display:"flex",gap:"2px"}}><button onClick={(ev)=>{ev.stopPropagation();setStk(prev=>{const ns={...prev};if(!ns[p.id])ns[p.id]={qty:0,minQty:2,lastCost:p.p};ns[p.id]={...ns[p.id],qty:ns[p.id].qty+1};return ns})}} style={{width:"20px",height:"20px",borderRadius:"4px",border:"none",background:"#16a34a",color:"#fff",fontSize:"11px",cursor:"pointer",fontWeight:"700"}}>+</button><button onClick={(ev)=>{ev.stopPropagation();setStk(prev=>{const ns={...prev};if(!ns[p.id])ns[p.id]={qty:0,minQty:2,lastCost:p.p};ns[p.id]={...ns[p.id],qty:Math.max(0,ns[p.id].qty-1)};return ns})}} style={{width:"20px",height:"20px",borderRadius:"4px",border:"none",background:"#dc2626",color:"#fff",fontSize:"11px",cursor:"pointer",fontWeight:"700"}}>-</button></div>
