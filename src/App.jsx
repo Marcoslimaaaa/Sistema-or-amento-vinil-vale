@@ -480,7 +480,7 @@ export default function App(){
   const [viewContract,setVC]=useState(null);
   const [ce,setCE]=useState({servicos:[],obs:"",garantias:"",valor:"",prazo:"20",data:"",novoServico:""});
   const uce=f=>v=>setCE(p=>({...p,[f]:v}));
-  const initCE=(q)=>{const d=q.data;const inc=(d.items||[]).filter(i=>i.on);setCE({servicos:inc.map(it=>it.n+(it.q>1?` (${it.q}x)`:"")),obs:(d.ci||[]).join(", ")||"Materiais de alvenaria e hidráulico, pedra de borda, água para enchimento, remoção de entulho",garantias:(d.guar||[]).filter(g=>g.on).map(g=>`${g.y} anos para ${g.it}`).join(", "),valor:fmt(parseFloat(q.tot)||0),prazo:d.execDays||"20",data:new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"}),novoServico:""})};
+  const initCE=(q)=>{const d=q.data;const inc=(d.items||[]).filter(i=>i.on);const p=d.pool||{};const pay2=d.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};const tot=parseFloat(q.tot)||0;const svcLabel=SVC.find(s=>s.id===d.svcType)?.label||"Serviço";setCE({servicos:inc.map(it=>it.n+(it.q>1?" ("+it.q+"x)":"")+(it.nt?" - "+it.nt:"")),obs:(d.ci||[]).join(", ")||"Materiais de alvenaria e hidráulico, pedra de borda, água para enchimento, remoção de entulho",garantias:(d.guar||[]).filter(g=>g.on).map(g=>g.y+" anos para "+g.it).join(", "),valor:fmt(tot),prazo:d.execDays||"20",data:new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"}),novoServico:"",tipoServico:svcLabel,piscina:p.length+"x"+p.width+"x"+p.depth+"m"+(d.poolFmt?" - "+d.poolFmt:""),vinil:"ACQUALINER "+(d.vinilT||"0,7mm"),estampa:d.stamp||"",pagPix:fmt(tot*(1-pay2.pixD/100))+" ("+pay2.pixD+"% desc.)",pagCartao:"até "+(pay2.noFee||5)+"x sem juros ou "+(pay2.wFee||12)+"x com juros",pagParcelado:pay2.entPct+"% entrada + "+pay2.balPct+"% no término",pagBtc:fmt(tot*(1-pay2.btcD/100))+" ("+pay2.btcD+"% desc.)",propNum:d.propNum||""})};
   const exportCSV=()=>{
     const rows=[["Status","Nome","Telefone","Cidade"]];
     hist.forEach(q=>{const c=q.data?.client||{};rows.push([["cliente","fechou","execucao","concluido"].includes(q.status)?"Cliente":"Lead",c.name||"",c.phone||"",c.city||""])});
@@ -918,7 +918,7 @@ export default function App(){
             const cs={p:{fontSize:"14px",lineHeight:"1.9",textAlign:"justify",marginBottom:"12px",color:"#222"},h:{fontSize:"15px",fontWeight:"700",color:"#111",marginTop:"20px",marginBottom:"8px"},li:{fontSize:"14px",lineHeight:"1.8",marginBottom:"6px",paddingLeft:"8px",color:"#222"},sep:{borderTop:"1px solid #ccc",margin:"16px 0"},ed:{background:"#fffff0",border:"1px dashed #e8b100",borderRadius:"4px",padding:"2px 6px",outline:"none",fontSize:"14px"}};
 
             return <>
-              {clientes.length>1&&<div style={{display:"flex",gap:"4px",marginBottom:"12px",flexWrap:"wrap"}}>{clientes.map(c=><button key={c.id} onClick={()=>setVC(c)} style={{padding:"4px 10px",borderRadius:"14px",border:`1.5px solid ${sel.id===c.id?blue:t.cardBorder}`,background:sel.id===c.id?blue:"transparent",color:sel.id===c.id?"#fff":t.text,fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>{c.cN||"Sem nome"}</button>)}</div>}
+              {clientes.length>1&&<div style={{display:"flex",gap:"4px",marginBottom:"12px",flexWrap:"wrap"}}>{clientes.map(c=><button key={c.id} onClick={()=>{setVC(c);initCE(c)}} style={{padding:"4px 10px",borderRadius:"14px",border:`1.5px solid ${sel.id===c.id?blue:t.cardBorder}`,background:sel.id===c.id?blue:"transparent",color:sel.id===c.id?"#fff":t.text,fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>{c.cN||"Sem nome"}</button>)}</div>}
 
               {/* EDITOR DE SERVIÇOS */}
               <div style={{background:t.sectionBg,borderRadius:"8px",padding:"12px",marginBottom:"12px",border:`1px solid ${t.cardBorder}`}}>
@@ -988,8 +988,19 @@ export default function App(){
                 <div style={cs.sep}/>
 
                 <div style={cs.h}>1. SERVIÇOS CONTRATADOS</div>
-                <p style={cs.p}>A CONTRATADA compromete-se a realizar os seguintes serviços no endereço: {d.client.address||"___"} – {d.client.city||"___"}</p>
-                <p style={{...cs.p,fontWeight:"600"}}>Detalhamento dos Serviços:</p>
+                <p style={cs.p}>A CONTRATADA compromete-se a realizar os seguintes serviços de <b>{ce.tipoServico||SVC.find(s=>s.id===d.svcType)?.label||""}</b> no endereço: {d.client.address||"___"} – {d.client.city||"___"}</p>
+
+                <div style={{background:"#f0f7ff",borderRadius:"6px",padding:"12px",marginBottom:"14px",border:"1px solid #c5d9f0"}}>
+                  <div style={{fontSize:"12px",fontWeight:"700",color:"#0055a4",marginBottom:"6px"}}>ESPECIFICAÇÕES DA PISCINA</div>
+                  <div style={{fontSize:"13px",lineHeight:"1.8"}}>
+                    Dimensões: <b>{ce.piscina||((d.pool?.length||0)+"x"+(d.pool?.width||0)+"x"+(d.pool?.depth||0)+"m")}</b><br/>
+                    Revestimento: <b>{ce.vinil||"ACQUALINER"}</b><br/>
+                    {(ce.estampa||d.stamp)?<>Estampa: <b>{ce.estampa||d.stamp}</b><br/></>:null}
+                    Proposta nº: <b>{ce.propNum||d.propNum||""}</b>
+                  </div>
+                </div>
+
+                <p style={{...cs.p,fontWeight:"600"}}>Itens e Serviços Inclusos:</p>
                 <div style={{paddingLeft:"20px",marginBottom:"14px"}}>{ce.servicos.map((s,i)=><div key={i} style={cs.li}>• {s}</div>)}</div>
                 <p style={cs.p}><b>Obs:</b> Ficando fora desse orçamento: {ce.obs}.</p>
 
