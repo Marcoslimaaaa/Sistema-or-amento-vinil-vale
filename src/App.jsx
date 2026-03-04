@@ -28,7 +28,8 @@ const initFB = async () => {
   } catch (e) { console.log("Firebase não disponível, usando modo local"); return false; }
 };
 
-const VER="v4.4";
+const VER="v4.5";
+if(typeof document!=="undefined"&&!document.getElementById("vv-styles")){const s=document.createElement("style");s.id="vv-styles";s.textContent="@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}";document.head.appendChild(s)}
 const PIPE=[
   {id:"lead",label:"Lead",icon:"📊",color:"#f59e0b"},
   {id:"orcamento",label:"Orçamento",icon:"📄",color:"#3b82f6"},
@@ -378,6 +379,54 @@ export default function App(){
   const [stkTab,setStkTab]=useState("dashboard");
   const [entItems,setEntItems]=useState([{catId:"",qty:"",cost:""}]);
   const [fornecedores,setFornec]=useState([]);
+  const [interacoes,setInteracoes]=useState({});
+  const [crmDetail,setCrmDetail]=useState(null);
+  const [newNote,setNewNote]=useState("");
+
+  useEffect(()=>{
+    if(!user||!fbReady||!fb.db||user.uid==="local")return;
+    try{
+      const iRef=fbFns.doc(fb.db,"users",user.uid,"config","interacoes");
+      const unsub=fbFns.onSnapshot(iRef,(snap)=>{
+        if(snap.exists()&&snap.data().data)setInteracoes(snap.data().data);
+      });
+      return ()=>unsub();
+    }catch{}
+  },[user,fbReady]);
+
+  const saveInteracoes=async(data)=>{
+    setInteracoes(data);
+    if(fbReady&&fb.db&&user&&user.uid!=="local"){
+      try{await fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","interacoes"),{data})}catch{}
+    }
+  };
+
+  const addInteracao=(qId,tipo,texto)=>{
+    const ni={...interacoes};
+    if(!ni[qId])ni[qId]=[];
+    ni[qId]=[{tipo,texto,data:new Date().toLocaleDateString("pt-BR"),hora:new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}),ts:Date.now()},...ni[qId]];
+    saveInteracoes(ni);
+  };
+
+  const getLastContact=(qId)=>{
+    const list=interacoes[qId]||[];
+    if(list.length===0)return null;
+    return list[0];
+  };
+
+  const getDaysSince=(qId)=>{
+    const last=getLastContact(qId);
+    if(!last)return 999;
+    const parts=last.data.split("/");
+    const d=new Date(parts[2],parts[1]-1,parts[0]);
+    const diff=Math.floor((Date.now()-d.getTime())/(1000*60*60*24));
+    return diff;
+  };
+
+  const needsFollowUp=(qId,status)=>{
+    if(["concluido"].includes(status))return false;
+    return getDaysSince(qId)>=5;
+  };
   const [newFornec,setNF2]=useState({name:"",phone:"",products:""});
 
   // Firestore fornecedores sync
@@ -481,6 +530,16 @@ export default function App(){
   const [ce,setCE]=useState({servicos:[],obs:"",garantias:"",valor:"",prazo:"20",data:"",novoServico:""});
   const uce=f=>v=>setCE(p=>({...p,[f]:v}));
   const initCE=(q)=>{const d=q.data;const inc=(d.items||[]).filter(i=>i.on);const p=d.pool||{};const pay2=d.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};const tot=parseFloat(q.tot)||0;const svcLabel=SVC.find(s=>s.id===d.svcType)?.label||"Serviço";setCE({servicos:inc.map(it=>it.n+(it.q>1?" ("+it.q+"x)":"")+(it.nt?" - "+it.nt:"")),obs:(d.ci||[]).join(", ")||"Materiais de alvenaria e hidráulico, pedra de borda, água para enchimento, remoção de entulho",garantias:(d.guar||[]).filter(g=>g.on).map(g=>g.y+" anos para "+g.it).join(", "),valor:fmt(tot),prazo:d.execDays||"20",data:new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"}),novoServico:"",tipoServico:svcLabel,piscina:p.length+"x"+p.width+"x"+p.depth+"m"+(d.poolFmt?" - "+d.poolFmt:""),vinil:"ACQUALINER "+(d.vinilT||"0,7mm"),estampa:d.stamp||"",pagPix:fmt(tot*(1-pay2.pixD/100))+" ("+pay2.pixD+"% desc.)",pagCartao:"até "+(pay2.noFee||5)+"x sem juros ou "+(pay2.wFee||12)+"x com juros",pagParcelado:pay2.entPct+"% entrada + "+pay2.balPct+"% no término",pagBtc:fmt(tot*(1-pay2.btcD/100))+" ("+pay2.btcD+"% desc.)",propNum:d.propNum||""})};
+  // Auto-init contract when switching to contratos tab
+  const [ceInit,setCeInit]=useState(null);
+  useEffect(()=>{
+    if(tab==="contratos"){
+      const clientes=hist.filter(q=>["cliente","fechou","execucao","concluido"].includes(q.status));
+      const sel=viewContract||clientes[0];
+      if(sel&&ceInit!==sel.id){initCE(sel);setCeInit(sel.id)}
+    }else{setCeInit(null)}
+  },[tab,viewContract,hist.length]);
+
   const exportCSV=()=>{
     const rows=[["Status","Nome","Telefone","Cidade"]];
     hist.forEach(q=>{const c=q.data?.client||{};rows.push([["cliente","fechou","execucao","concluido"].includes(q.status)?"Cliente":"Lead",c.name||"",c.phone||"",c.city||""])});
@@ -758,10 +817,11 @@ export default function App(){
         {tab==="crm"&&<Card t={t}><ST icon="📈">Pipeline de Vendas</ST>
           {hist.length===0?<div style={{textAlign:"center",padding:"24px",color:t.textMuted}}><div style={{fontSize:"28px"}}>📈</div><div style={{fontSize:"11px"}}>Nenhum orçamento salvo ainda.</div></div>:<>
           {/* RESUMO */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px",marginBottom:"16px"}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"8px",marginBottom:"16px"}}>
             <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",textAlign:"center",border:`1px solid ${t.cardBorder}`}}><div style={{fontSize:"20px",fontWeight:"800",color:blue}}>{hist.length}</div><div style={{fontSize:"8px",color:t.textMuted,fontWeight:"600"}}>TOTAL</div></div>
             <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",textAlign:"center",border:`1px solid ${t.cardBorder}`}}><div style={{fontSize:"20px",fontWeight:"800",color:"#16a34a"}}>{hist.filter(q=>["fechou","execucao","concluido"].includes(q.status)).length}</div><div style={{fontSize:"8px",color:t.textMuted,fontWeight:"600"}}>FECHADOS</div></div>
             <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",textAlign:"center",border:`1px solid ${t.cardBorder}`}}><div style={{fontSize:"20px",fontWeight:"800",color:"#f59e0b"}}>{fmt(hist.filter(q=>["fechou","execucao","concluido"].includes(q.status)).reduce((s,q)=>s+(parseFloat(q.tot)||0),0))}</div><div style={{fontSize:"8px",color:t.textMuted,fontWeight:"600"}}>FATURAMENTO</div></div>
+            <div style={{background:"#fef2f2",borderRadius:"8px",padding:"10px",textAlign:"center",border:"1px solid #fecaca"}}><div style={{fontSize:"20px",fontWeight:"800",color:"#dc2626"}}>{hist.filter(q=>needsFollowUp(q.id,q.status||"lead")).length}</div><div style={{fontSize:"8px",color:"#dc2626",fontWeight:"600"}}>FOLLOW UP</div></div>
           </div>
           {/* PIPELINE COLUMNS */}
           <div style={{display:"flex",gap:"8px",overflowX:"auto",paddingBottom:"8px"}}>
@@ -775,17 +835,25 @@ export default function App(){
                 <div style={{background:t.sectionBg,borderRadius:"0 0 8px 8px",padding:"6px",minHeight:"60px",border:`1px solid ${t.cardBorder}`,borderTop:"none",display:"flex",flexDirection:"column",gap:"4px"}}>
                   {items.length===0?<div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",padding:"12px"}}>—</div>:
                   items.map(q=><div key={q.id} style={{background:t.card,borderRadius:"6px",padding:"8px",border:`1px solid ${t.cardBorder}`,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-                    <div style={{fontSize:"10px",fontWeight:"700",color:t.text,marginBottom:"2px"}}>{q.cN||"Sem nome"}</div>
-                    <div style={{fontSize:"8px",color:t.textMuted,marginBottom:"4px"}}>{q.data?.client?.city||""} · {q.ps}m</div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"2px"}}><div style={{fontSize:"10px",fontWeight:"700",color:t.text}}>{q.cN||"Sem nome"}</div>{needsFollowUp(q.id,q.status)&&<span style={{fontSize:"7px",background:"#fef2f2",color:"#dc2626",padding:"1px 4px",borderRadius:"3px",fontWeight:"700",animation:"pulse 2s infinite"}}>FOLLOW UP!</span>}</div>
+                    <div style={{fontSize:"8px",color:t.textMuted,marginBottom:"4px"}}>{q.data?.client?.city||""} · {q.ps}m · {getDaysSince(q.id)<999?getDaysSince(q.id)+"d atras":"Sem contato"}</div>
                     <div style={{fontSize:"12px",fontWeight:"800",color:stage.color,marginBottom:"6px"}}>{fmt(parseFloat(q.tot)||0)}</div>
                     <div style={{display:"flex",gap:"3px",flexWrap:"wrap"}}>
-                      <button onClick={()=>msgWA(q)} style={{fontSize:"8px",padding:"2px 5px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📱 Zap</button>
-                      <button onClick={()=>sendOrcWA(q)} style={{fontSize:"8px",padding:"2px 5px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📨 PDF</button>
+                      <button onClick={()=>{msgWA(q);addInteracao(q.id,"whatsapp","Mensagem enviada via WhatsApp")}} style={{fontSize:"8px",padding:"2px 5px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📱 Zap</button>
+                      <button onClick={()=>{sendOrcWA(q);addInteracao(q.id,"orcamento","Orcamento enviado via WhatsApp")}} style={{fontSize:"8px",padding:"2px 5px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📨 PDF</button>
                       {stage.id!=="concluido"&&<select value="" onChange={e=>{if(e.target.value)movePipe(q.id,e.target.value);e.target.value=""}} style={{fontSize:"8px",padding:"2px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer"}}>
                         <option value="">Mover →</option>
                         {PIPE.filter(p=>p.id!==stage.id&&p.id!==(q.status||"lead")).map(p=><option key={p.id} value={p.id}>{p.icon} {p.label}</option>)}
                       </select>}
+                      <button onClick={()=>setCrmDetail(crmDetail===q.id?null:q.id)} style={{fontSize:"8px",padding:"2px 5px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:crmDetail===q.id?blue:"transparent",color:crmDetail===q.id?"#fff":t.text,cursor:"pointer",fontWeight:"600"}}>Notas</button>
                     </div>
+                    {crmDetail===q.id&&<div style={{marginTop:"6px",borderTop:`1px solid ${t.cardBorder}`,paddingTop:"6px"}}>
+                      <div style={{display:"flex",gap:"3px",marginBottom:"4px"}}><input value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder="Anotar..." onKeyDown={e=>{if(e.key==="Enter"&&newNote.trim()){addInteracao(q.id,"nota",newNote.trim());setNewNote("")}}} style={{flex:1,padding:"3px 5px",border:`1px solid ${t.cardBorder}`,borderRadius:"4px",fontSize:"8px",background:t.inputBg,color:t.text}}/><button onClick={()=>{if(newNote.trim()){addInteracao(q.id,"nota",newNote.trim());setNewNote("")}}} style={{fontSize:"7px",padding:"2px 5px",borderRadius:"4px",border:"none",background:blue,color:"#fff",cursor:"pointer"}}>+</button></div>
+                      <div style={{maxHeight:"80px",overflow:"auto",display:"flex",flexDirection:"column",gap:"2px"}}>
+                        {(interacoes[q.id]||[]).slice(0,10).map((it,i)=><div key={i} style={{fontSize:"7px",color:t.textMuted,display:"flex",gap:"4px",alignItems:"center"}}><span style={{color:it.tipo==="whatsapp"?"#25d366":it.tipo==="orcamento"?"#0055a4":"#666"}}>{it.tipo==="whatsapp"?"📱":it.tipo==="orcamento"?"📄":"📝"}</span><span style={{fontWeight:"600"}}>{it.data} {it.hora}</span><span>{it.texto}</span></div>)}
+                        {(!interacoes[q.id]||interacoes[q.id].length===0)&&<div style={{fontSize:"7px",color:t.textMuted,textAlign:"center"}}>Sem interacoes</div>}
+                      </div>
+                    </div>}
                   </div>)}
                 </div>
               </div>
@@ -904,8 +972,6 @@ export default function App(){
             const totalVal=parseFloat(sel.tot)||0;
             const today=new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"});
 
-            // Init ce if empty
-            if(ce.servicos.length===0&&incItems.length>0){initCE(sel)};
 
             const dlContract=()=>{
               const el=document.getElementById("contract-doc");if(!el)return;
@@ -918,7 +984,7 @@ export default function App(){
             const cs={p:{fontSize:"14px",lineHeight:"1.9",textAlign:"justify",marginBottom:"12px",color:"#222"},h:{fontSize:"15px",fontWeight:"700",color:"#111",marginTop:"20px",marginBottom:"8px"},li:{fontSize:"14px",lineHeight:"1.8",marginBottom:"6px",paddingLeft:"8px",color:"#222"},sep:{borderTop:"1px solid #ccc",margin:"16px 0"},ed:{background:"#fffff0",border:"1px dashed #e8b100",borderRadius:"4px",padding:"2px 6px",outline:"none",fontSize:"14px"}};
 
             return <>
-              {clientes.length>1&&<div style={{display:"flex",gap:"4px",marginBottom:"12px",flexWrap:"wrap"}}>{clientes.map(c=><button key={c.id} onClick={()=>{setVC(c);initCE(c)}} style={{padding:"4px 10px",borderRadius:"14px",border:`1.5px solid ${sel.id===c.id?blue:t.cardBorder}`,background:sel.id===c.id?blue:"transparent",color:sel.id===c.id?"#fff":t.text,fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>{c.cN||"Sem nome"}</button>)}</div>}
+              {clientes.length>1&&<div style={{display:"flex",gap:"4px",marginBottom:"12px",flexWrap:"wrap"}}>{clientes.map(c=><button key={c.id} onClick={()=>{setVC(c);setCeInit(null);setTimeout(()=>initCE(c),50)}} style={{padding:"4px 10px",borderRadius:"14px",border:`1.5px solid ${sel.id===c.id?blue:t.cardBorder}`,background:sel.id===c.id?blue:"transparent",color:sel.id===c.id?"#fff":t.text,fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>{c.cN||"Sem nome"}</button>)}</div>}
 
               {/* EDITOR DE SERVIÇOS */}
               <div style={{background:t.sectionBg,borderRadius:"8px",padding:"12px",marginBottom:"12px",border:`1px solid ${t.cardBorder}`}}>
