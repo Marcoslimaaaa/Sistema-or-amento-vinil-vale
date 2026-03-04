@@ -447,12 +447,33 @@ export default function App(){
   const autoStockOut=(q)=>{
     const d=q.data;if(!d||!d.items)return;
     const inc=d.items.filter(i=>i.on);
+    const pool=d.pool||{};
+    const L=parseFloat(pool.length)||0;const W=parseFloat(pool.width)||0;const D=parseFloat(pool.depth)||0;
+    const areaChao=L*W;const areaParede=2*(L+W)*D;const areaTotal=areaChao+areaParede;
+    const perim=2*(L+W);
+    const stamp=d.stamp||"";const vinilT=d.vinilT||"0,7mm";
+    const thick=vinilT.includes("0,8")?"8":"7";
     const stkItems=[];
     inc.forEach(i=>{
-      const match=CAT.find(p=>p.n===i.n);
-      if(match)stkItems.push({catId:match.id,qty:i.q||1});
+      const nm=i.n||"";
+      if(nm.includes("Vinil ACQUALINER")){
+        const stampClean=stamp.replace(/\s+/g," ").trim();
+        const vinilMatch=CAT.find(p=>p.c==="Vinil 0,"+thick+"mm"&&p.n.toUpperCase().includes(stampClean.toUpperCase()));
+        if(vinilMatch)stkItems.push({catId:vinilMatch.id,qty:Math.ceil(areaTotal*1.1),name:vinilMatch.n});
+      }else if(nm.includes("Manta")){
+        const mantaMatch=CAT.find(p=>p.c==="Mantas"&&p.n.toLowerCase().includes(nm.toLowerCase().split(" ").find(w=>w.length>4)||""));
+        if(mantaMatch)stkItems.push({catId:mantaMatch.id,qty:Math.ceil(i.un==="chao"?areaChao:areaTotal),name:mantaMatch.n});
+      }else if(nm.includes("Perfil")){
+        const perfilMatch=CAT.find(p=>p.c==="Perfis"&&p.n.toLowerCase().includes(nm.toLowerCase().includes("flangeamento")?"flangeamento":"gido"));
+        if(perfilMatch)stkItems.push({catId:perfilMatch.id,qty:Math.ceil(perim),name:perfilMatch.n});
+      }else{
+        const match=CAT.find(p=>{const pWords=p.n.toLowerCase().split(" ").filter(w=>w.length>3);const iWords=nm.toLowerCase().split(" ").filter(w=>w.length>3);return pWords.length>0&&iWords.length>0&&pWords.some(pw=>iWords.some(iw=>iw.includes(pw)||pw.includes(iw)))});
+        if(match)stkItems.push({catId:match.id,qty:i.q||1,name:match.n});
+      }
     });
-    if(stkItems.length>0)removeStock(stkItems,q.cN||"Cliente","auto");
+    if(stkItems.length===0){setFbMsg("Nenhum item do orcamento vinculado ao estoque");setTimeout(()=>setFbMsg(""),3000);return}
+    const msg=stkItems.map(s=>s.name+": -"+s.qty+(s.catId.startsWith("v")?" m2":"")).join("\n");
+    if(confirm("Dar baixa no estoque?\n\n"+msg)){removeStock(stkItems,q.cN||"Cliente","auto");setFbMsg("Estoque atualizado! "+stkItems.length+" itens");setTimeout(()=>setFbMsg(""),3000)}
   };
   const [catO,setCatO]=useState(false);
   const [catQ,setCatQ]=useState("");
@@ -708,7 +729,7 @@ export default function App(){
                 <div style={{display:"flex",alignItems:"center",gap:"5px"}}><div style={{fontSize:"13px",fontWeight:"800",color:blue}}>{fmt(parseFloat(q.tot)||0)}</div>
                   <Btn onClick={()=>sendOrcWA(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#128c7e",color:"#fff",border:"none"}}>📨 PDF</Btn>
                   <Btn onClick={()=>msgWA(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#25d366",color:"#fff",border:"none"}}>📱 Zap</Btn>
-                  <Btn onClick={()=>{if(confirm("Dar baixa no estoque automaticamente?")){toClient(q.id,true)}else{toClient(q.id,false)}}} style={{fontSize:"8px",padding:"3px 7px",background:"#16a34a",color:"#fff",border:"none"}}>✅ Fechou</Btn>
+                  <Btn onClick={()=>toClient(q.id)} style={{fontSize:"8px",padding:"3px 7px",background:"#16a34a",color:"#fff",border:"none"}}>✅ Fechou</Btn>
                   <Btn onClick={()=>load(q)} style={{fontSize:"8px",padding:"3px 5px",background:blue,color:"#fff",border:"none"}}>Abrir</Btn>
                   <button onClick={e=>{e.stopPropagation();delQ(q.id)}} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>🗑</button>
                 </div>
