@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 // Firebase config
 const FB_CFG = {
@@ -373,8 +374,29 @@ export default function App(){
   const [stkLog,setStkLog]=useState([]);
   const [stkFilter,setStkF]=useState("");
   const [stkCat,setStkCat]=useState("todos");
-  const [stkTab,setStkTab]=useState("estoque");
+  const [stkTab,setStkTab]=useState("dashboard");
   const [entItems,setEntItems]=useState([{catId:"",qty:"",cost:""}]);
+  const [fornecedores,setFornec]=useState([]);
+  const [newFornec,setNF2]=useState({name:"",phone:"",products:""});
+
+  // Firestore fornecedores sync
+  useEffect(()=>{
+    if(!user||!fbReady||!fb.db||user.uid==="local")return;
+    try{
+      const fRef=fbFns.doc(fb.db,"users",user.uid,"config","fornecedores");
+      const unsub=fbFns.onSnapshot(fRef,(snap)=>{
+        if(snap.exists()&&snap.data().list)setFornec(snap.data().list);
+      });
+      return ()=>unsub();
+    }catch{}
+  },[user,fbReady]);
+
+  const saveFornec=async(list)=>{
+    setFornec(list);
+    if(fbReady&&fb.db&&user&&user.uid!=="local"){
+      try{await fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","fornecedores"),{list})}catch{}
+    }
+  };
 
   useEffect(()=>{
     if(!user||!fbReady||!fb.db||user.uid==="local")return;
@@ -753,8 +775,35 @@ export default function App(){
         {/* ESTOQUE */}
         {tab==="estoque"&&<Card t={t}><ST icon="📦">Estoque</ST>
           <div style={{display:"flex",gap:"5px",marginBottom:"12px"}}>
-            {[["estoque","📦","Estoque"],["entrada","📥","Entrada"],["historico","📜","Movim."]].map(([k,ic,lb])=><button key={k} onClick={()=>setStkTab(k)} style={{padding:"5px 10px",borderRadius:"8px",border:`1.5px solid ${stkTab===k?blue:"#e2e8f0"}`,background:stkTab===k?blue+"15":"transparent",color:stkTab===k?blue:t.textSec,fontSize:"10px",fontWeight:"700",cursor:"pointer"}}>{ic} {lb}</button>)}
+            {[["dashboard","📊","Dashboard"],["estoque","📦","Estoque"],["entrada","📥","Entrada"],["historico","📜","Movim."],["fornec","🏢","Fornecedores"]].map(([k,ic,lb])=><button key={k} onClick={()=>setStkTab(k)} style={{padding:"5px 10px",borderRadius:"8px",border:`1.5px solid ${stkTab===k?blue:"#e2e8f0"}`,background:stkTab===k?blue+"15":"transparent",color:stkTab===k?blue:t.textSec,fontSize:"10px",fontWeight:"700",cursor:"pointer"}}>{ic} {lb}</button>)}
           </div>
+          {stkTab==="dashboard"&&<>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"12px"}}>
+              <div style={{background:"linear-gradient(135deg,#0055a4,#003d7a)",borderRadius:"10px",padding:"12px",color:"#fff"}}><div style={{fontSize:"20px",fontWeight:"800"}}>{CAT.length}</div><div style={{fontSize:"9px",opacity:.8}}>Produtos Cadastrados</div><div style={{fontSize:"12px",fontWeight:"700",marginTop:"2px"}}>{Object.values(stk).reduce((a,s)=>a+s.qty,0)} un. em estoque</div></div>
+              <div style={{background:Object.values(stk).filter(s=>s.qty<=0).length>0?"linear-gradient(135deg,#dc2626,#991b1b)":"linear-gradient(135deg,#16a34a,#15803d)",borderRadius:"10px",padding:"12px",color:"#fff"}}><div style={{fontSize:"20px",fontWeight:"800"}}>{CAT.filter(p=>!stk[p.id]||stk[p.id].qty<=0).length}</div><div style={{fontSize:"9px",opacity:.8}}>Estoque Zerado</div><div style={{fontSize:"12px",fontWeight:"700",marginTop:"2px"}}>{Object.values(stk).filter(s=>s.qty<=0).length===0?"Tudo OK!":"Reabastecer"}</div></div>
+              <div style={{background:"linear-gradient(135deg,#f59e0b,#d97706)",borderRadius:"10px",padding:"12px",color:"#fff"}}><div style={{fontSize:"20px",fontWeight:"800"}}>{Object.entries(stk).filter(([k,s])=>s.qty>0&&s.qty<=s.minQty).length}</div><div style={{fontSize:"9px",opacity:.8}}>Estoque Minimo</div><div style={{fontSize:"12px",fontWeight:"700",marginTop:"2px"}}>Abaixo do minimo</div></div>
+              <div style={{background:"linear-gradient(135deg,#7c3aed,#6d28d9)",borderRadius:"10px",padding:"12px",color:"#fff"}}><div style={{fontSize:"20px",fontWeight:"800"}}>{fmt(Object.entries(stk).reduce((a,[k,s])=>a+(s.qty*(s.lastCost||0)),0))}</div><div style={{fontSize:"9px",opacity:.8}}>Investimento Total</div><div style={{fontSize:"12px",fontWeight:"700",marginTop:"2px"}}>Valor em estoque</div></div>
+            </div>
+            <div style={{background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`,marginBottom:"12px"}}>
+              <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"8px"}}>Entradas vs Saidas - Ultimos 10 dias</div>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={(()=>{const days=[];for(let i=9;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const ds=d.toLocaleDateString("pt-BR");const ent=stkLog.filter(l=>l.type==="entrada"&&l.date===ds).reduce((a,l)=>a+l.qty,0);const sai=stkLog.filter(l=>l.type==="saida"&&l.date===ds).reduce((a,l)=>a+l.qty,0);days.push({dia:ds.substring(0,5),entradas:ent,saidas:sai})}return days})()}>
+                  <XAxis dataKey="dia" tick={{fontSize:8}} />
+                  <YAxis tick={{fontSize:8}} />
+                  <Tooltip contentStyle={{fontSize:10}} />
+                  <Legend wrapperStyle={{fontSize:9}} />
+                  <Bar dataKey="entradas" fill="#16a34a" radius={[3,3,0,0]} />
+                  <Bar dataKey="saidas" fill="#dc2626" radius={[3,3,0,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"6px"}}>Produtos com Estoque Baixo</div>
+            <div style={{display:"flex",flexDirection:"column",gap:"3px"}}>
+              {CAT.filter(p=>{const s=stk[p.id];return s&&s.qty>0&&s.qty<=s.minQty}).map(p=>{const s=stk[p.id];return <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 8px",background:"#fffbeb",borderRadius:"5px",border:"1px solid #fde68a"}}><div><span style={{fontSize:"10px",fontWeight:"600"}}>{p.n}</span><span style={{fontSize:"8px",color:"#92400e",marginLeft:"4px"}}>Min: {s.minQty}</span></div><div style={{fontSize:"14px",fontWeight:"800",color:"#f59e0b"}}>{s.qty}</div></div>})}
+              {CAT.filter(p=>{const s=stk[p.id];return s&&s.qty>0&&s.qty<=s.minQty}).length===0&&<div style={{textAlign:"center",padding:"12px",color:t.textMuted,fontSize:"10px"}}>Nenhum produto abaixo do minimo</div>}
+            </div>
+          </>}
+
           {stkTab==="estoque"&&<>
             <div style={{display:"flex",gap:"3px",marginBottom:"8px",flexWrap:"wrap"}}>{["todos","Vinil 0,7mm","Vinil 0,8mm","Mantas","Perfis","Filtros","Dispositivos","Skimmers","Iluminação","Hidraulica","Acessorios Vinil","Lona Aquatica","Equipamentos"].map(c=><button key={c} onClick={()=>setStkCat(c)} style={{padding:"3px 7px",borderRadius:"5px",border:"none",background:stkCat===c?blue:"#f1f5f9",color:stkCat===c?"#fff":"#666",fontSize:"8px",fontWeight:"600",cursor:"pointer"}}>{c==="todos"?"Todos":c}</button>)}</div>
             <input value={stkFilter} onChange={e=>setStkF(e.target.value)} placeholder="Buscar produto..." style={{width:"100%",padding:"6px 10px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",marginBottom:"10px",background:t.inputBg,color:t.text,outline:"none"}}/>
@@ -780,7 +829,7 @@ export default function App(){
             <div style={{marginTop:"16px",padding:"12px",background:t.sectionBg,borderRadius:"8px",border:`1px solid ${t.cardBorder}`}}>
               <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"8px"}}>Importar Nota Fiscal (XML ou PDF)</div>
               <div style={{fontSize:"9px",color:t.textMuted,marginBottom:"6px"}}>Selecione o XML ou PDF da NFe</div>
-              <input type="file" accept=".xml,.pdf" onChange={async(e)=>{const file=e.target.files?.[0];if(!file)return;const fname=file.name.toLowerCase();setFbMsg("Lendo arquivo...");try{let rawItems=[];if(fname.endsWith(".xml")){const txt=await file.text();const parser=new DOMParser();const xml=parser.parseFromString(txt,"text/xml");const dets=xml.getElementsByTagName("det");for(let i=0;i<dets.length;i++){const det=dets[i];const xProd=(det.getElementsByTagName("xProd")[0]?.textContent||"");const qCom=parseFloat(det.getElementsByTagName("qCom")[0]?.textContent||"0");const vUnCom=parseFloat(det.getElementsByTagName("vUnCom")[0]?.textContent||"0");rawItems.push({desc:xProd,qty:qCom,cost:vUnCom})}}else if(fname.endsWith(".pdf")){if(!window.pdfjsLib){const sc=document.createElement("script");sc.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";document.head.appendChild(sc);await new Promise(r=>{sc.onload=r;setTimeout(r,5000)})}if(window.pdfjsLib){window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";const ab=await file.arrayBuffer();const pdf=await window.pdfjsLib.getDocument({data:ab}).promise;let ft="";for(let pg=1;pg<=pdf.numPages;pg++){const page=await pdf.getPage(pg);const tc=await page.getTextContent();ft+=tc.items.map(z=>z.str).join(" ")+"\n"}ft.split("\n").forEach(row=>{const u=row.toUpperCase();if(u.includes("VINIL")||u.includes("LONA")||u.includes("MANTA")||u.includes("FILTRO")||u.includes("REFLETOR")||u.includes("SKIMMER")||u.includes("PERFIL")){const nums=row.match(/[\d]+[.,]?[\d]*/g);if(nums&&nums.length>=2){rawItems.push({desc:row,qty:parseFloat(nums[nums.length-3]?.replace(",",".")||nums[0].replace(",","."))||1,cost:parseFloat(nums[nums.length-2]?.replace(",",".")||"0")||0})}}})}else{setFbMsg("Erro leitor PDF")}}const entries=[];rawItems.forEach(it=>{const d=it.desc.toUpperCase();const is063=d.includes("0,63")||d.includes("0.63");const is073=d.includes("0,73")||d.includes("0.73");const is08=d.includes("0,8")||d.includes("0.8")||is073;const thick=(is08||is073)?"8":"7";let matchId="";if(d.includes("LONA AQUATICA")||d.includes("LONA AQUÁTICA")){matchId=d.includes("14")?"lona14":"lona10"}else if(d.includes("VINIL")||d.includes("REVESTIMENTO")){const vinilCat=CAT.filter(p=>p.c==="Vinil 0,"+thick+"mm");for(const vc of vinilCat){const stampName=vc.n.replace(/ 0,[78]mm/,"").toUpperCase();const words=stampName.split(" ").filter(w=>w.length>2);if(words.length>0&&words.every(w=>d.includes(w))){matchId=vc.id;break}}}else{for(const p of CAT){const words=p.n.toUpperCase().split(" ").filter(w=>w.length>3);if(words.length>0&&words.every(w=>d.includes(w))){matchId=p.id;break}}}entries.push({catId:matchId,qty:String(it.qty),cost:String(it.cost),_desc:it.desc})});if(entries.length>0){setEntItems(entries);const ok=entries.filter(x=>x.catId).length;const nok=entries.filter(x=>!x.catId).length;setFbMsg(ok+" reconhecidos"+(nok>0?", "+nok+" para selecionar manual":"")+" - Confira e clique Dar Entrada")}else{setFbMsg("Nenhum item encontrado")}setTimeout(()=>setFbMsg(""),8000)}catch(err){console.error(err);setFbMsg("Erro: "+(err.message||err));setTimeout(()=>setFbMsg(""),4000)}e.target.value=""}} style={{fontSize:"11px",color:t.text}}/>
+              <input type="file" accept=".xml,.pdf" onChange={async(e)=>{const file=e.target.files?.[0];if(!file)return;const fname=file.name.toLowerCase();setFbMsg("Lendo arquivo...");try{let rawItems=[];if(fname.endsWith(".xml")){const txt=await file.text();const parser=new DOMParser();const xml=parser.parseFromString(txt,"text/xml");const dets=xml.getElementsByTagName("det");for(let i=0;i<dets.length;i++){const det=dets[i];const xProd=(det.getElementsByTagName("xProd")[0]?.textContent||"");const qCom=parseFloat(det.getElementsByTagName("qCom")[0]?.textContent||"0");const vUnCom=parseFloat(det.getElementsByTagName("vUnCom")[0]?.textContent||"0");rawItems.push({desc:xProd,qty:qCom,cost:vUnCom})}}else if(fname.endsWith(".pdf")){if(!window.pdfjsLib){const sc=document.createElement("script");sc.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";document.head.appendChild(sc);await new Promise(r=>{sc.onload=r;setTimeout(r,5000)})}if(window.pdfjsLib){window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";const ab=await file.arrayBuffer();const pdf=await window.pdfjsLib.getDocument({data:ab}).promise;let ft="";for(let pg=1;pg<=pdf.numPages;pg++){const page=await pdf.getPage(pg);const tc=await page.getTextContent();ft+=tc.items.map(z=>z.str).join(" ")+"\n"}ft.split("\n").forEach(row=>{const u=row.toUpperCase();if(u.includes("VINIL")||u.includes("LONA")||u.includes("MANTA")||u.includes("FILTRO")||u.includes("REFLETOR")||u.includes("SKIMMER")||u.includes("PERFIL")){const nums=row.match(/[\d]+[.,]?[\d]*/g);if(nums&&nums.length>=2){rawItems.push({desc:row,qty:parseFloat(nums[nums.length-3]?.replace(",",".")||nums[0].replace(",","."))||1,cost:parseFloat(nums[nums.length-2]?.replace(",",".")||"0")||0})}}})}else{setFbMsg("Erro leitor PDF")}}const entries=[];rawItems.forEach(it=>{const d=it.desc.toUpperCase();const is073=d.includes("0,73")||d.includes("0.73");const thick=is073?"8":"7";let matchId="";if(d.includes("LONA AQUATICA")||d.includes("LONA AQUÁTICA")){matchId=d.includes("14")?"lona14":"lona10"}else if(d.includes("VINIL")||d.includes("REVESTIMENTO")){const vinilCat=CAT.filter(p=>p.c==="Vinil 0,"+thick+"mm");for(const vc of vinilCat){const stampName=vc.n.replace(/ 0,[78]mm/,"").toUpperCase();const words=stampName.split(" ").filter(w=>w.length>2);if(words.length>0&&words.every(w=>d.includes(w))){matchId=vc.id;break}}}else{for(const p of CAT){const words=p.n.toUpperCase().split(" ").filter(w=>w.length>3);if(words.length>0&&words.every(w=>d.includes(w))){matchId=p.id;break}}}entries.push({catId:matchId,qty:String(it.qty),cost:String(it.cost),_desc:it.desc})});if(entries.length>0){setEntItems(entries);const ok=entries.filter(x=>x.catId).length;const nok=entries.filter(x=>!x.catId).length;setFbMsg(ok+" reconhecidos"+(nok>0?", "+nok+" para selecionar manual":"")+" - Confira e clique Dar Entrada")}else{setFbMsg("Nenhum item encontrado")}setTimeout(()=>setFbMsg(""),8000)}catch(err){console.error(err);setFbMsg("Erro: "+(err.message||err));setTimeout(()=>setFbMsg(""),4000)}e.target.value=""}} style={{fontSize:"11px",color:t.text}}/>
             </div></>}
           {stkTab==="historico"&&<>
             <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"8px"}}>Movimentacoes</div>
@@ -792,6 +841,26 @@ export default function App(){
               </div>)}
             </div>}
           </>}
+          {stkTab==="fornec"&&<>
+            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"8px"}}>Cadastro de Fornecedores</div>
+            <div style={{display:"flex",gap:"5px",marginBottom:"10px",flexWrap:"wrap"}}>
+              <input value={newFornec.name} onChange={e=>setNF2(p=>({...p,name:e.target.value}))} placeholder="Nome do fornecedor" style={{flex:2,padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"5px",fontSize:"10px",background:t.inputBg,color:t.text}}/>
+              <input value={newFornec.phone} onChange={e=>setNF2(p=>({...p,phone:e.target.value}))} placeholder="Telefone" style={{flex:1,padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"5px",fontSize:"10px",background:t.inputBg,color:t.text}}/>
+              <input value={newFornec.products} onChange={e=>setNF2(p=>({...p,products:e.target.value}))} placeholder="Produtos (ex: Vinil, Filtros)" style={{flex:2,padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"5px",fontSize:"10px",background:t.inputBg,color:t.text}}/>
+              <Btn onClick={()=>{if(!newFornec.name)return;saveFornec([...fornecedores,{id:Date.now(),...newFornec}]);setNF2({name:"",phone:"",products:""})}} style={{background:"#16a34a",color:"#fff",border:"none",fontSize:"9px"}}>+ Adicionar</Btn>
+            </div>
+            {fornecedores.length===0?<div style={{textAlign:"center",padding:"16px",color:t.textMuted,fontSize:"11px"}}>Nenhum fornecedor cadastrado</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+              {fornecedores.map(f=><div key={f.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:t.sectionBg,borderRadius:"6px",border:`1px solid ${t.cardBorder}`}}>
+                <div><div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{f.name}</div><div style={{fontSize:"9px",color:t.textMuted}}>{f.phone} {f.products?" | "+f.products:""}</div></div>
+                <div style={{display:"flex",gap:"4px"}}>
+                  <button onClick={()=>openWA(f.phone)} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",fontWeight:"600"}}>Zap</button>
+                  <button onClick={()=>saveFornec(fornecedores.filter(x=>x.id!==f.id))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"11px"}}>X</button>
+                </div>
+              </div>)}
+            </div>}
+          </>}
+
         </Card>}
 
         {/* CONTRATOS */}
