@@ -111,16 +111,20 @@ const fmt=v=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).fo
 
 // ═══ AREA CALCULATION ═══
 const calcA=(pool,spa,wMode,walls)=>{
-  const L=parseFloat(pool.length)||0,W=parseFloat(pool.width)||0,D=parseFloat(pool.depth)||0;
+  const L=parseFloat(pool.length)||0,W=parseFloat(pool.width)||0;
+  const dMin=parseFloat(pool.depthMin)||0,dMax=parseFloat(pool.depthMax)||0;
+  const D=(dMin>0&&dMax>0)?(dMin+dMax)/2:parseFloat(pool.depth)||0;
+  const realDMin=(dMin>0)?dMin:D,realDMax=(dMax>0)?dMax:D;
   const chao=L*W;
-  let par=wMode==="irregular"&&walls.length>0?walls.reduce((s,w)=>s+(parseFloat(w.l)||0)*(parseFloat(w.h)||D),0):(2*L*D+2*W*D);
+  let par=wMode==="irregular"&&walls.length>0?walls.reduce((s,w)=>s+(parseFloat(w.l)||0)*(parseFloat(w.h)||D),0):(L*realDMin+L*realDMax+2*W*D);
   // Perimeter: sum of wall lengths (for perfil)
   let perim=wMode==="irregular"&&walls.length>0?walls.reduce((s,w)=>s+(parseFloat(w.l)||0),0):(2*L+2*W);
   const sL=parseFloat(spa.length)||0,sW=parseFloat(spa.width)||0,sD=parseFloat(spa.depth)||0;
   const sChao=spa.on?sL*sW:0,sPar=spa.on?(2*sL*sD+2*sW*sD):0;
   const sPerim=spa.on?(2*sL+2*sW):0;
   const vol=L*W*D+(spa.on?sL*sW*sD:0);
-  return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:sChao.toFixed(1),sPar:sPar.toFixed(1),tot:(chao+par+sChao+sPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao).toFixed(1)};
+  const depthInfo={avg:D,min:realDMin,max:realDMax,sloped:dMin>0&&dMax>0&&dMin!==dMax};
+  return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:sChao.toFixed(1),sPar:sPar.toFixed(1),tot:(chao+par+sChao+sPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao).toFixed(1),depthInfo};
 };
 
 // ═══ COMPONENTS ═══
@@ -287,8 +291,35 @@ export default function App(){
   const [gM,setGM]=useState(40);
   const [client,setCl]=useState({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:""});
   const uc=f=>v=>setCl(p=>({...p,[f]:v}));
-  const [pool,setPool]=useState({length:"10.00",width:"4.00",depth:"1.40"});
+  const [pool,setPool]=useState({length:"10.00",width:"4.00",depth:"1.40",depthMin:"",depthMax:""});
   const up=f=>v=>setPool(p=>({...p,[f]:v}));
+
+  // DISPOSITIVOS HIDRAULICOS
+  const [disps,setDisps]=useState({retorno:2,aspiracao:1,dreno:1,skimmer:1,refletor:2,nivelador:1,hidro:0});
+  const [dispPos,setDispPos]=useState(null);
+  const [dragging,setDragging]=useState(null);
+  const [customPos,setCustomPos]=useState({});
+
+  const autoPositions=(L,W,d)=>{
+    const pos={};const r=d.retorno||0;const refs=d.refletor||0;
+    // Retornos: lado esquerdo (lado da prainha)
+    for(let i=0;i<r;i++){pos["ret_"+i]={x:0.05,y:(i+1)/(r+1),label:"R"+(i+1),type:"retorno"}}
+    // Aspiracao: meio do comprimento, parede inferior
+    for(let i=0;i<(d.aspiracao||0);i++){pos["asp_"+i]={x:0.5,y:0.95,label:"A"+(i+1),type:"aspiracao"}}
+    // Drenos: lado oposto dos retornos (direita), no chao
+    for(let i=0;i<(d.dreno||0);i++){const sp=d.dreno>1?(i+1)/(d.dreno+1):0.5;pos["drn_"+i]={x:0.85,y:sp,label:"D"+(i+1),type:"dreno",floor:true}}
+    // Skimmer: parede direita (oposta aos retornos)
+    for(let i=0;i<(d.skimmer||0);i++){pos["skm_"+i]={x:0.95,y:(i+1)/((d.skimmer||1)+1),label:"SK"+(i+1),type:"skimmer"}}
+    // Refletores: distribuidos nas paredes laterais (superior e inferior)
+    for(let i=0;i<refs;i++){if(i%2===0){pos["ref_"+i]={x:(Math.floor(i/2)+1)/(Math.ceil(refs/2)+1),y:0.03,label:"L"+(i+1),type:"refletor"}}else{pos["ref_"+i]={x:(Math.floor(i/2)+1)/(Math.ceil(refs/2)+1),y:0.97,label:"L"+(i+1),type:"refletor"}}}
+    // Nivelador: parede direita, proximo ao skimmer
+    for(let i=0;i<(d.nivelador||0);i++){pos["niv_"+i]={x:0.95,y:0.12,label:"N"+(i+1),type:"nivelador"}}
+    // Hidro: parede lateral, distribuidos
+    for(let i=0;i<(d.hidro||0);i++){pos["hid_"+i]={x:(i+1)/((d.hidro||1)+1),y:0.03,label:"H"+(i+1),type:"hidro"}}
+    // Casa de maquinas: 10% do comprimento, fora da piscina
+    pos["casa"]={x:1.12,y:0.5,label:"CM",type:"casa",special:true};
+    return pos;
+  };
 
   // SPA
   const [spa,setSpa]=useState({on:false,length:"2.00",width:"2.00",depth:"0.80"});
@@ -662,7 +693,8 @@ export default function App(){
 
         {/* PISCINA */}
         {tab==="piscina"&&<Card t={t}><ST icon="🏊">Piscina</ST>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Comp. (m)" value={pool.length} onChange={up("length")} t={t}/><Inp label="Larg. (m)" value={pool.width} onChange={up("width")} t={t}/><Inp label="Prof. (m)" value={pool.depth} onChange={up("depth")} t={t}/><Sel label="Formato" value={poolFmt} onChange={setPF} options={PFMT} t={t}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Comp. (m)" value={pool.length} onChange={up("length")} t={t}/><Inp label="Larg. (m)" value={pool.width} onChange={up("width")} t={t}/><Inp label="Prof. (m)" value={pool.depth} onChange={up("depth")} t={t}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Formato" value={poolFmt} onChange={setPF} options={PFMT} t={t}/></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={setVT} options={VOPTS.map(v=>({value:v.t,label:`${v.t} (${v.w}a)`}))} t={t}/><Sel label="Estampa" value={stamp} onChange={setSt} options={[{value:"",label:"— Escolha —"},...ALLST.map(s=>({value:s,label:s}))]} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
 
           {/* MODO PAREDES */}
@@ -718,6 +750,174 @@ export default function App(){
               <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
               <div style={{textAlign:"center"}}><div style={{fontSize:"14px",fontWeight:"800",color:blue}}>{ar.vol} m³</div><div style={{fontSize:"8px",color:t.textSec}}>Volume</div></div>
             </div>
+          </div>
+
+          {/* DISPOSITIVOS + PLANTA TECNICA */}
+          <div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"8px",padding:"12px",border:`1px solid ${t.cardBorder}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+              <div style={{fontSize:"11px",fontWeight:"700",color:blue}}>PLANTA HIDRAULICA</div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"6px",marginBottom:"12px"}}>
+              {[["retorno","Retorno","#ef4444"],["aspiracao","Aspiracao","#ec4899"],["dreno","Dreno Fundo","#8b5cf6"],["skimmer","Skimmer","#f59e0b"],["refletor","LED","#f97316"],["nivelador","Nivelador","#06b6d4"],["hidro","Hidro","#14b8a6"]].map(([k,lb,cor])=><div key={k} style={{display:"flex",alignItems:"center",gap:"4px",background:t.card,padding:"5px 8px",borderRadius:"6px",border:`1px solid ${t.cardBorder}`}}>
+                <div style={{width:"8px",height:"4px",borderRadius:"1px",background:cor}}/>
+                <span style={{fontSize:"8px",fontWeight:"600",color:t.text,flex:1}}>{lb}</span>
+                <button onClick={()=>setDisps(p=>({...p,[k]:Math.max(0,p[k]-1)}))} style={{width:"16px",height:"16px",borderRadius:"3px",border:"none",background:"#fee2e2",color:"#dc2626",fontSize:"10px",cursor:"pointer",fontWeight:"700",lineHeight:"16px",textAlign:"center"}}>-</button>
+                <span style={{fontSize:"10px",fontWeight:"800",color:t.text,minWidth:"14px",textAlign:"center"}}>{disps[k]}</span>
+                <button onClick={()=>setDisps(p=>({...p,[k]:p[k]+1}))} style={{width:"16px",height:"16px",borderRadius:"3px",border:"none",background:"#dcfce7",color:"#16a34a",fontSize:"10px",cursor:"pointer",fontWeight:"700",lineHeight:"16px",textAlign:"center"}}>+</button>
+              </div>)}
+            </div>
+
+            {(()=>{
+              const L=parseFloat(pool.length)||6;const W=parseFloat(pool.width)||3;const D=parseFloat(pool.depth)||1.4;
+              const svgW=380;const svgH=280;const pad=40;
+              const scale=Math.min((svgW-pad*2-60)/L,(svgH-pad*2)/W);
+              const pw=L*scale;const ph=W*scale;const ox=pad;const oy=pad;
+              const cmW=pw*0.12;const cmH=ph*0.6;const casaP=customPos["casa"]||{x:1.12,y:0.5};const cmX=ox+casaP.x*pw;const cmY=oy+casaP.y*ph-cmH/2;
+              const hasSpa2=spa?.on;const sL=parseFloat(spa?.length||2)*scale;const sW=parseFloat(spa?.width||2)*scale;
+              const positions={...autoPositions(L,W,disps),...customPos};
+              const tubeColors={retorno:"#ef4444",aspiracao:"#ec4899",dreno:"#8b5cf6",skimmer:"#f59e0b",refletor:"#f97316",nivelador:"#06b6d4",hidro:"#14b8a6"};
+              const handleMouseDown2=(key,e)=>{e.preventDefault();setDragging(key)};
+              const handleMouseMove2=(e)=>{if(!dragging)return;const svg=e.currentTarget;const rect2=svg.getBoundingClientRect();const mx=(e.clientX||e.touches?.[0]?.clientX||0)-rect2.left;const my=(e.clientY||e.touches?.[0]?.clientY||0)-rect2.top;const rx=(mx-ox)/pw;const ry=(my-oy)/ph;if(dragging==="casa"){setCustomPos(p=>({...p,casa:{x:Math.max(0.5,Math.min(1.4,rx)),y:Math.max(0.1,Math.min(0.9,ry)),label:"CM",type:"casa",special:true}}))}else{setCustomPos(p=>({...p,[dragging]:{...positions[dragging],x:Math.max(0,Math.min(1,rx)),y:Math.max(0,Math.min(1,ry))}}))}};
+              const handleMouseUp2=()=>setDragging(null);
+
+              const makePath=(x1,y1,x2,y2,side)=>{
+                const mx=side==="bottom"?x1:x2;const my=side==="bottom"?y2:y1;
+                if(side==="right"){return `M${x1},${y1} L${x1+8},${y1} L${x1+8},${y2>y1?y1+(y2-y1)*0.3:y1-(y1-y2)*0.3} L${x2-8},${y2>y1?y2-(y2-y1)*0.3:y2+(y1-y2)*0.3} L${x2-8},${y2} L${x2},${y2}`}
+                if(side==="left"){return `M${x1},${y1} L${ox-10},${y1} L${ox-10},${oy+ph+12} L${x2},${oy+ph+12} L${x2},${y2}`}
+                return `M${x1},${y1} L${x1},${oy+ph+10+Math.random()*8} L${x2},${oy+ph+10+Math.random()*8} L${x2},${y2}`
+              };
+
+              const dMin=parseFloat(pool.depthMin)||D;const dMax2=parseFloat(pool.depthMax)||D;
+              const sloped=parseFloat(pool.depthMin)>0&&parseFloat(pool.depthMax)>0&&pool.depthMin!==pool.depthMax;
+              const cutW=svgW;const cutH=160;const cutScale2=Math.min((cutW-60)/L,(cutH-30)/Math.max(D,dMax2));
+              const cpw=L*cutScale2;const cph=D*cutScale2;const cox=30;const coyC=15;
+              const hMin=dMin*cutScale2;const hMax=dMax2*cutScale2;
+
+              return <div>
+                <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>Planta Baixa - Vista Superior</div>
+                <svg width={svgW} height={svgH} style={{background:dark?"#0f172a":"#f8fafc",borderRadius:"6px",border:`1px solid ${t.cardBorder}`,cursor:dragging?"grabbing":"default",touchAction:"none"}} onMouseMove={handleMouseMove2} onMouseUp={handleMouseUp2} onMouseLeave={handleMouseUp2} onTouchMove={e=>{const te={currentTarget:e.currentTarget,clientX:e.touches[0].clientX,clientY:e.touches[0].clientY};handleMouseMove2(te)}} onTouchEnd={handleMouseUp2}>
+                  <defs>
+                    <pattern id="gridH" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke={dark?"#1e293b":"#e2e8f0"} strokeWidth="0.3"/></pattern>
+                    <marker id="elbow" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="4" markerHeight="4"><circle cx="3" cy="3" r="2" fill="#94a3b8"/></marker>
+                  </defs>
+                  <rect width={svgW} height={svgH} fill="url(#gridH)"/>
+                  <rect x={ox-2} y={oy-2} width={pw+4} height={ph+4} rx="1" fill="none" stroke={dark?"#334155":"#94a3b8"} strokeWidth="0.5" strokeDasharray="4,2"/>
+                  {poolFmt==="Formato L"?<polygon points={`${ox},${oy} ${ox+pw},${oy} ${ox+pw},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph} ${ox},${oy+ph}`} fill={dark?"#1e3a5f":"#dbeafe"} stroke="#2563eb" strokeWidth="2"/>
+                  :poolFmt==="Oval"||poolFmt==="Feijao"?<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2} fill={dark?"#1e3a5f":"#dbeafe"} stroke="#2563eb" strokeWidth="2"/>
+                  :<rect x={ox} y={oy} width={pw} height={ph} rx={poolFmt==="Com prainha"?"6":"1"} fill={dark?"#1e3a5f":"#dbeafe"} stroke="#2563eb" strokeWidth="2"/>}
+                  {poolFmt==="Com prainha"&&<><rect x={ox} y={oy} width={pw*0.25} height={ph} rx="1" fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#2563eb" strokeWidth="0.5"/><text x={ox+pw*0.125} y={oy+ph/2} textAnchor="middle" fontSize="7" fill="#1d4ed8" fontWeight="600">Prainha</text></>}
+                  {hasSpa2&&<rect x={ox+pw-sL} y={oy-sW+2} width={sL} height={sW} rx="3" fill={dark?"#1e3a5f":"#93c5fd"} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="4,2"/>}
+                  {hasSpa2&&<text x={ox+pw-sL/2} y={oy-sW/2+5} textAnchor="middle" fontSize="7" fill="#1d4ed8" fontWeight="700">SPA</text>}
+                  <text x={ox+pw/2} y={oy+ph/2-4} textAnchor="middle" fontSize="9" fill={dark?"#94a3b8":"#64748b"} fontWeight="600">PISCINA</text>
+                  <text x={ox+pw/2} y={oy+ph/2+8} textAnchor="middle" fontSize="8" fill={dark?"#94a3b8":"#64748b"}>A= {ar.total}m2</text>
+                  <line x1={ox} y1={oy-12} x2={ox+pw} y2={oy-12} stroke="#64748b" strokeWidth="0.5" markerStart="url(#elbow)" markerEnd="url(#elbow)"/>
+                  <text x={ox+pw/2} y={oy-16} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{L}m</text>
+                  <line x1={ox-12} y1={oy} x2={ox-12} y2={oy+ph} stroke="#64748b" strokeWidth="0.5" markerStart="url(#elbow)" markerEnd="url(#elbow)"/>
+                  <text x={ox-22} y={oy+ph/2+3} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b" transform={`rotate(-90,${ox-22},${oy+ph/2+3})`}>{W}m</text>
+                  <rect x={cmX} y={cmY} width={cmW+10} height={cmH} rx="2" fill={dark?"#1e293b":"#f1f5f9"} stroke={dragging==="casa"?"#0055a4":"#475569"} strokeWidth={dragging==="casa"?"2.5":"1.5"} style={{cursor:"grab"}} onMouseDown={e=>{e.preventDefault();setDragging("casa")}} onTouchStart={e=>{e.preventDefault();setDragging("casa")}}/>
+                  <text x={cmX+(cmW+10)/2} y={cmY+12} textAnchor="middle" fontSize="6" fontWeight="700" fill="#475569">CASA DE</text>
+                  <text x={cmX+(cmW+10)/2} y={cmY+20} textAnchor="middle" fontSize="6" fontWeight="700" fill="#475569">MAQUINAS</text>
+                  <circle cx={cmX+(cmW+10)/2} cy={cmY+cmH*0.45} r="7" fill="#06b6d4" opacity="0.3" stroke="#06b6d4" strokeWidth="1"/>
+                  <text x={cmX+(cmW+10)/2} y={cmY+cmH*0.45+3} textAnchor="middle" fontSize="5" fontWeight="700" fill="#06b6d4">F</text>
+                  <rect x={cmX+(cmW+10)/2-5} y={cmY+cmH*0.65} width="10" height="7" rx="1" fill="#334155" opacity="0.4" stroke="#334155" strokeWidth="0.5"/>
+                  <text x={cmX+(cmW+10)/2} y={cmY+cmH*0.65+5} textAnchor="middle" fontSize="4" fontWeight="700" fill="#fff">MB</text>
+                  {Object.entries(positions).filter(([k,p])=>!p.special&&p.type!=="refletor").map(([key,p])=>{const cx2=ox+p.x*pw;const cy2=oy+p.y*ph;const col=tubeColors[p.type]||"#999";const lbl=p.type==="hidro"?"O50":"";const cmCx=cmX;const cmCy=cmY+cmH/2;const isRight=p.x>0.7;const isLeft=p.x<0.3;const isFloor=p.floor;let path="";if(isRight){path=`M${cx2},${cy2} L${ox+pw+6},${cy2} L${ox+pw+6},${cmCy} L${cmCx},${cmCy}`}else if(isFloor){path=`M${cx2},${cy2} L${cx2},${oy+ph+8} L${ox+pw+6},${oy+ph+8} L${ox+pw+6},${cmCy+10} L${cmCx},${cmCy+10}`}else{path=`M${cx2},${cy2} L${ox-6},${cy2} L${ox-6},${oy+ph+14} L${ox+pw+10},${oy+ph+14} L${ox+pw+10},${cmCy-10} L${cmCx},${cmCy-10}`}return <path key={"tb_"+key} d={path} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>})}
+                  {Object.entries(positions).filter(([k,p])=>!p.special).map(([key,p])=>{const cx2=ox+p.x*pw;const cy2=oy+p.y*ph;const col=tubeColors[p.type]||"#666";return <g key={key} onMouseDown={e=>handleMouseDown2(key,e)} onTouchStart={e=>{e.preventDefault();setDragging(key)}} style={{cursor:"grab"}}>
+                    {p.floor?<><circle cx={cx2} cy={cy2} r="7" fill="none" stroke={col} strokeWidth="1.5"/><line x1={cx2-3} y1={cy2-3} x2={cx2+3} y2={cy2+3} stroke={col} strokeWidth="1.5"/><line x1={cx2+3} y1={cy2-3} x2={cx2-3} y2={cy2+3} stroke={col} strokeWidth="1.5"/><text x={cx2} y={cy2-10} textAnchor="middle" fontSize="6" fontWeight="700" fill={col}>{p.label}</text></>
+                    :p.type==="skimmer"?<><rect x={cx2-6} y={cy2-4} width="12" height="8" rx="1" fill="none" stroke={col} strokeWidth="1.5"/><line x1={cx2-4} y1={cy2} x2={cx2+4} y2={cy2} stroke={col} strokeWidth="1"/><text x={cx2} y={cy2-7} textAnchor="middle" fontSize="6" fontWeight="700" fill={col}>{p.label}</text></>
+                    :<><circle cx={cx2} cy={cy2} r="5" fill={col} opacity="0.2" stroke={col} strokeWidth="1.5"/><text x={cx2} y={cy2+3} textAnchor="middle" fontSize="5" fontWeight="700" fill={col}>{p.label}</text><text x={cx2} y={cy2+12} textAnchor="middle" fontSize="5" fill="#64748b">O50</text></>}
+                  </g>})}
+                </svg>
+
+                <div style={{display:"flex",gap:"8px",marginTop:"6px",flexWrap:"wrap",alignItems:"center"}}>
+                  {[["Retorno","#ef4444"],["Aspiracao","#ec4899"],["Dreno","#8b5cf6"],["Skimmer","#f59e0b"],["LED","#f97316"],["Nivel","#06b6d4"],["Hidro","#14b8a6"]].map(([lb,c])=><div key={lb} style={{display:"flex",alignItems:"center",gap:"3px"}}><div style={{width:"12px",height:"3px",borderRadius:"1px",background:c}}/><span style={{fontSize:"7px",color:t.textMuted}}>{lb}</span></div>)}
+                  <div style={{display:"flex",alignItems:"center",gap:"3px"}}><div style={{width:"8px",height:"8px",borderRadius:"1px",border:"1px solid #475569",background:t.card}}/><span style={{fontSize:"7px",color:t.textMuted}}>Casa Maq.</span></div>
+                  <button onClick={()=>setCustomPos({})} style={{fontSize:"7px",padding:"2px 6px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.textMuted,cursor:"pointer",marginLeft:"auto"}}>Resetar posicoes</button>
+                </div>
+
+                <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginTop:"12px",marginBottom:"4px"}}>Vista Lateral 3D</div>
+                <svg width={cutW} height={cutH} style={{background:dark?"#0f172a":"#f8fafc",borderRadius:"6px",border:`1px solid ${t.cardBorder}`}}>
+                  <defs>
+                    <pattern id="gridH2" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke={dark?"#1e293b":"#e2e8f0"} strokeWidth="0.3"/></pattern>
+                    <linearGradient id="waterGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#38bdf8" stopOpacity="0.3"/><stop offset="100%" stopColor="#0369a1" stopOpacity="0.5"/></linearGradient>
+                    <linearGradient id="wallGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor={dark?"#334155":"#94a3b8"}/><stop offset="100%" stopColor={dark?"#475569":"#cbd5e1"}/></linearGradient>
+                  </defs>
+                  <rect width={cutW} height={cutH} fill="url(#gridH2)"/>
+                  {(()=>{
+                    const ix=0.3;const iy=0.15;
+                    const bx=40;const by=20;
+                    const fw=cpw*0.85;const fh=(sloped?Math.max(hMin,hMax):cph)*0.9;const fd=ph*0.3;
+                    const hMin3=(sloped?hMin:cph)*0.9;const hMax3=(sloped?hMax:cph)*0.9;
+                    const p0={x:bx,y:by};
+                    const p1={x:bx+fw,y:by};
+                    const p2={x:bx+fw+fd*ix,y:by-fd*iy};
+                    const p3={x:bx+fd*ix,y:by-fd*iy};
+                    const p4={x:bx,y:by+hMin3};
+                    const p5={x:bx+fw,y:by+hMax3};
+                    const p6={x:bx+fw+fd*ix,y:by+hMax3-fd*iy};
+                    const p7={x:bx+fd*ix,y:by+hMin3-fd*iy};
+                    return <>
+                      <polygon points={`${p3.x},${p3.y} ${p2.x},${p2.y} ${p6.x},${p6.y} ${p7.x},${p7.y}`} fill={dark?"#1e3a5f":"#bfdbfe"} stroke="#2563eb" strokeWidth="1" opacity="0.5"/>
+                      <polygon points={`${p1.x},${p1.y} ${p2.x},${p2.y} ${p6.x},${p6.y} ${p5.x},${p5.y}`} fill={dark?"#1a365d":"#93c5fd"} stroke="#2563eb" strokeWidth="1" opacity="0.6"/>
+                      <polygon points={`${p0.x},${p0.y} ${p1.x},${p1.y} ${p5.x},${p5.y} ${p4.x},${p4.y}`} fill="url(#waterGrad)" stroke="#2563eb" strokeWidth="1.5"/>
+                      <polygon points={`${p4.x},${p4.y} ${p5.x},${p5.y} ${p6.x},${p6.y} ${p7.x},${p7.y}`} fill={dark?"#0f172a":"#e2e8f0"} stroke="#2563eb" strokeWidth="1" opacity="0.4"/>
+                      <line x1={p0.x+2} y1={p0.y+3} x2={p1.x-2} y2={p1.y+3} stroke="#0ea5e9" strokeWidth="0.8" strokeDasharray="5,3"/>
+                      <text x={(p0.x+p1.x)/2} y={p0.y+14} textAnchor="middle" fontSize="6" fill="#0ea5e9" fontWeight="600">N.A.</text>
+                      <line x1={p0.x-8} y1={p0.y} x2={p0.x-8} y2={p4.y} stroke="#64748b" strokeWidth="0.5"/>
+                      <text x={p0.x-18} y={(p0.y+p4.y)/2+3} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{sloped?dMin:D}m</text>
+                      {sloped&&<><line x1={p1.x+8} y1={p1.y} x2={p1.x+8} y2={p5.y} stroke="#64748b" strokeWidth="0.5"/><text x={p1.x+18} y={(p1.y+p5.y)/2+3} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{dMax2}m</text></>}
+                      <text x={(p0.x+p1.x)/2} y={Math.max(p4.y,p5.y)+14} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{L}m</text>
+                      {Object.entries(positions).filter(([k,pp])=>pp.type==="retorno").slice(0,2).map(([key,pp],i)=>{const rx=p0.x+fw*0.08;const ry=p0.y+hMin3*0.4+i*18;return <g key={"3d_"+key}><circle cx={rx} cy={ry} r="4" fill="#ef4444" opacity="0.8" stroke="#fff" strokeWidth="0.5"/><text x={rx+8} y={ry+3} fontSize="5" fill="#ef4444" fontWeight="600">R{i+1}</text><line x1={rx-12} y1={ry} x2={rx} y2={ry} stroke="#ef4444" strokeWidth="2" opacity="0.6"/></g>})}
+                      {Object.entries(positions).filter(([k,pp])=>pp.type==="skimmer").slice(0,1).map(([key,pp],i)=>{const sx=p1.x-fw*0.05;const sy=p1.y+4;return <g key={"3d_"+key}><rect x={sx-5} y={sy-8} width="10" height="12" rx="1" fill="#f59e0b" opacity="0.6" stroke="#f59e0b" strokeWidth="1"/><text x={sx} y={sy+10} textAnchor="middle" fontSize="5" fill="#f59e0b" fontWeight="600">SK</text></g>})}
+                      {Object.entries(positions).filter(([k,pp])=>pp.type==="dreno").slice(0,2).map(([key,pp],i)=>{const dx=p4.x+fw*(0.35+i*0.3);const dy=sloped?(p4.y+(p5.y-p4.y)*((0.35+i*0.3))):p4.y;return <g key={"3d_"+key}><circle cx={dx} cy={dy-2} r="5" fill="none" stroke="#8b5cf6" strokeWidth="1.5"/><line x1={dx-2} y1={dy-4} x2={dx+2} y2={dy} stroke="#8b5cf6" strokeWidth="1"/><line x1={dx+2} y1={dy-4} x2={dx-2} y2={dy} stroke="#8b5cf6" strokeWidth="1"/><text x={dx} y={dy+10} textAnchor="middle" fontSize="5" fill="#8b5cf6" fontWeight="600">DF{i+1}</text></g>})}
+                      {Object.entries(positions).filter(([k,pp])=>pp.type==="refletor").slice(0,3).map(([key,pp],i)=>{const lx=p0.x+fw*(0.25+i*0.25);const ly=p0.y+hMin3*0.25;return <g key={"3d_"+key}><circle cx={lx} cy={ly} r="3" fill="#f97316" opacity="0.9"/><circle cx={lx} cy={ly} r="6" fill="none" stroke="#f97316" strokeWidth="0.5" strokeDasharray="2,1"/><text x={lx} y={ly+12} textAnchor="middle" fontSize="5" fill="#f97316" fontWeight="600">L{i+1}</text></g>})}
+                      {Object.entries(positions).filter(([k,pp])=>pp.type==="hidro").slice(0,4).map(([key,pp],i)=>{const hx=p0.x+fw*(0.2+i*0.2);const hy=p0.y+hMin3*0.55;return <g key={"3d_"+key}><circle cx={hx} cy={hy} r="4" fill="#14b8a6" opacity="0.7" stroke="#14b8a6" strokeWidth="1"/><circle cx={hx} cy={hy} r="7" fill="none" stroke="#14b8a6" strokeWidth="0.4" strokeDasharray="2,1"/><text x={hx} y={hy+12} textAnchor="middle" fontSize="5" fill="#14b8a6" fontWeight="600">H{i+1}</text></g>})}
+                      {Object.entries(positions).filter(([k,pp])=>pp.type==="aspiracao").slice(0,1).map(([key,pp],i)=>{const ax=p0.x+fw*0.5;const ay=p0.y+hMin3*0.6;return <g key={"3d_"+key}><circle cx={ax} cy={ay} r="4" fill="#ec4899" opacity="0.6" stroke="#ec4899" strokeWidth="1"/><text x={ax} y={ay+10} textAnchor="middle" fontSize="5" fill="#ec4899" fontWeight="600">DA</text></g>})}
+                      {hasSpa2&&<polygon points={`${p2.x-sL*0.7},${p2.y-sW*0.2} ${p2.x},${p2.y-sW*0.2} ${p2.x},${p2.y-sW*0.2+parseFloat(spa?.depth||0.8)*cutScale2*0.5} ${p2.x-sL*0.7},${p2.y-sW*0.2+parseFloat(spa?.depth||0.8)*cutScale2*0.5}`} fill="#93c5fd" stroke="#3b82f6" strokeWidth="1" strokeDasharray="3,2" opacity="0.5"/>}
+                    </>
+                  })()}
+                </svg>
+
+                <div style={{display:"flex",gap:"10px",marginTop:"6px",flexWrap:"wrap"}}>
+                  <span style={{fontSize:"7px",color:t.textMuted}}>Area: {ar.total}m2</span>
+                  <span style={{fontSize:"7px",color:t.textMuted}}>Chao: {ar.chao}m2</span>
+                  <span style={{fontSize:"7px",color:t.textMuted}}>Paredes: {ar.paredes}m2</span>
+                  <span style={{fontSize:"7px",color:t.textMuted}}>Perim: {ar.perim}m</span>
+                  <span style={{fontSize:"7px",color:t.textMuted}}>Vol: {ar.vol}m3</span>
+                </div>
+
+                <div style={{marginTop:"12px",background:dark?"#1e293b":"#fff",borderRadius:"6px",padding:"10px",border:`1px solid ${t.cardBorder}`}}>
+                  <div style={{fontSize:"10px",fontWeight:"700",color:blue,marginBottom:"8px"}}>MATERIAL HIDRAULICO - PVC 50mm</div>
+                  {(()=>{
+                    const dist=L*0.1;
+                    const retQty=disps.retorno||0;const aspQty=disps.aspiracao||0;const drQty=disps.dreno||0;const skQty=disps.skimmer||0;const nivQty=disps.nivelador||0;const hidQty=disps.hidro||0;
+                    const retTubo=retQty>0?retQty*(D+0.5)+dist+(retQty>1?(retQty-1)*W/(retQty+1):0):0;
+                    const aspTubo=aspQty>0?aspQty*(L/2+D+0.5)+dist:0;
+                    const drTubo=drQty>0?drQty*(D+0.3)+dist+(drQty>1?L*0.4:0):0;
+                    const skTubo=skQty>0?skQty*(D+0.5)+dist:0;
+                    const nivTubo=nivQty>0?nivQty*1.5+dist:0;
+                    const hidTubo=hidQty>0?hidQty*(D+0.5)+dist+(hidQty>1?(hidQty-1)*L/(hidQty+1):0):0;
+                    const totalTubo=Math.ceil(retTubo+aspTubo+drTubo+skTubo+nivTubo+hidTubo);
+                    const barras6m=Math.ceil(totalTubo/6);
+                    const curvas=retQty*2+aspQty*3+drQty*2+skQty*2+nivQty*1+hidQty*2+(retQty>1?(retQty-1)*2:0)+(drQty>1?(drQty-1)*2:0)+(hidQty>1?(hidQty-1)*2:0);
+                    const joelhos=Math.ceil(curvas*0.15);
+                    const items=[
+                      {n:"Tubo PVC 50mm (barras 6m)",q:barras6m,m:totalTubo.toFixed(1)+"m total"},
+                      {n:"Curva Longa 50mm",q:curvas,m:"Padrao sem joelho"},
+                      {n:"Joelho 50mm",q:joelhos,m:"Apenas onde necessario"},
+                    ];
+                    return <div style={{display:"flex",flexDirection:"column",gap:"3px"}}>
+                      {items.map((it,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 6px",background:i%2===0?(dark?"#0f172a":"#f8fafc"):"transparent",borderRadius:"3px"}}>
+                        <div style={{flex:1}}><span style={{fontSize:"9px",fontWeight:"600",color:t.text}}>{it.n}</span><span style={{fontSize:"7px",color:t.textMuted,marginLeft:"4px"}}>{it.m}</span></div>
+                        <div style={{fontSize:"11px",fontWeight:"800",color:blue,minWidth:"30px",textAlign:"right"}}>{it.q}</div>
+                      </div>)}
+                      <div style={{borderTop:`1px solid ${t.cardBorder}`,marginTop:"4px",paddingTop:"4px"}}>
+                        <span style={{fontSize:"9px",fontWeight:"700",color:t.text}}>Total: {totalTubo.toFixed(1)}m = {barras6m} barras | {curvas} curvas | {joelhos} joelhos</span>
+                      </div>
+                    </div>
+                  })()}
+              </div>
+            })()}
           </div>
         </Card>}
 
