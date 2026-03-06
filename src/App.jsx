@@ -662,112 +662,7 @@ export default function App(){
     </div>
   </div>;
 
-  if(view==="quote")return <QP d={gData()} onBack={()=>setView("editor")} onSave={()=>{const d=gData();const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item)}}/>;
-
-  const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};
-
-  return(
-    <div style={{fontFamily:"'Segoe UI',sans-serif",maxWidth:"920px",margin:"0 auto",background:t.bg,minHeight:"100vh",color:t.text,transition:"background .3s,color .3s"}}>
-      <div style={{background:`linear-gradient(135deg,#001d3d,${blue} 60%,#0077cc)`,padding:"14px 18px",color:"#fff"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"6px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:"10px"}}><div><div style={{fontSize:"17px",fontWeight:"800"}}>💧 VINIL VALE</div><div style={{fontSize:"9px",opacity:.7}}>{user?.email?.split("@")[0]} · {VER}</div></div><DarkToggle dark={dark} onToggle={()=>setDark(p=>!p)}/><button onClick={doLogout} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:"6px",padding:"4px 8px",color:"#fff",fontSize:"9px",cursor:"pointer",fontWeight:"600"}}>Sair</button></div>
-          <div style={{display:"flex",gap:"5px",alignItems:"center",flexWrap:"wrap"}}>
-            {fbMsg&&<span style={{background:"rgba(255,255,255,.2)",padding:"4px 8px",borderRadius:"5px",fontSize:"10px",fontWeight:"600"}}>✅ {fbMsg}</span>}
-            <Btn onClick={save} style={{background:"rgba(255,255,255,.12)",color:"#fff",border:"1px solid rgba(255,255,255,.25)"}}>💾 Salvar</Btn>
-            <Btn onClick={()=>setView("quote")} style={{background:"#fff",color:blue,fontWeight:"700"}}>📄 Orçamento</Btn>
-          </div>
-        </div>
-        <div style={{display:"flex",gap:"5px",marginTop:"10px",flexWrap:"wrap"}}>{SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(mkItems(sv.id));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20")}} style={{padding:"5px 10px",borderRadius:"16px",border:"1.5px solid rgba(255,255,255,.3)",background:svcType===sv.id?"rgba(255,255,255,.2)":"transparent",color:"#fff",fontSize:"10px",fontWeight:svcType===sv.id?"700":"400",cursor:"pointer"}}>{sv.icon} {sv.label}</button>)}</div>
-      </div>
-
-      <div style={{display:"flex",padding:"0 14px",background:t.tabBg,borderBottom:`1px solid ${t.cardBorder}`,overflowX:"auto"}}>
-        {[["cliente","👤","Cliente"],["piscina","🏊","Piscina"],["itens","🛒","Custos"],["garantias","🛡","Garantias"],["pagamento","💰","Valor"],["historico","📋","Salvos"],["crm","📈","CRM"],["estoque","📦","Estoque"],["contratos","📝","Contratos"]].map(([k,ic,lb])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} t={t}>{lb}</Tab>)}
-      </div>
-
-      <div style={{padding:"14px"}}>
-        {/* CLIENTE */}
-        {tab==="cliente"&&<Card t={t}><ST icon="👤">Dados do Cliente</ST>
-          <div style={{display:"flex",gap:"10px",marginBottom:"10px"}}><Inp label="Proposta" value={propNum} onChange={setPN} placeholder="03/26" style={{flex:"0 0 90px"}} t={t}/><Inp label="Nome completo" value={client.name} onChange={uc("name")} placeholder="Nome" style={{flex:1}} t={t}/></div>
-          <div style={g2}><Inp label="WhatsApp" value={client.phone} onChange={uc("phone")} placeholder="(13) 99999-9999" t={t}/><Inp label="Email" value={client.email} onChange={uc("email")} placeholder="email@email.com" t={t}/><Inp label="Endereço" value={client.address} onChange={uc("address")} placeholder="Rua, nº, bairro" t={t}/><Inp label="Cidade" value={client.city} onChange={uc("city")} placeholder="Registro-SP" t={t}/><Inp label="CPF/CNPJ" value={client.cpf} onChange={uc("cpf")} placeholder="000.000.000-00" t={t}/><Inp label="RG" value={client.rg} onChange={uc("rg")} t={t}/></div>
-        </Card>}
-
-        {/* PISCINA */}
-        {tab==="piscina"&&<Card t={t}><ST icon="🏊">Piscina</ST>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Comp. (m)" value={pool.length} onChange={up("length")} t={t}/><Inp label="Larg. (m)" value={pool.width} onChange={up("width")} t={t}/><Inp label="Prof. (m)" value={pool.depth} onChange={up("depth")} t={t}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Formato" value={poolFmt} onChange={setPF} options={PFMT} t={t}/></div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={setVT} options={VOPTS.map(v=>({value:v.t,label:`${v.t} (${v.w}a)`}))} t={t}/><Sel label="Estampa" value={stamp} onChange={setSt} options={[{value:"",label:"— Escolha —"},...ALLST.map(s=>({value:s,label:s}))]} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
-
-          {/* MODO PAREDES */}
-          <div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"8px",padding:"12px",border:`1px solid ${t.cardBorder}`}}>
-            <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
-              <span style={{fontSize:"11px",fontWeight:"700",color:blue}}>📐 Cálculo das Paredes:</span>
-              <button onClick={()=>setWM("regular")} style={{padding:"4px 10px",borderRadius:"14px",border:`1.5px solid ${wMode==="regular"?blue:"#cbd5e1"}`,background:wMode==="regular"?blue:"#fff",color:wMode==="regular"?"#fff":"#64748b",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>Esquadro (padrão)</button>
-              <button onClick={()=>setWM("irregular")} style={{padding:"4px 10px",borderRadius:"14px",border:`1.5px solid ${wMode==="irregular"?blue:"#cbd5e1"}`,background:wMode==="irregular"?blue:"#fff",color:wMode==="irregular"?"#fff":"#64748b",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>Fora de Esquadro</button>
-            </div>
-            {wMode==="irregular"&&<div>
-              <div style={{fontSize:"9px",color:t.textSec,marginBottom:"6px"}}>Defina cada parede com comprimento e altura diferentes:</div>
-              {walls.map((w,i)=><div key={i} style={{display:"flex",gap:"6px",alignItems:"center",marginBottom:"4px"}}>
-                <span style={{fontSize:"10px",fontWeight:"600",color:blue,minWidth:"30px"}}>P{i+1}</span>
-                <Inp label="" value={w.l} onChange={v=>uWall(i,"l",v)} placeholder="Comp." style={{flex:1}} t={t}/>
-                <span style={{fontSize:"10px",color:t.textMuted}}>×</span>
-                <Inp label="" value={w.h} onChange={v=>uWall(i,"h",v)} placeholder="Alt." style={{flex:1}} t={t}/>
-                <span style={{fontSize:"9px",color:t.textMuted}}>m</span>
-                <span style={{fontSize:"10px",color:blue,fontWeight:"700"}}>{((parseFloat(w.l)||0)*(parseFloat(w.h)||0)).toFixed(1)}m²</span>
-                {walls.length>2&&<button onClick={()=>rmWall(i)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>✕</button>}
-              </div>)}
-              <Btn onClick={addWall} style={{marginTop:"4px",fontSize:"9px"}}>+ Parede</Btn>
-            </div>}
-            {wMode==="regular"&&<div style={{fontSize:"10px",color:t.textSec}}>Paredes calculadas automaticamente: 2×({pool.length}×{pool.depth}) + 2×({pool.width}×{pool.depth})</div>}
-          </div>
-
-          {/* SPA */}
-          <div style={{marginTop:"14px",background:spa.on?"#fef9e7":"#f8fafc",borderRadius:"8px",padding:"12px",border:`1px solid ${spa.on?gold+"55":"#e2e8f0"}`}}>
-            <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:spa.on?"10px":"0"}}>
-              <button onClick={()=>setSpa(p=>({...p,on:!p.on}))} style={{width:"36px",height:"20px",borderRadius:"10px",border:"none",background:spa.on?gold:"#cbd5e1",cursor:"pointer",position:"relative"}}><div style={{width:"16px",height:"16px",borderRadius:"50%",background:"#fff",position:"absolute",top:"2px",left:spa.on?"18px":"2px",transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.2)"}}/></button>
-              <span style={{fontSize:"11px",fontWeight:"700",color:blue}}>🌊 Spa Externo</span>
-              {!spa.on&&<span style={{fontSize:"9px",color:t.textMuted}}>— Clique para adicionar</span>}
-            </div>
-            {spa.on&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px"}}><Inp label="Comp. Spa (m)" value={spa.length} onChange={uSpa("length")} t={t}/><Inp label="Larg. Spa (m)" value={spa.width} onChange={uSpa("width")} t={t}/><Inp label="Prof. Spa (m)" value={spa.depth} onChange={uSpa("depth")} t={t}/></div>}
-          </div>
-
-          {/* Stamp catalog */}
-          {stamp===""&&<div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"8px",padding:"12px",border:`1px solid ${t.cardBorder}`}}><div style={{fontSize:"11px",fontWeight:"700",color:blue,marginBottom:"8px"}}>🎨 Estampas ACQUALINER</div>{STAMPS.map((cat,ci2)=><div key={ci2} style={{marginBottom:"6px"}}><div style={{fontSize:"10px",fontWeight:"700",color:t.text,marginBottom:"3px"}}>{cat.c}</div><div style={{display:"flex",gap:"3px",flexWrap:"wrap"}}>{cat.i.map((s,si)=><button key={si} onClick={()=>setSt(s)} style={{padding:"3px 8px",borderRadius:"12px",border:"1.5px solid #c7d2fe",background:t.stampBg,color:blue,fontSize:"9px",fontWeight:"600",cursor:"pointer"}}>{s}</button>)}</div></div>)}</div>}
-          {stamp&&<div style={{marginTop:"10px",background:t.stampBg,borderRadius:"8px",padding:"8px 10px",display:"flex",alignItems:"center",justifyContent:"space-between"}}><div><span style={{fontSize:"10px",color:t.textSec}}>Estampa:</span> <b style={{color:blue,fontSize:"13px"}}>{stamp}</b></div><Btn onClick={()=>setSt("")} style={{fontSize:"9px",padding:"3px 6px"}}>✕</Btn></div>}
-
-          {/* SUMMARY */}
-          <div style={{marginTop:"14px",background:t.areaBg,borderRadius:"10px",padding:"14px"}}>
-            <div style={{display:"flex",justifyContent:"center",gap:"12px",flexWrap:"wrap",alignItems:"center"}}>
-              <div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{pool.length}×{pool.width}×{pool.depth}m</div><div style={{fontSize:"8px",color:t.textSec}}>Piscina</div></div>
-              <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
-              <div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{ar.chao} m²</div><div style={{fontSize:"8px",color:t.textSec}}>Chão</div></div>
-              <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
-              <div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{ar.par} m²</div><div style={{fontSize:"8px",color:t.textSec}}>Paredes{wMode==="irregular"?" ⚠️":""}</div></div>
-              {spa.on&&<><div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/><div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:"#b45309"}}>{(parseFloat(ar.sChao)+parseFloat(ar.sPar)).toFixed(1)} m²</div><div style={{fontSize:"8px",color:t.textSec}}>Spa</div></div></>}
-              <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
-              <div style={{textAlign:"center",background:gold,borderRadius:"8px",padding:"4px 12px"}}><div style={{fontSize:"18px",fontWeight:"800",color:navy}}>{ar.tot} m²</div><div style={{fontSize:"8px",color:"#1a1a2e",fontWeight:"600"}}>Área Total</div></div>
-              <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
-              <div style={{textAlign:"center"}}><div style={{fontSize:"14px",fontWeight:"800",color:blue}}>{ar.perim} m</div><div style={{fontSize:"8px",color:t.textSec}}>Perímetro</div></div>
-              <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
-              <div style={{textAlign:"center"}}><div style={{fontSize:"14px",fontWeight:"800",color:blue}}>{ar.vol} m³</div><div style={{fontSize:"8px",color:t.textSec}}>Volume</div></div>
-            </div>
-          </div>
-
-          {/* DISPOSITIVOS + PLANTA TECNICA */}
-          <div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"8px",padding:"12px",border:`1px solid ${t.cardBorder}`}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
-              <div style={{fontSize:"11px",fontWeight:"700",color:blue}}>PLANTA HIDRAULICA</div>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"6px",marginBottom:"12px"}}>
-              {[["retorno","Retorno","#ef4444"],["aspiracao","Aspiracao","#ec4899"],["dreno","Dreno Fundo","#8b5cf6"],["skimmer","Skimmer","#f59e0b"],["refletor","LED","#f97316"],["nivelador","Nivelador","#06b6d4"],["hidro","Hidro","#14b8a6"]].map(([k,lb,cor])=><div key={k} style={{display:"flex",alignItems:"center",gap:"4px",background:t.card,padding:"5px 8px",borderRadius:"6px",border:`1px solid ${t.cardBorder}`}}>
-                <div style={{width:"8px",height:"4px",borderRadius:"1px",background:cor}}/>
-                <span style={{fontSize:"8px",fontWeight:"600",color:t.text,flex:1}}>{lb}</span>
-                <button onClick={()=>setDisps(p=>({...p,[k]:Math.max(0,p[k]-1)}))} style={{width:"16px",height:"16px",borderRadius:"3px",border:"none",background:"#fee2e2",color:"#dc2626",fontSize:"10px",cursor:"pointer",fontWeight:"700",lineHeight:"16px",textAlign:"center"}}>-</button>
-                <span style={{fontSize:"10px",fontWeight:"800",color:t.text,minWidth:"14px",textAlign:"center"}}>{disps[k]}</span>
-                <button onClick={()=>setDisps(p=>({...p,[k]:p[k]+1}))} style={{width:"16px",height:"16px",borderRadius:"3px",border:"none",background:"#dcfce7",color:"#16a34a",fontSize:"10px",cursor:"pointer",fontWeight:"700",lineHeight:"16px",textAlign:"center"}}>+</button>
-              </div>)}
-            </div>
-
-            {(()=>{
+  const renderPlanta=()=>{
               const L=parseFloat(pool.length)||6;const W=parseFloat(pool.width)||3;const D=parseFloat(pool.depth)||1.4;
               const svgW=380;const svgH=280;const pad=40;
               const scale=Math.min((svgW-pad*2-60)/L,(svgH-pad*2)/W);
@@ -917,9 +812,115 @@ export default function App(){
                     </div>
                   })()}
               </div>
-            })()}
+  };
+
+  if(view==="quote")return <QP d={gData()} onBack={()=>setView("editor")} onSave={()=>{const d=gData();const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item)}}/>;
+
+  const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};
+
+  return(
+    <div style={{fontFamily:"'Segoe UI',sans-serif",maxWidth:"920px",margin:"0 auto",background:t.bg,minHeight:"100vh",color:t.text,transition:"background .3s,color .3s"}}>
+      <div style={{background:`linear-gradient(135deg,#001d3d,${blue} 60%,#0077cc)`,padding:"14px 18px",color:"#fff"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"6px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"10px"}}><div><div style={{fontSize:"17px",fontWeight:"800"}}>💧 VINIL VALE</div><div style={{fontSize:"9px",opacity:.7}}>{user?.email?.split("@")[0]} · {VER}</div></div><DarkToggle dark={dark} onToggle={()=>setDark(p=>!p)}/><button onClick={doLogout} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:"6px",padding:"4px 8px",color:"#fff",fontSize:"9px",cursor:"pointer",fontWeight:"600"}}>Sair</button></div>
+          <div style={{display:"flex",gap:"5px",alignItems:"center",flexWrap:"wrap"}}>
+            {fbMsg&&<span style={{background:"rgba(255,255,255,.2)",padding:"4px 8px",borderRadius:"5px",fontSize:"10px",fontWeight:"600"}}>✅ {fbMsg}</span>}
+            <Btn onClick={save} style={{background:"rgba(255,255,255,.12)",color:"#fff",border:"1px solid rgba(255,255,255,.25)"}}>💾 Salvar</Btn>
+            <Btn onClick={()=>setView("quote")} style={{background:"#fff",color:blue,fontWeight:"700"}}>📄 Orçamento</Btn>
           </div>
-          {null}
+        </div>
+        <div style={{display:"flex",gap:"5px",marginTop:"10px",flexWrap:"wrap"}}>{SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(mkItems(sv.id));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20")}} style={{padding:"5px 10px",borderRadius:"16px",border:"1.5px solid rgba(255,255,255,.3)",background:svcType===sv.id?"rgba(255,255,255,.2)":"transparent",color:"#fff",fontSize:"10px",fontWeight:svcType===sv.id?"700":"400",cursor:"pointer"}}>{sv.icon} {sv.label}</button>)}</div>
+      </div>
+
+      <div style={{display:"flex",padding:"0 14px",background:t.tabBg,borderBottom:`1px solid ${t.cardBorder}`,overflowX:"auto"}}>
+        {[["cliente","👤","Cliente"],["piscina","🏊","Piscina"],["itens","🛒","Custos"],["garantias","🛡","Garantias"],["pagamento","💰","Valor"],["historico","📋","Salvos"],["crm","📈","CRM"],["estoque","📦","Estoque"],["contratos","📝","Contratos"]].map(([k,ic,lb])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} t={t}>{lb}</Tab>)}
+      </div>
+
+      <div style={{padding:"14px"}}>
+        {/* CLIENTE */}
+        {tab==="cliente"&&<Card t={t}><ST icon="👤">Dados do Cliente</ST>
+          <div style={{display:"flex",gap:"10px",marginBottom:"10px"}}><Inp label="Proposta" value={propNum} onChange={setPN} placeholder="03/26" style={{flex:"0 0 90px"}} t={t}/><Inp label="Nome completo" value={client.name} onChange={uc("name")} placeholder="Nome" style={{flex:1}} t={t}/></div>
+          <div style={g2}><Inp label="WhatsApp" value={client.phone} onChange={uc("phone")} placeholder="(13) 99999-9999" t={t}/><Inp label="Email" value={client.email} onChange={uc("email")} placeholder="email@email.com" t={t}/><Inp label="Endereço" value={client.address} onChange={uc("address")} placeholder="Rua, nº, bairro" t={t}/><Inp label="Cidade" value={client.city} onChange={uc("city")} placeholder="Registro-SP" t={t}/><Inp label="CPF/CNPJ" value={client.cpf} onChange={uc("cpf")} placeholder="000.000.000-00" t={t}/><Inp label="RG" value={client.rg} onChange={uc("rg")} t={t}/></div>
+        </Card>}
+
+        {/* PISCINA */}
+        {tab==="piscina"&&<Card t={t}><ST icon="🏊">Piscina</ST>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Comp. (m)" value={pool.length} onChange={up("length")} t={t}/><Inp label="Larg. (m)" value={pool.width} onChange={up("width")} t={t}/><Inp label="Prof. (m)" value={pool.depth} onChange={up("depth")} t={t}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Formato" value={poolFmt} onChange={setPF} options={PFMT} t={t}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={setVT} options={VOPTS.map(v=>({value:v.t,label:`${v.t} (${v.w}a)`}))} t={t}/><Sel label="Estampa" value={stamp} onChange={setSt} options={[{value:"",label:"— Escolha —"},...ALLST.map(s=>({value:s,label:s}))]} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
+
+          {/* MODO PAREDES */}
+          <div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"8px",padding:"12px",border:`1px solid ${t.cardBorder}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
+              <span style={{fontSize:"11px",fontWeight:"700",color:blue}}>📐 Cálculo das Paredes:</span>
+              <button onClick={()=>setWM("regular")} style={{padding:"4px 10px",borderRadius:"14px",border:`1.5px solid ${wMode==="regular"?blue:"#cbd5e1"}`,background:wMode==="regular"?blue:"#fff",color:wMode==="regular"?"#fff":"#64748b",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>Esquadro (padrão)</button>
+              <button onClick={()=>setWM("irregular")} style={{padding:"4px 10px",borderRadius:"14px",border:`1.5px solid ${wMode==="irregular"?blue:"#cbd5e1"}`,background:wMode==="irregular"?blue:"#fff",color:wMode==="irregular"?"#fff":"#64748b",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>Fora de Esquadro</button>
+            </div>
+            {wMode==="irregular"&&<div>
+              <div style={{fontSize:"9px",color:t.textSec,marginBottom:"6px"}}>Defina cada parede com comprimento e altura diferentes:</div>
+              {walls.map((w,i)=><div key={i} style={{display:"flex",gap:"6px",alignItems:"center",marginBottom:"4px"}}>
+                <span style={{fontSize:"10px",fontWeight:"600",color:blue,minWidth:"30px"}}>P{i+1}</span>
+                <Inp label="" value={w.l} onChange={v=>uWall(i,"l",v)} placeholder="Comp." style={{flex:1}} t={t}/>
+                <span style={{fontSize:"10px",color:t.textMuted}}>×</span>
+                <Inp label="" value={w.h} onChange={v=>uWall(i,"h",v)} placeholder="Alt." style={{flex:1}} t={t}/>
+                <span style={{fontSize:"9px",color:t.textMuted}}>m</span>
+                <span style={{fontSize:"10px",color:blue,fontWeight:"700"}}>{((parseFloat(w.l)||0)*(parseFloat(w.h)||0)).toFixed(1)}m²</span>
+                {walls.length>2&&<button onClick={()=>rmWall(i)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>✕</button>}
+              </div>)}
+              <Btn onClick={addWall} style={{marginTop:"4px",fontSize:"9px"}}>+ Parede</Btn>
+            </div>}
+            {wMode==="regular"&&<div style={{fontSize:"10px",color:t.textSec}}>Paredes calculadas automaticamente: 2×({pool.length}×{pool.depth}) + 2×({pool.width}×{pool.depth})</div>}
+          </div>
+
+          {/* SPA */}
+          <div style={{marginTop:"14px",background:spa.on?"#fef9e7":"#f8fafc",borderRadius:"8px",padding:"12px",border:`1px solid ${spa.on?gold+"55":"#e2e8f0"}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:spa.on?"10px":"0"}}>
+              <button onClick={()=>setSpa(p=>({...p,on:!p.on}))} style={{width:"36px",height:"20px",borderRadius:"10px",border:"none",background:spa.on?gold:"#cbd5e1",cursor:"pointer",position:"relative"}}><div style={{width:"16px",height:"16px",borderRadius:"50%",background:"#fff",position:"absolute",top:"2px",left:spa.on?"18px":"2px",transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.2)"}}/></button>
+              <span style={{fontSize:"11px",fontWeight:"700",color:blue}}>🌊 Spa Externo</span>
+              {!spa.on&&<span style={{fontSize:"9px",color:t.textMuted}}>— Clique para adicionar</span>}
+            </div>
+            {spa.on&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px"}}><Inp label="Comp. Spa (m)" value={spa.length} onChange={uSpa("length")} t={t}/><Inp label="Larg. Spa (m)" value={spa.width} onChange={uSpa("width")} t={t}/><Inp label="Prof. Spa (m)" value={spa.depth} onChange={uSpa("depth")} t={t}/></div>}
+          </div>
+
+          {/* Stamp catalog */}
+          {stamp===""&&<div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"8px",padding:"12px",border:`1px solid ${t.cardBorder}`}}><div style={{fontSize:"11px",fontWeight:"700",color:blue,marginBottom:"8px"}}>🎨 Estampas ACQUALINER</div>{STAMPS.map((cat,ci2)=><div key={ci2} style={{marginBottom:"6px"}}><div style={{fontSize:"10px",fontWeight:"700",color:t.text,marginBottom:"3px"}}>{cat.c}</div><div style={{display:"flex",gap:"3px",flexWrap:"wrap"}}>{cat.i.map((s,si)=><button key={si} onClick={()=>setSt(s)} style={{padding:"3px 8px",borderRadius:"12px",border:"1.5px solid #c7d2fe",background:t.stampBg,color:blue,fontSize:"9px",fontWeight:"600",cursor:"pointer"}}>{s}</button>)}</div></div>)}</div>}
+          {stamp&&<div style={{marginTop:"10px",background:t.stampBg,borderRadius:"8px",padding:"8px 10px",display:"flex",alignItems:"center",justifyContent:"space-between"}}><div><span style={{fontSize:"10px",color:t.textSec}}>Estampa:</span> <b style={{color:blue,fontSize:"13px"}}>{stamp}</b></div><Btn onClick={()=>setSt("")} style={{fontSize:"9px",padding:"3px 6px"}}>✕</Btn></div>}
+
+          {/* SUMMARY */}
+          <div style={{marginTop:"14px",background:t.areaBg,borderRadius:"10px",padding:"14px"}}>
+            <div style={{display:"flex",justifyContent:"center",gap:"12px",flexWrap:"wrap",alignItems:"center"}}>
+              <div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{pool.length}×{pool.width}×{pool.depth}m</div><div style={{fontSize:"8px",color:t.textSec}}>Piscina</div></div>
+              <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
+              <div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{ar.chao} m²</div><div style={{fontSize:"8px",color:t.textSec}}>Chão</div></div>
+              <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
+              <div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{ar.par} m²</div><div style={{fontSize:"8px",color:t.textSec}}>Paredes{wMode==="irregular"?" ⚠️":""}</div></div>
+              {spa.on&&<><div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/><div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:"#b45309"}}>{(parseFloat(ar.sChao)+parseFloat(ar.sPar)).toFixed(1)} m²</div><div style={{fontSize:"8px",color:t.textSec}}>Spa</div></div></>}
+              <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
+              <div style={{textAlign:"center",background:gold,borderRadius:"8px",padding:"4px 12px"}}><div style={{fontSize:"18px",fontWeight:"800",color:navy}}>{ar.tot} m²</div><div style={{fontSize:"8px",color:"#1a1a2e",fontWeight:"600"}}>Área Total</div></div>
+              <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
+              <div style={{textAlign:"center"}}><div style={{fontSize:"14px",fontWeight:"800",color:blue}}>{ar.perim} m</div><div style={{fontSize:"8px",color:t.textSec}}>Perímetro</div></div>
+              <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
+              <div style={{textAlign:"center"}}><div style={{fontSize:"14px",fontWeight:"800",color:blue}}>{ar.vol} m³</div><div style={{fontSize:"8px",color:t.textSec}}>Volume</div></div>
+            </div>
+          </div>
+
+          {/* DISPOSITIVOS + PLANTA TECNICA */}
+          <div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"8px",padding:"12px",border:`1px solid ${t.cardBorder}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+              <div style={{fontSize:"11px",fontWeight:"700",color:blue}}>PLANTA HIDRAULICA</div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"6px",marginBottom:"12px"}}>
+              {[["retorno","Retorno","#ef4444"],["aspiracao","Aspiracao","#ec4899"],["dreno","Dreno Fundo","#8b5cf6"],["skimmer","Skimmer","#f59e0b"],["refletor","LED","#f97316"],["nivelador","Nivelador","#06b6d4"],["hidro","Hidro","#14b8a6"]].map(([k,lb,cor])=><div key={k} style={{display:"flex",alignItems:"center",gap:"4px",background:t.card,padding:"5px 8px",borderRadius:"6px",border:`1px solid ${t.cardBorder}`}}>
+                <div style={{width:"8px",height:"4px",borderRadius:"1px",background:cor}}/>
+                <span style={{fontSize:"8px",fontWeight:"600",color:t.text,flex:1}}>{lb}</span>
+                <button onClick={()=>setDisps(p=>({...p,[k]:Math.max(0,p[k]-1)}))} style={{width:"16px",height:"16px",borderRadius:"3px",border:"none",background:"#fee2e2",color:"#dc2626",fontSize:"10px",cursor:"pointer",fontWeight:"700",lineHeight:"16px",textAlign:"center"}}>-</button>
+                <span style={{fontSize:"10px",fontWeight:"800",color:t.text,minWidth:"14px",textAlign:"center"}}>{disps[k]}</span>
+                <button onClick={()=>setDisps(p=>({...p,[k]:p[k]+1}))} style={{width:"16px",height:"16px",borderRadius:"3px",border:"none",background:"#dcfce7",color:"#16a34a",fontSize:"10px",cursor:"pointer",fontWeight:"700",lineHeight:"16px",textAlign:"center"}}>+</button>
+              </div>)}
+            </div>
+
+            {renderPlanta()}
+          </div>
         </Card>}
 
         {/* ITENS */}
