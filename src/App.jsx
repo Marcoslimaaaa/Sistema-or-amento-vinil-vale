@@ -891,14 +891,14 @@ export default function App(){
                   {(()=>{
                     const dist=L*0.1;
                     const retQty=disps.retorno||0;const aspQty=disps.aspiracao||0;const drQty=disps.dreno||0;const skQty=disps.skimmer||0;const nivQty=disps.nivelador||0;const hidQty=disps.hidro||0;
-                    const retTubo=retQty>0?retQty*(D+0.5)+dist+(retQty>1?(retQty-1)*W/(retQty+1):0):0;
-                    const aspTubo=aspQty>0?aspQty*(L/2+D+0.5)+dist:0;
+                    const retTubo=retQty>0?retQty*(D+0.5)+dist+(retQty>1?(retQty-1)*W*1.0/(retQty+1):0):0;
+                    const aspTubo=aspQty>0?aspQty*(L*0.5+D+0.5)+dist:0;
                     const drTubo=drQty>0?drQty*(D+0.3)+dist+(drQty>1?L*0.4:0):0;
                     const skTubo=skQty>0?skQty*(D+0.5)+dist:0;
                     const nivTubo=nivQty>0?nivQty*1.5+dist:0;
-                    const hidTubo=hidQty>0?hidQty*(D+0.5)+dist+(hidQty>1?(hidQty-1)*L/(hidQty+1):0):0;
+                    const hidTubo=hidQty>0?hidQty*(D+0.5)+dist+(hidQty>1?(hidQty-1)*L*1.0/(hidQty+1):0):0;
                     const totalTubo=Math.ceil(retTubo+aspTubo+drTubo+skTubo+nivTubo+hidTubo);
-                    const barras6m=Math.ceil(totalTubo/6);
+                    const barras6m=Math.ceil(totalTubo*1.0/6);
                     const curvas=retQty*2+aspQty*3+drQty*2+skQty*2+nivQty*1+hidQty*2+(retQty>1?(retQty-1)*2:0)+(drQty>1?(drQty-1)*2:0)+(hidQty>1?(hidQty-1)*2:0);
                     const joelhos=Math.ceil(curvas*0.15);
                     const items=[
@@ -919,6 +919,7 @@ export default function App(){
               </div>
             })()}
           </div>
+          {null}
         </Card>}
 
         {/* ITENS */}
