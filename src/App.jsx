@@ -234,13 +234,12 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
 };
 
 // ═══ ISOMETRIC VIEW ═══
-const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName},ref)=>{
+const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,autoPositions,customPos={},invertSide=false},ref)=>{
   const L=parseFloat(pool.length)||6,W=parseFloat(pool.width)||3,D=parseFloat(pool.depth)||1.4;
   const svgW=640,svgH=440,cos30=Math.cos(Math.PI/6),sin30=0.5;
   const mX=28,mYt=54,mYb=90;
   const totalX=L+2.9;
   const s=Math.min((svgW-2*mX)/((totalX+W)*cos30),(svgH-mYt-mYb)/(D+(totalX+W)*sin30));
-  // oy: front-left-bottom corner of pool. Top of SVG = oy - D*s (pool rim at z=D)
   const ox=mX+W*cos30*s,oy=mYt+D*s;
   const iso=(x,y,z)=>({x:ox+(x-y)*cos30*s,y:oy+(x+y)*sin30*s-z*s});
   const pt=(x,y,z)=>{const p=iso(x,y,z);return`${p.x.toFixed(1)},${p.y.toFixed(1)}`};
@@ -281,9 +280,9 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName}
   els.push(<line key="dD" x1={depA.x+7} y1={depA.y} x2={depB.x+7} y2={depB.y} stroke="#64748b" strokeWidth="0.8" strokeDasharray="3,2"/>);
   const depM=iso(L,0,D/2);els.push(<text key="dDt" x={depM.x+11} y={depM.y+3} textAnchor="start" fontSize="8" fontWeight="700" fill="#64748b">{D}m</text>);
   // Device & pipe helpers
-  const dev=(key,x,y,z,lbl,col,typ)=>{
+  const dev=(key,x,y,z,lbl,col,isFloor)=>{
     const p=iso(x,y,z);const out=[];
-    if(typ==='cross'){
+    if(isFloor){
       out.push(<circle key={`${key}c`} cx={p.x} cy={p.y} r="5" fill={col} opacity="0.25" stroke={col} strokeWidth="1.5"/>);
       out.push(<line key={`${key}h`} x1={p.x-3.5} y1={p.y} x2={p.x+3.5} y2={p.y} stroke={col} strokeWidth="1.5"/>);
       out.push(<line key={`${key}v`} x1={p.x} y1={p.y-3.5} x2={p.x} y2={p.y+3.5} stroke={col} strokeWidth="1.5"/>);
@@ -292,56 +291,108 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName}
     return out;
   };
   const pip=(key,arr,col,sw=2.5,dash=false)=><path key={key} d={pth(arr)} fill="none" stroke={col} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash?"6,3":undefined} opacity="0.85"/>;
-  const diam=(key,x,y,z,col,dStr="Ø50")=>{const p=iso(x,y,z);return <text key={key} x={p.x} y={p.y-5} textAnchor="middle" fontSize="6" fontWeight="700" fill={col} opacity="0.9">{dStr}</text>;};
-  const lo=0.35; // lane offset outside pool
-  // CM position
-  const cmX0=L+0.85,cmY0=W*0.1,cmWw=1.4,cmWd=W*0.8,cmBoxH=0.45;
-  // RETORNO (blue, front wall y=0)
-  if(retQ>0){const col=C.retorno;
-    for(let i=0;i<retQ;i++){const xp=L*(i+1)/(retQ+1);els.push(...dev(`ret${i}`,xp,0,D*0.55,`R${i+1}`,col,'circle'));els.push(pip(`retpipe${i}`,[[xp,0,D*0.55],[xp,-lo,D*0.55],[xp,-lo,D]],col));}
-    const xF=L*1/(retQ+1),xL=L*retQ/(retQ+1);
-    if(retQ>1)els.push(pip(`retcol`,[[xF,-lo,D],[xL,-lo,D]],col,3));
-    const xE=retQ>1?xL:xF;
-    els.push(pip(`rettocm`,[[xE,-lo,D],[cmX0,-lo,D],[cmX0,cmY0,D]],col,3));
-    els.push(diam(`retd`,xE/2,-lo,D,col));}
-  // ASPIRAÇÃO (pink, short wall x=0)
-  if(aspQ>0){const col=C.aspiracao;
-    for(let i=0;i<aspQ;i++){const yp=W*(i+1)/(aspQ+1);els.push(...dev(`asp${i}`,0,yp,D*0.45,`AS${i+1}`,col,'circle'));els.push(pip(`asppipe${i}`,[[0,yp,D*0.45],[-lo,yp,D*0.45],[-lo,yp,D]],col));}
-    els.push(pip(`asptocm`,[[-lo,W/2,D],[-lo,-lo,D],[cmX0,-lo-0.1,D],[cmX0,cmY0+0.15,D]],col,3));
-    els.push(diam(`aspd`,-lo,W/4,D,col));}
-  // DRENO FUNDO (purple, floor)
-  if(drQ>0){const col=C.dreno;const lXR=L+lo;
-    for(let i=0;i<drQ;i++){const xp=L*(i+1)/(drQ+1);els.push(...dev(`dr${i}`,xp,W/2,0,`DF${i+1}`,col,'cross'));els.push(pip(`drpipe${i}`,[[xp,W/2,0],[xp,W/2,D*0.12],[L,W/2,D*0.12],[lXR,W/2,D*0.12],[lXR,W/2,D]],col));}
-    els.push(pip(`drtocm`,[[lXR,W/2,D],[cmX0,W/2,D],[cmX0,cmY0+0.3,D]],col,3));
-    els.push(diam(`drd`,cmX0-0.5,W/2,D,col));}
-  // SKIMMER (orange, front wall top)
-  if(skQ>0){const col=C.skimmer;
-    for(let i=0;i<skQ;i++){const xp=Math.min(L*(0.55+i*0.2),L*0.9);els.push(...dev(`sk${i}`,xp,0,D,`SK${i+1}`,col,'circle'));els.push(pip(`skpipe${i}`,[[xp,0,D],[xp,-lo-0.12,D],[cmX0-0.15,-lo-0.12,D],[cmX0-0.15,cmY0+0.45,D]],col));}
-    const xSkm=Math.min(L*0.55,L*0.9);els.push(diam(`skd`,xSkm+(cmX0-0.15-xSkm)*0.5,-lo-0.12,D,col));}
-  // NIVELADOR (cyan)
-  if(nivQ>0){const col=C.nivelador;const xp=L*0.3;
-    els.push(...dev(`niv0`,xp,0,D*0.88,`N1`,col,'circle'));els.push(pip(`nivpipe`,[[xp,0,D*0.88],[xp,-0.18,D*0.88],[xp,-0.18,D]],col,1.5));}
-  // REFLETOR/LED (yellow, alternating walls)
-  if(ledQ>0){const col=C.refletor;
-    for(let i=0;i<ledQ;i++){const xp=L*(i+0.5)/ledQ,yp=(i%2===0)?0:W;
-      els.push(...dev(`led${i}`,xp,yp,D*0.62,`L${i+1}`,col,'circle'));
-      if(yp===0)els.push(pip(`ledpipe${i}`,[[xp,0,D*0.62],[xp,-0.15,D*0.62],[xp,-0.15,D]],col,1.2,true));}}
-  // HIDRO (green, back floor area)
-  if(hidQ>0){const col=C.hidro;const lXR2=L+lo+0.2;
-    for(let i=0;i<hidQ;i++){const xp=L*(i+1)/(hidQ+1);els.push(...dev(`hid${i}`,xp,W*0.75,0,`H${i+1}`,col,'cross'));els.push(pip(`hidpipe${i}`,[[xp,W*0.75,0],[L,W*0.75,0],[lXR2,W*0.75,0],[lXR2,W*0.75,D]],col));}
-    els.push(pip(`hidtocm`,[[lXR2,W*0.75,D],[cmX0,W*0.75,D],[cmX0,cmY0+0.6,D]],col,3));
-    els.push(diam(`hidd`,cmX0-0.4,W*0.75,D,col));}
+  const lo=0.32;
+  // Z height per device type
+  const typeZ=(type,isFloor)=>{
+    if(isFloor)return 0;
+    if(type==='skimmer')return D;
+    if(type==='nivelador')return D*0.88;
+    if(type==='refletor')return D*0.62;
+    if(type==='aspiracao')return D*0.5;
+    return D*0.55;
+  };
+  // CM position (same as 2D autoPositions default)
+  const casaFrac=customPos?.casa||(invertSide?{x:-0.15,y:0.5}:{x:1.12,y:0.5});
+  const cmX0=casaFrac.x*L,cmBY0=W*0.1,cmWw=Math.min(1.4,W*0.5),cmWd=W*0.8,cmBoxH=0.45;
+  // Lane offsets per system to avoid overlapping pipes
+  const sysOrder=['retorno','hidro','dreno','aspiracao','skimmer','nivelador','refletor'];
+  // CM entry y per system
+  const cmEntryY=(sysType,idx)=>cmBY0+cmWd*(0.1+idx*0.12);
+  // Get actual device positions from autoPositions (same as 2D PlantaView)
+  const allPos=autoPositions?{...autoPositions(L,W,disps,invertSide),...(customPos||{})}:{};
+  const activeDevs=Object.entries(allPos).filter(([k,p])=>!p.special&&autoPositions&&autoPositions(L,W,disps,invertSide)[k]);
+  // Group by system type
+  const byType={};
+  activeDevs.forEach(([key,p])=>{if(!byType[p.type])byType[p.type]=[];byType[p.type].push([key,p]);});
+  // Draw each system
+  sysOrder.forEach((sysType,sysIdx)=>{
+    const devs=byType[sysType];if(!devs||devs.length===0)return;
+    const col=C[sysType]||'#999';
+    const laneOff=lo+sysIdx*0.16; // unique lane per system
+    const cmEY=cmEntryY(sysType,sysIdx);
+    const exitPts=[];
+    devs.forEach(([key,p])=>{
+      const ix=p.x*L,iy=p.y*W,iz=typeZ(sysType,p.floor);
+      els.push(...dev(key,ix,iy,iz,p.label,col,p.floor));
+      // Route pipe from device to a ground-level exit point
+      let route;
+      if(p.floor){
+        // Floor device → go along floor to right wall, then up
+        route=[[ix,iy,0],[L,iy,0],[L+laneOff,iy,0],[L+laneOff,iy,D]];
+        exitPts.push([L+laneOff,iy,D]);
+      } else if(p.x<0.12){
+        // Left short wall (retorno, hidro)
+        route=[[0,iy,iz],[-laneOff,iy,iz],[-laneOff,iy,D]];
+        exitPts.push([-laneOff,iy,D]);
+      } else if(p.x>0.88){
+        // Right short wall (skimmer, nivelador)
+        route=[[L,iy,iz],[L+laneOff,iy,iz],[L+laneOff,iy,D]];
+        exitPts.push([L+laneOff,iy,D]);
+      } else if(p.y<0.08){
+        // Front long wall (refletor front)
+        route=[[ix,0,iz],[ix,-laneOff,iz],[ix,-laneOff,D]];
+        exitPts.push([ix,-laneOff,D]);
+      } else if(p.y>0.88){
+        // Back long wall (aspiracao y=0.95, refletor back)
+        route=[[ix,W,iz],[ix,W+laneOff,iz],[ix,W+laneOff,D]];
+        exitPts.push([ix,W+laneOff,D]);
+      } else {
+        route=[[ix,iy,iz],[L,iy,iz],[L+laneOff,iy,iz],[L+laneOff,iy,D]];
+        exitPts.push([L+laneOff,iy,D]);
+      }
+      els.push(pip(`${key}-pipe`,route,col));
+    });
+    // Collector pipe: connect all exits → to CM
+    if(exitPts.length===0)return;
+    // Determine routing strategy based on exit type
+    const isLeftExit=exitPts[0][0]<0;
+    const isFrontExit=exitPts[0][1]<0;
+    const isBackExit=exitPts[0][1]>W;
+    if(isLeftExit){
+      // Left exits: collect along x=-laneOff, route below pool (y=W+laneOff), then to CM
+      if(exitPts.length>1){const ys=exitPts.map(p=>p[1]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[-laneOff,ys[0],D],[-laneOff,ys[ys.length-1],D]],col,3));}
+      const midY=exitPts.reduce((s,p)=>s+p[1],0)/exitPts.length;
+      els.push(pip(`${sysType}-tocm`,[[-laneOff,midY,D],[-laneOff,W+laneOff,D],[cmX0,W+laneOff,D],[cmX0,cmEY,D]],col,3));
+    } else if(isFrontExit){
+      // Front exits: collect along y=-laneOff, route right to CM
+      if(exitPts.length>1){const xs=exitPts.map(p=>p[0]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[xs[0],-laneOff,D],[xs[xs.length-1],-laneOff,D]],col,3));}
+      const midX=exitPts.reduce((s,p)=>s+p[0],0)/exitPts.length;
+      els.push(pip(`${sysType}-tocm`,[[midX,-laneOff,D],[cmX0,-laneOff,D],[cmX0,cmEY,D]],col,3));
+    } else if(isBackExit){
+      // Back exits: collect along y=W+laneOff, route right to CM
+      if(exitPts.length>1){const xs=exitPts.map(p=>p[0]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[xs[0],W+laneOff,D],[xs[xs.length-1],W+laneOff,D]],col,3));}
+      const midX=exitPts.reduce((s,p)=>s+p[0],0)/exitPts.length;
+      els.push(pip(`${sysType}-tocm`,[[midX,W+laneOff,D],[cmX0,W+laneOff,D],[cmX0,cmEY,D]],col,3));
+    } else {
+      // Right-side exits: collect along x=L+laneOff, then to CM
+      if(exitPts.length>1){const ys=exitPts.map(p=>p[1]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[L+laneOff,ys[0],D],[L+laneOff,ys[ys.length-1],D]],col,3));}
+      const midY=exitPts.reduce((s,p)=>s+p[1],0)/exitPts.length;
+      els.push(pip(`${sysType}-tocm`,[[L+laneOff,midY,D],[cmX0,midY,D],[cmX0,cmEY,D]],col,3));
+    }
+    // Diameter label mid-route
+    if(exitPts.length>0){const ep=exitPts[0];const mp=iso(ep[0]+(cmX0-ep[0])*0.4,ep[1],D);els.push(<text key={`${sysType}-diam`} x={mp.x} y={mp.y-5} textAnchor="middle" fontSize="6" fontWeight="700" fill={col} opacity="0.9">Ø50</text>);}
+  });
   // CASA DE MÁQUINAS
-  els.push(<polygon key="cmt" points={pts([[cmX0,cmY0,D],[cmX0+cmWw,cmY0,D],[cmX0+cmWw,cmY0+cmWd,D],[cmX0,cmY0+cmWd,D]])} fill={dk?"#334155":"#e2e8f0"} stroke="#475569" strokeWidth="1.5"/>);
-  els.push(<polygon key="cmf" points={pts([[cmX0,cmY0,D-cmBoxH],[cmX0+cmWw,cmY0,D-cmBoxH],[cmX0+cmWw,cmY0,D],[cmX0,cmY0,D]])} fill={dk?"#1e293b":"#f1f5f9"} stroke="#475569" strokeWidth="1.5"/>);
-  els.push(<polygon key="cmr" points={pts([[cmX0+cmWw,cmY0,D-cmBoxH],[cmX0+cmWw,cmY0+cmWd,D-cmBoxH],[cmX0+cmWw,cmY0+cmWd,D],[cmX0+cmWw,cmY0,D]])} fill={dk?"#334155":"#cbd5e1"} stroke="#475569" strokeWidth="1.5"/>);
-  const cmCtr=iso(cmX0+cmWw/2,cmY0+cmWd/2,D+0.08);
+  els.push(<polygon key="cmt" points={pts([[cmX0,cmBY0,D],[cmX0+cmWw,cmBY0,D],[cmX0+cmWw,cmBY0+cmWd,D],[cmX0,cmBY0+cmWd,D]])} fill={dk?"#334155":"#e2e8f0"} stroke="#475569" strokeWidth="1.5"/>);
+  els.push(<polygon key="cmf" points={pts([[cmX0,cmBY0,D-cmBoxH],[cmX0+cmWw,cmBY0,D-cmBoxH],[cmX0+cmWw,cmBY0,D],[cmX0,cmBY0,D]])} fill={dk?"#1e293b":"#f1f5f9"} stroke="#475569" strokeWidth="1.5"/>);
+  els.push(<polygon key="cmr" points={pts([[cmX0+cmWw,cmBY0,D-cmBoxH],[cmX0+cmWw,cmBY0+cmWd,D-cmBoxH],[cmX0+cmWw,cmBY0+cmWd,D],[cmX0+cmWw,cmBY0,D]])} fill={dk?"#334155":"#cbd5e1"} stroke="#475569" strokeWidth="1.5"/>);
+  const cmCtr=iso(cmX0+cmWw/2,cmBY0+cmWd/2,D+0.08);
   els.push(<text key="cmlbl" x={cmCtr.x} y={cmCtr.y} textAnchor="middle" fontSize="7" fontWeight="800" fill="#475569">CASA DE</text>);
   els.push(<text key="cmlbl2" x={cmCtr.x} y={cmCtr.y+9} textAnchor="middle" fontSize="7" fontWeight="800" fill="#475569">MÁQUINAS</text>);
-  const fp=iso(cmX0+0.22,cmY0+cmWd*0.25,D+0.06);
+  const fp=iso(cmX0+0.22,cmBY0+cmWd*0.25,D+0.06);
   els.push(<ellipse key="filt" cx={fp.x} cy={fp.y} rx="8" ry="4.5" fill={dk?"#064e3b":"#86efac"} stroke="#15803d" strokeWidth="1.5"/>);
   els.push(<text key="ftlbl" x={fp.x} y={fp.y+13} textAnchor="middle" fontSize="6" fontWeight="700" fill="#15803d">Filtro</text>);
-  const pp=iso(cmX0+0.22,cmY0+cmWd*0.72,D+0.06);
+  const pp=iso(cmX0+0.22,cmBY0+cmWd*0.72,D+0.06);
   els.push(<circle key="pump" cx={pp.x} cy={pp.y} r="7" fill={dk?"#1e3a5f":"#dbeafe"} stroke="#2563eb" strokeWidth="1.5"/>);
   els.push(<line key="pumpL" x1={pp.x-4} y1={pp.y} x2={pp.x+4} y2={pp.y} stroke="#2563eb" strokeWidth="1.5"/>);
   els.push(<line key="pumpV" x1={pp.x} y1={pp.y-4} x2={pp.x} y2={pp.y+4} stroke="#2563eb" strokeWidth="1.5"/>);
@@ -1658,7 +1709,7 @@ export default function App(){
             </div>)}
           </div>
           {isoView
-            ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name}/>
+            ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide}/>
             :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide}/>}
         </Card>}
 
