@@ -600,6 +600,7 @@ export default function App(){
   const [crmTags,setCrmTags]=useState({});
   const [crmNoteType,setCrmNoteType]=useState("nota");
   const [crmSort,setCrmSort]=useState("data");
+  const crmNoteInputRef=useRef(null);
 
   useEffect(()=>{
     if(!user||!fbReady||!fb.db||user.uid==="local")return;
@@ -1162,10 +1163,10 @@ export default function App(){
           const NotePanel=({q})=><div style={{marginTop:"8px",borderTop:`1px solid ${t.cardBorder}`,paddingTop:"8px"}}>
             {/* Tipo + input */}
             <div style={{display:"flex",gap:"3px",marginBottom:"6px",flexWrap:"wrap"}}>
-              {Object.entries(TIPO_ICONS).map(([k,v])=><button key={k} onClick={()=>setCrmNoteType(k)} style={{fontSize:"7px",padding:"2px 5px",borderRadius:"4px",border:`1.5px solid ${crmNoteType===k?v.color:t.cardBorder}`,background:crmNoteType===k?v.color+"22":"transparent",color:crmNoteType===k?v.color:t.textMuted,cursor:"pointer",fontWeight:"600"}}>{v.icon}</button>)}
+              {Object.entries(TIPO_ICONS).map(([k,v])=><button key={k} title={v.label} onClick={()=>{setCrmNoteType(k);setTimeout(()=>crmNoteInputRef.current?.focus(),30)}} style={{fontSize:"9px",padding:"3px 8px",borderRadius:"6px",border:`1.5px solid ${crmNoteType===k?v.color:t.cardBorder}`,background:crmNoteType===k?v.color+"22":"transparent",color:crmNoteType===k?v.color:t.textMuted,cursor:"pointer",fontWeight:"600",display:"flex",alignItems:"center",gap:"3px"}}>{v.icon} <span style={{fontSize:"8px"}}>{v.label}</span></button>)}
             </div>
             <div style={{display:"flex",gap:"3px",marginBottom:"6px"}}>
-              <input value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder={`Registrar ${TIPO_ICONS[crmNoteType]?.label||"nota"}...`} onKeyDown={e=>{if(e.key==="Enter"&&newNote.trim()){addInteracao(q.id,crmNoteType,newNote.trim());setNewNote("")}}} style={{flex:1,padding:"4px 7px",border:`1px solid ${t.cardBorder}`,borderRadius:"5px",fontSize:"9px",background:t.inputBg,color:t.text}}/>
+              <input ref={crmNoteInputRef} value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder={`Registrar ${TIPO_ICONS[crmNoteType]?.label||"nota"}...`} onKeyDown={e=>{if(e.key==="Enter"&&newNote.trim()){addInteracao(q.id,crmNoteType,newNote.trim());setNewNote("");setTimeout(()=>crmNoteInputRef.current?.focus(),30)}}} style={{flex:1,padding:"6px 10px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"10px",background:t.inputBg,color:t.text,outline:"none"}} onFocus={e=>e.target.style.borderColor=TIPO_ICONS[crmNoteType]?.color||blue} onBlur={e=>e.target.style.borderColor=t.cardBorder}/>
               <button onClick={()=>{if(newNote.trim()){addInteracao(q.id,crmNoteType,newNote.trim());setNewNote("")}}} style={{padding:"4px 8px",borderRadius:"5px",border:"none",background:blue,color:"#fff",fontSize:"9px",cursor:"pointer",fontWeight:"700"}}>+</button>
             </div>
             {/* Próximo contato */}
@@ -1292,13 +1293,13 @@ export default function App(){
                         {crmNextContact[q.id]&&<div style={{fontSize:"7px",marginBottom:"5px",color:overdue?"#dc2626":"#16a34a",fontWeight:"600"}}>📅 {overdue?"Atrasado:":"Próx:"} {new Date(crmNextContact[q.id]+"T12:00").toLocaleDateString("pt-BR")}</div>}
                         {/* Ações */}
                         <div style={{display:"flex",gap:"3px",flexWrap:"wrap"}}>
-                          <button onClick={()=>{msgWA(q);addInteracao(q.id,"whatsapp","Mensagem enviada via WhatsApp")}} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📱</button>
-                          <button onClick={()=>{sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado via WhatsApp")}} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📄</button>
-                          {!["concluido","perdido"].includes(stage.id)&&<select value="" onChange={e=>{if(e.target.value)movePipe(q.id,e.target.value);e.target.value=""}} style={{fontSize:"8px",padding:"2px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer",flex:1}}>
+                          <button title="Enviar mensagem WhatsApp" onClick={()=>{msgWA(q);addInteracao(q.id,"whatsapp","Mensagem enviada via WhatsApp")}} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📱 Zap</button>
+                          <button title="Enviar orçamento via WhatsApp" onClick={()=>{sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado via WhatsApp")}} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📄 PDF</button>
+                          {!["concluido","perdido"].includes(stage.id)&&<select title="Mover para outra etapa" value="" onChange={e=>{if(e.target.value)movePipe(q.id,e.target.value);e.target.value=""}} style={{fontSize:"8px",padding:"2px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer",flex:1}}>
                             <option value="">Mover →</option>
                             {PIPE.filter(p=>p.id!==(q.status||"lead")).map(p=><option key={p.id} value={p.id}>{p.icon} {p.label}</option>)}
                           </select>}
-                          <button onClick={()=>setCrmDetail(crmDetail===q.id?null:q.id)} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:`1px solid ${crmDetail===q.id?blue:t.cardBorder}`,background:crmDetail===q.id?blue:"transparent",color:crmDetail===q.id?"#fff":t.text,cursor:"pointer",fontWeight:"600"}}>📋</button>
+                          <button title="Abrir notas, tags e próximo contato" onClick={()=>setCrmDetail(crmDetail===q.id?null:q.id)} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:`1px solid ${crmDetail===q.id?blue:t.cardBorder}`,background:crmDetail===q.id?blue:"transparent",color:crmDetail===q.id?"#fff":t.text,cursor:"pointer",fontWeight:"600"}}>📋 Notas</button>
                         </div>
                         {crmDetail===q.id&&<NotePanel q={q}/>}
                       </div>
@@ -1347,8 +1348,8 @@ export default function App(){
                     <div style={{textAlign:"center"}}><span style={{fontSize:"9px",background:stage.color+"22",color:stage.color,padding:"2px 7px",borderRadius:"9px",fontWeight:"700",whiteSpace:"nowrap"}}>{stage.icon} {stage.label}</span></div>
                     <div style={{fontSize:"9px",textAlign:"center",color:days<=5?"#16a34a":days<=10?"#f59e0b":"#dc2626",fontWeight:"700"}}>{days<999?days+"d":"—"}</div>
                     <div style={{display:"flex",gap:"3px"}}>
-                      <button onClick={e=>{e.stopPropagation();msgWA(q);addInteracao(q.id,"whatsapp","Mensagem enviada via WhatsApp")}} style={{fontSize:"9px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer"}}>📱</button>
-                      <button onClick={e=>{e.stopPropagation();sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado")}} style={{fontSize:"9px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer"}}>📄</button>
+                      <button title="Enviar mensagem WhatsApp" onClick={e=>{e.stopPropagation();msgWA(q);addInteracao(q.id,"whatsapp","Mensagem enviada via WhatsApp")}} style={{fontSize:"9px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer"}}>📱</button>
+                      <button title="Enviar orçamento via WhatsApp" onClick={e=>{e.stopPropagation();sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado")}} style={{fontSize:"9px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer"}}>📄</button>
                     </div>
                   </div>
                   {crmDetail===q.id&&<div style={{padding:"0 10px 8px",background:t.card,borderRadius:"0 0 8px 8px",borderLeft:`1px solid ${t.cardBorder}`,borderRight:`1px solid ${t.cardBorder}`,borderBottom:`1px solid ${t.cardBorder}`,marginTop:"-4px"}}><NotePanel q={q}/></div>}
