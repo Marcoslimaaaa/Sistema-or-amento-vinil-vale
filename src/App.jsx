@@ -240,8 +240,9 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName}
   const mX=28,mYt=54,mYb=90;
   const totalX=L+2.9;
   const s=Math.min((svgW-2*mX)/((totalX+W)*cos30),(svgH-mYt-mYb)/(D+(totalX+W)*sin30));
+  // oy: front-left-bottom corner of pool. Top of SVG = oy - D*s (pool rim at z=D)
   const ox=mX+W*cos30*s,oy=mYt+D*s;
-  const iso=(x,y,z)=>({x:ox+(x-y)*cos30*s,y:oy-(x+y)*sin30*s-z*s});
+  const iso=(x,y,z)=>({x:ox+(x-y)*cos30*s,y:oy+(x+y)*sin30*s-z*s});
   const pt=(x,y,z)=>{const p=iso(x,y,z);return`${p.x.toFixed(1)},${p.y.toFixed(1)}`};
   const pts=arr=>arr.map(([x,y,z])=>pt(x,y,z)).join(' ');
   const pth=arr=>arr.map(([x,y,z],i)=>{const p=iso(x,y,z);return(i?'L':'M')+`${p.x.toFixed(1)} ${p.y.toFixed(1)}`}).join(' ');
