@@ -300,6 +300,17 @@ const calcA=(pool,spa,wMode,walls)=>{
   return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:sChao.toFixed(1),sPar:sPar.toFixed(1),tot:(chao+par+sChao+sPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao).toFixed(1),depthInfo};
 };
 
+// ═══ CRM CONSTANTS ═══
+const TAGS_OPTS=["Interessado","Aguardando","Sem resposta","Retornar","Urgente","Visita agendada"];
+const TIPO_ICONS={
+  whatsapp:{icon:"📱",color:"#25d366",label:"WhatsApp"},
+  ligacao:{icon:"📞",color:"#3b82f6",label:"Ligação"},
+  visita:{icon:"🏠",color:"#8b5cf6",label:"Visita"},
+  email:{icon:"📧",color:"#f59e0b",label:"Email"},
+  nota:{icon:"📝",color:"#64748b",label:"Nota"},
+  orcamento:{icon:"📄",color:"#0055a4",label:"Orçamento"},
+};
+
 // ═══ COMPONENTS ═══
 const navy="#0a1f44",blue="#0055a4",gold="#e8b100",goldL="#fdf3d1",lBg="#f4f7fc";
 
@@ -447,6 +458,40 @@ const QP=({d,onBack,onSave})=>{
       </div>
     </div>
   );
+};
+
+// ═══ NOTE PANEL (definido fora do App para evitar remount a cada render) ═══
+const NotePanel=({q,t,crmNoteType,setCrmNoteType,noteInputRef,newNote,setNewNote,addInteracao,crmNextContact,isNextContactOverdue,setNextContact,crmTags,setLeadTag,interacoes})=>{
+  const ti=TIPO_ICONS[crmNoteType]||TIPO_ICONS.nota;
+  return <div style={{marginTop:"8px",borderTop:`1px solid ${t.cardBorder}`,paddingTop:"8px"}}>
+    <div style={{display:"flex",gap:"3px",marginBottom:"8px",flexWrap:"wrap"}}>
+      {Object.entries(TIPO_ICONS).map(([k,v])=><button key={k} title={v.label} onClick={()=>{setCrmNoteType(k);setTimeout(()=>noteInputRef.current?.focus(),30)}} style={{fontSize:"9px",padding:"3px 8px",borderRadius:"6px",border:`1.5px solid ${crmNoteType===k?v.color:t.cardBorder}`,background:crmNoteType===k?v.color+"22":"transparent",color:crmNoteType===k?v.color:t.textMuted,cursor:"pointer",fontWeight:"600",display:"flex",alignItems:"center",gap:"3px"}}>{v.icon} <span style={{fontSize:"8px"}}>{v.label}</span></button>)}
+    </div>
+    <div style={{display:"flex",gap:"4px",marginBottom:"8px"}}>
+      <input
+        ref={noteInputRef}
+        value={newNote}
+        onChange={e=>setNewNote(e.target.value)}
+        placeholder={`Registrar ${ti.label}...`}
+        autoFocus
+        onKeyDown={e=>{if(e.key==="Enter"&&newNote.trim()){addInteracao(q.id,crmNoteType,newNote.trim());setNewNote("");setTimeout(()=>noteInputRef.current?.focus(),30)}}}
+        style={{flex:1,padding:"7px 10px",border:`1.5px solid ${ti.color}`,borderRadius:"6px",fontSize:"10px",background:t.inputBg,color:t.text,outline:"none"}}
+      />
+      <button onClick={()=>{if(newNote.trim()){addInteracao(q.id,crmNoteType,newNote.trim());setNewNote("");setTimeout(()=>noteInputRef.current?.focus(),30)}}} style={{padding:"7px 12px",borderRadius:"6px",border:"none",background:ti.color,color:"#fff",fontSize:"10px",cursor:"pointer",fontWeight:"700"}}>+</button>
+    </div>
+    <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"8px",background:isNextContactOverdue(q.id)?"#fef2f2":t.sectionBg,padding:"6px 8px",borderRadius:"6px",border:`1px solid ${isNextContactOverdue(q.id)?"#fecaca":t.cardBorder}`}}>
+      <span style={{fontSize:"9px",fontWeight:"700",color:isNextContactOverdue(q.id)?"#dc2626":t.textSec}}>📅 Próximo contato:</span>
+      <input type="date" value={crmNextContact[q.id]||""} onChange={e=>setNextContact(q.id,e.target.value)} style={{fontSize:"9px",border:"none",background:"transparent",color:isNextContactOverdue(q.id)?"#dc2626":t.text,cursor:"pointer",flex:1}}/>
+      {crmNextContact[q.id]&&<button title="Remover data" onClick={()=>setNextContact(q.id,"")} style={{fontSize:"9px",background:"none",border:"none",color:t.textMuted,cursor:"pointer"}}>✕</button>}
+    </div>
+    <div style={{display:"flex",gap:"3px",flexWrap:"wrap",marginBottom:"8px"}}>
+      {TAGS_OPTS.map(tag=>{const active=(crmTags[q.id]||[]).includes(tag);return <button key={tag} title={active?"Remover tag":"Adicionar tag"} onClick={()=>setLeadTag(q.id,tag)} style={{fontSize:"8px",padding:"2px 8px",borderRadius:"10px",border:`1px solid ${active?blue:t.cardBorder}`,background:active?blue+"22":"transparent",color:active?blue:t.textMuted,cursor:"pointer",fontWeight:active?"700":"400"}}>{active?"✓ ":""}{tag}</button>})}
+    </div>
+    <div style={{maxHeight:"130px",overflow:"auto",display:"flex",flexDirection:"column",gap:"3px"}}>
+      {(interacoes[q.id]||[]).map((it,i)=>{const tip=TIPO_ICONS[it.tipo]||TIPO_ICONS.nota;return <div key={i} style={{fontSize:"8px",display:"flex",gap:"5px",alignItems:"flex-start",padding:"4px 6px",borderRadius:"5px",background:t.sectionBg,border:`1px solid ${t.cardBorder}`}}><span style={{color:tip.color,flexShrink:0,fontSize:"10px"}}>{tip.icon}</span><div style={{flex:1}}><span style={{fontWeight:"700",color:t.textSec}}>{it.data} {it.hora} · </span><span style={{color:t.text}}>{it.texto}</span></div></div>})}
+      {(!interacoes[q.id]||interacoes[q.id].length===0)&&<div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",padding:"12px"}}>Nenhuma interação registrada ainda</div>}
+    </div>
+  </div>;
 };
 
 // ═══ MAIN ═══
@@ -1141,8 +1186,6 @@ export default function App(){
 
         {/* CRM */}
         {tab==="crm"&&<Card t={t}>{(()=>{
-          const TAGS_OPTS=["Interessado","Aguardando","Sem resposta","Retornar","Urgente","Visita agendada"];
-          const TIPO_ICONS={whatsapp:{icon:"📱",color:"#25d366",label:"WhatsApp"},ligacao:{icon:"📞",color:"#3b82f6",label:"Ligação"},visita:{icon:"🏠",color:"#8b5cf6",label:"Visita"},email:{icon:"📧",color:"#f59e0b",label:"Email"},nota:{icon:"📝",color:"#64748b",label:"Nota"},orcamento:{icon:"📄",color:"#0055a4",label:"Orçamento"}};
           const activePipe=PIPE.filter(p=>p.id!=="perdido");
           const fechados=hist.filter(q=>["fechou","execucao","concluido"].includes(q.status));
           const ativos=hist.filter(q=>!["concluido","perdido"].includes(q.status));
@@ -1160,31 +1203,7 @@ export default function App(){
             return true;
           });
 
-          const NotePanel=({q})=><div style={{marginTop:"8px",borderTop:`1px solid ${t.cardBorder}`,paddingTop:"8px"}}>
-            {/* Tipo + input */}
-            <div style={{display:"flex",gap:"3px",marginBottom:"6px",flexWrap:"wrap"}}>
-              {Object.entries(TIPO_ICONS).map(([k,v])=><button key={k} title={v.label} onClick={()=>{setCrmNoteType(k);setTimeout(()=>crmNoteInputRef.current?.focus(),30)}} style={{fontSize:"9px",padding:"3px 8px",borderRadius:"6px",border:`1.5px solid ${crmNoteType===k?v.color:t.cardBorder}`,background:crmNoteType===k?v.color+"22":"transparent",color:crmNoteType===k?v.color:t.textMuted,cursor:"pointer",fontWeight:"600",display:"flex",alignItems:"center",gap:"3px"}}>{v.icon} <span style={{fontSize:"8px"}}>{v.label}</span></button>)}
-            </div>
-            <div style={{display:"flex",gap:"3px",marginBottom:"6px"}}>
-              <input ref={crmNoteInputRef} value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder={`Registrar ${TIPO_ICONS[crmNoteType]?.label||"nota"}...`} onKeyDown={e=>{if(e.key==="Enter"&&newNote.trim()){addInteracao(q.id,crmNoteType,newNote.trim());setNewNote("");setTimeout(()=>crmNoteInputRef.current?.focus(),30)}}} style={{flex:1,padding:"6px 10px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"10px",background:t.inputBg,color:t.text,outline:"none"}} onFocus={e=>e.target.style.borderColor=TIPO_ICONS[crmNoteType]?.color||blue} onBlur={e=>e.target.style.borderColor=t.cardBorder}/>
-              <button onClick={()=>{if(newNote.trim()){addInteracao(q.id,crmNoteType,newNote.trim());setNewNote("")}}} style={{padding:"4px 8px",borderRadius:"5px",border:"none",background:blue,color:"#fff",fontSize:"9px",cursor:"pointer",fontWeight:"700"}}>+</button>
-            </div>
-            {/* Próximo contato */}
-            <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"6px",background:isNextContactOverdue(q.id)?"#fef2f2":t.sectionBg,padding:"4px 7px",borderRadius:"5px",border:`1px solid ${isNextContactOverdue(q.id)?"#fecaca":t.cardBorder}`}}>
-              <span style={{fontSize:"8px",fontWeight:"700",color:isNextContactOverdue(q.id)?"#dc2626":t.textSec}}>📅 Próx. contato:</span>
-              <input type="date" value={crmNextContact[q.id]||""} onChange={e=>setNextContact(q.id,e.target.value)} style={{fontSize:"8px",border:"none",background:"transparent",color:isNextContactOverdue(q.id)?"#dc2626":t.text,cursor:"pointer"}}/>
-              {crmNextContact[q.id]&&<button onClick={()=>setNextContact(q.id,"")} style={{fontSize:"8px",background:"none",border:"none",color:t.textMuted,cursor:"pointer"}}>✕</button>}
-            </div>
-            {/* Tags */}
-            <div style={{display:"flex",gap:"3px",flexWrap:"wrap",marginBottom:"6px"}}>
-              {TAGS_OPTS.map(tag=>{const active=(crmTags[q.id]||[]).includes(tag);return <button key={tag} onClick={()=>setLeadTag(q.id,tag)} style={{fontSize:"7px",padding:"1px 5px",borderRadius:"9px",border:`1px solid ${active?blue:t.cardBorder}`,background:active?blue+"22":"transparent",color:active?blue:t.textMuted,cursor:"pointer",fontWeight:active?"700":"400"}}>{tag}</button>})}
-            </div>
-            {/* Histórico */}
-            <div style={{maxHeight:"110px",overflow:"auto",display:"flex",flexDirection:"column",gap:"3px"}}>
-              {(interacoes[q.id]||[]).map((it,i)=>{const ti=TIPO_ICONS[it.tipo]||TIPO_ICONS.nota;return <div key={i} style={{fontSize:"8px",display:"flex",gap:"5px",alignItems:"flex-start",padding:"3px 5px",borderRadius:"4px",background:t.sectionBg}}><span style={{color:ti.color,flexShrink:0}}>{ti.icon}</span><div><span style={{fontWeight:"700",color:t.textSec}}>{it.data} {it.hora} </span><span style={{color:t.text}}>{it.texto}</span></div></div>})}
-              {(!interacoes[q.id]||interacoes[q.id].length===0)&&<div style={{fontSize:"8px",color:t.textMuted,textAlign:"center",padding:"8px"}}>Nenhuma interação registrada</div>}
-            </div>
-          </div>;
+          const notePanelProps={t,crmNoteType,setCrmNoteType,noteInputRef:crmNoteInputRef,newNote,setNewNote,addInteracao,crmNextContact,isNextContactOverdue,setNextContact,crmTags,setLeadTag,interacoes};
 
           return <>
           {/* HEADER */}
@@ -1301,7 +1320,7 @@ export default function App(){
                           </select>}
                           <button title="Abrir notas, tags e próximo contato" onClick={()=>setCrmDetail(crmDetail===q.id?null:q.id)} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:`1px solid ${crmDetail===q.id?blue:t.cardBorder}`,background:crmDetail===q.id?blue:"transparent",color:crmDetail===q.id?"#fff":t.text,cursor:"pointer",fontWeight:"600"}}>📋 Notas</button>
                         </div>
-                        {crmDetail===q.id&&<NotePanel q={q}/>}
+                        {crmDetail===q.id&&<NotePanel q={q} {...notePanelProps}/>}
                       </div>
                     })}
                   </div>
@@ -1352,7 +1371,7 @@ export default function App(){
                       <button title="Enviar orçamento via WhatsApp" onClick={e=>{e.stopPropagation();sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado")}} style={{fontSize:"9px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer"}}>📄</button>
                     </div>
                   </div>
-                  {crmDetail===q.id&&<div style={{padding:"0 10px 8px",background:t.card,borderRadius:"0 0 8px 8px",borderLeft:`1px solid ${t.cardBorder}`,borderRight:`1px solid ${t.cardBorder}`,borderBottom:`1px solid ${t.cardBorder}`,marginTop:"-4px"}}><NotePanel q={q}/></div>}
+                  {crmDetail===q.id&&<div style={{padding:"0 10px 8px",background:t.card,borderRadius:"0 0 8px 8px",borderLeft:`1px solid ${t.cardBorder}`,borderRight:`1px solid ${t.cardBorder}`,borderBottom:`1px solid ${t.cardBorder}`,marginTop:"-4px"}}><NotePanel q={q} {...notePanelProps}/></div>}
                 </div>
               })}
               {filteredHist.length===0&&<div style={{textAlign:"center",padding:"24px",color:t.textMuted,fontSize:"11px"}}>Nenhum lead encontrado</div>}
