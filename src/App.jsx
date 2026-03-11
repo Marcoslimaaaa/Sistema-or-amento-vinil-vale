@@ -3,12 +3,12 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } fro
 
 // Firebase config
 const FB_CFG = {
-  apiKey: "AIzaSyCER8yKsRuFLh2GDUE3yLscq-pFGZNlrG0",
-  authDomain: "sistema-vinil-vale.firebaseapp.com",
-  projectId: "sistema-vinil-vale",
-  storageBucket: "sistema-vinil-vale.firebasestorage.app",
-  messagingSenderId: "847282557064",
-  appId: "1:847282557064:web:76502a1a6e5c2711650f3d"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 // Firebase lazy loader — works on Vercel (npm), falls back to local on artifact
@@ -694,27 +694,42 @@ export default function App(){
     const stamp=d.stamp||"";const vinilT=d.vinilT||"0,7mm";
     const thick=vinilT.includes("0,8")?"8":"7";
     const stkItems=[];
+    const unmatched=[];
     inc.forEach(i=>{
       const nm=i.n||"";
       if(nm.includes("Vinil ACQUALINER")){
         const stampClean=stamp.replace(/\s+/g," ").trim();
         const vinilMatch=CAT.find(p=>p.c==="Vinil 0,"+thick+"mm"&&p.n.toUpperCase().includes(stampClean.toUpperCase()));
-        if(vinilMatch)stkItems.push({catId:vinilMatch.id,qty:Math.ceil(areaTotal*1.1),name:vinilMatch.n});
+        if(vinilMatch)stkItems.push({catId:vinilMatch.id,qty:Math.ceil(areaTotal*1.1),name:vinilMatch.n,matched:true});
+        else unmatched.push({name:nm,reason:"Estampa '"+stampClean+"' não encontrada no catálogo"});
       }else if(nm.includes("Manta")){
-        const mantaMatch=CAT.find(p=>p.c==="Mantas"&&p.n.toLowerCase().includes(nm.toLowerCase().split(" ").find(w=>w.length>4)||""));
-        if(mantaMatch)stkItems.push({catId:mantaMatch.id,qty:Math.ceil(i.un==="chao"?areaChao:areaTotal),name:mantaMatch.n});
+        const nmLow=nm.toLowerCase();
+        const mantaMatch=CAT.find(p=>p.c==="Mantas"&&(
+          (nmLow.includes("0,6")||nmLow.includes("0.6"))&&p.id==="m06"||
+          (nmLow.includes("0,4")||nmLow.includes("0.4"))&&p.id==="m04"||
+          nmLow.includes("eva")&&p.id==="eva"
+        ));
+        if(mantaMatch)stkItems.push({catId:mantaMatch.id,qty:Math.ceil(i.un==="chao"?areaChao:areaTotal),name:mantaMatch.n,matched:true});
+        else unmatched.push({name:nm,reason:"Tipo de manta não identificado"});
       }else if(nm.includes("Perfil")){
-        const perfilMatch=CAT.find(p=>p.c==="Perfis"&&p.n.toLowerCase().includes(nm.toLowerCase().includes("flangeamento")?"flangeamento":"gido"));
-        if(perfilMatch)stkItems.push({catId:perfilMatch.id,qty:Math.ceil(perim),name:perfilMatch.n});
+        const isFlangeamento=nm.toLowerCase().includes("flangeamento");
+        const perfilMatch=CAT.find(p=>p.c==="Perfis"&&(isFlangeamento?p.id==="pF":p.id==="pR"));
+        if(perfilMatch)stkItems.push({catId:perfilMatch.id,qty:Math.ceil(perim),name:perfilMatch.n,matched:true});
+        else unmatched.push({name:nm,reason:"Tipo de perfil não identificado"});
       }else{
-        const match=CAT.find(p=>{const pWords=p.n.toLowerCase().split(" ").filter(w=>w.length>3);const iWords=nm.toLowerCase().split(" ").filter(w=>w.length>3);return pWords.length>0&&iWords.length>0&&pWords.some(pw=>iWords.some(iw=>iw.includes(pw)||pw.includes(iw)))});
-        if(match)stkItems.push({catId:match.id,qty:i.q||1,name:match.n});
+        const nmWords=nm.toLowerCase().split(" ").filter(w=>w.length>3);
+        const match=CAT.find(p=>{
+          const pWords=p.n.toLowerCase().split(" ").filter(w=>w.length>3);
+          const score=pWords.filter(pw=>nmWords.some(iw=>iw===pw||iw.includes(pw)||pw.includes(iw))).length;
+          return score>=2||(score===1&&pWords.length<=2);
+        });
+        if(match)stkItems.push({catId:match.id,qty:i.q||1,name:match.n,matched:true});
+        else unmatched.push({name:nm,reason:"Produto não encontrado no catálogo"});
       }
     });
-    if(stkItems.length===0){setFbMsg("Nenhum item do orcamento vinculado ao estoque");setTimeout(()=>setFbMsg(""),3000);return}
-    const msg=stkItems.map(s=>s.name+": -"+s.qty+(s.catId.startsWith("v")?" m2":"")).join("\n");
-    if(confirm("Dar baixa no estoque?\n\n"+msg)){removeStock(stkItems,q.cN||"Cliente","auto");setFbMsg("Estoque atualizado! "+stkItems.length+" itens");setTimeout(()=>setFbMsg(""),3000)}
+    setStkReview({items:stkItems.map(s=>({...s,selected:true,editQty:String(s.qty)})),unmatched,clientName:q.cN||"Cliente",quoteId:q.id});
   };
+  const [stkReview,setStkReview]=useState(null); // {items:[{catId,qty,name,matched}], clientName}
   const [catO,setCatO]=useState(false);
   const [catQ,setCatQ]=useState("");
   const [viewContract,setVC]=useState(null);
@@ -1366,6 +1381,47 @@ export default function App(){
             </>;
           })() }
         </Card>}
+
+      {/* MODAL REVISÃO DE BAIXA NO ESTOQUE */}
+      {stkReview&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
+        <div style={{background:t.card,borderRadius:"14px",padding:"20px",width:"100%",maxWidth:"500px",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+          <div style={{fontSize:"15px",fontWeight:"800",color:t.text,marginBottom:"4px"}}>📦 Revisão de Baixa no Estoque</div>
+          <div style={{fontSize:"11px",color:t.textSec,marginBottom:"16px"}}>Cliente: <b>{stkReview.clientName}</b> — revise e ajuste as quantidades antes de confirmar</div>
+
+          {stkReview.items.length>0&&<>
+            <div style={{fontSize:"11px",fontWeight:"700",color:"#16a34a",marginBottom:"8px"}}>✅ Itens vinculados ({stkReview.items.length})</div>
+            {stkReview.items.map((s,idx)=><div key={idx} style={{display:"grid",gridTemplateColumns:"24px 1fr 70px",gap:"8px",alignItems:"center",padding:"6px 8px",borderRadius:"8px",background:s.selected?t.sectionBg:"transparent",marginBottom:"4px",border:`1px solid ${s.selected?t.cardBorder:"transparent"}`}}>
+              <input type="checkbox" checked={s.selected} onChange={e=>{const ni=[...stkReview.items];ni[idx]={...ni[idx],selected:e.target.checked};setStkReview(p=>({...p,items:ni}))}} style={{cursor:"pointer"}}/>
+              <div>
+                <div style={{fontSize:"11px",fontWeight:"600",color:t.text}}>{s.name}</div>
+                <div style={{fontSize:"9px",color:t.textMuted}}>{s.catId.startsWith("v")?"m²":"unidade(s)"}</div>
+              </div>
+              <input type="number" min="0" value={s.editQty} onChange={e=>{const ni=[...stkReview.items];ni[idx]={...ni[idx],editQty:e.target.value};setStkReview(p=>({...p,items:ni}))}} style={{padding:"4px 6px",borderRadius:"6px",border:`1.5px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,fontSize:"11px",fontWeight:"700",textAlign:"center",width:"100%"}}/>
+            </div>)}
+          </>}
+
+          {stkReview.unmatched.length>0&&<>
+            <div style={{fontSize:"11px",fontWeight:"700",color:"#dc2626",marginBottom:"8px",marginTop:"12px"}}>⚠️ Não vinculados ({stkReview.unmatched.length})</div>
+            {stkReview.unmatched.map((u,idx)=><div key={idx} style={{padding:"6px 8px",borderRadius:"8px",background:"#fef2f2",border:"1px solid #fecaca",marginBottom:"4px"}}>
+              <div style={{fontSize:"11px",fontWeight:"600",color:"#991b1b"}}>{u.name}</div>
+              <div style={{fontSize:"9px",color:"#dc2626"}}>{u.reason}</div>
+            </div>)}
+          </>}
+
+          <div style={{display:"flex",gap:"8px",marginTop:"16px"}}>
+            <Btn onClick={()=>setStkReview(null)} style={{flex:1,background:"transparent",border:`1.5px solid ${t.cardBorder}`,color:t.textSec}}>Cancelar</Btn>
+            <Btn onClick={()=>{
+              const toRemove=stkReview.items.filter(s=>s.selected&&parseFloat(s.editQty)>0).map(s=>({...s,qty:parseFloat(s.editQty)}));
+              if(toRemove.length===0){setFbMsg("Nenhum item selecionado");setTimeout(()=>setFbMsg(""),2000);return}
+              removeStock(toRemove,stkReview.clientName,"auto");
+              setFbMsg("Estoque atualizado! "+toRemove.length+" itens");
+              setTimeout(()=>setFbMsg(""),3000);
+              setStkReview(null);
+            }} style={{flex:2,background:"#16a34a",color:"#fff",border:"none",fontWeight:"700"}}>Confirmar Baixa</Btn>
+          </div>
+        </div>
+      </div>}
+
       </div>
     </div>
   );
