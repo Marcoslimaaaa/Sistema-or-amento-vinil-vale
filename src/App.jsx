@@ -29,7 +29,24 @@ const initFB = async () => {
 };
 
 const VER="v4.5";
-if(typeof document!=="undefined"&&!document.getElementById("vv-styles")){const s=document.createElement("style");s.id="vv-styles";s.textContent="@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}";document.head.appendChild(s)}
+if(typeof document!=="undefined"&&!document.getElementById("vv-styles")){const s=document.createElement("style");s.id="vv-styles";s.textContent=`
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@media(max-width:600px){
+  .vv-g2{grid-template-columns:1fr!important}
+  .vv-g3{grid-template-columns:1fr 1fr!important}
+  .vv-g4{grid-template-columns:1fr 1fr!important}
+  .vv-header-actions{flex-direction:column!important;gap:6px!important}
+  .vv-tab-bar{gap:0!important}
+  .vv-tab-bar button{padding:6px 7px!important;font-size:9px!important}
+  .vv-card{padding:12px!important}
+  .vv-pool-grid{grid-template-columns:1fr 1fr!important}
+  .vv-cost-row{grid-template-columns:20px 1fr 40px 55px 36px 65px 20px!important;gap:2px!important}
+}
+@media(max-width:400px){
+  .vv-tab-bar button span:last-child{display:none}
+  .vv-tab-bar button{padding:8px 6px!important}
+}
+`;document.head.appendChild(s)}
 const PIPE=[
   {id:"lead",label:"Lead",icon:"📊",color:"#f59e0b"},
   {id:"orcamento",label:"Orçamento",icon:"📄",color:"#3b82f6"},
@@ -291,8 +308,8 @@ const themes={
   dark:{bg:"#0f172a",card:"#1e293b",cardBorder:"#334155",text:"#e2e8f0",textSec:"#94a3b8",textMuted:"#64748b",inputBg:"#0f172a",inputBorder:"#475569",lBg:"#1e293b",tabBg:"#1e293b",tabActive:"rgba(0,85,164,.25)",sectionBg:"#1e293b",stampBg:"#1e3a5f",stampBorder:"#2563eb",areaBg:"linear-gradient(135deg,#1e293b,#0f172a)",costRed:"#2d1b1b",costGreen:"#1b2d1b",costBlue:"#1b1b2d",shadow:"0 1px 3px rgba(0,0,0,.3)"}
 };
 
-const Tab=({a,onClick,children,icon,t:th})=>{const t=th||themes.light;return <button onClick={onClick} style={{padding:"8px 12px",border:"none",borderBottom:a?"3px solid "+blue:"3px solid transparent",background:a?t.tabActive:"transparent",color:a?blue:t.textSec,fontWeight:a?"700":"500",fontSize:"11px",cursor:"pointer",display:"flex",alignItems:"center",gap:"4px",borderRadius:"6px 6px 0 0",whiteSpace:"nowrap"}}><span style={{fontSize:"13px"}}>{icon}</span>{children}</button>};
-const Inp=({label,value,onChange,placeholder,style:sx,t:th})=>{const t=th||themes.light;return <div style={{display:"flex",flexDirection:"column",gap:"2px",...sx}}>{label&&<label style={{fontSize:"9px",fontWeight:"600",color:t.textSec,textTransform:"uppercase",letterSpacing:".4px"}}>{label}</label>}<input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{padding:"8px 10px",border:`1.5px solid ${t.inputBorder}`,borderRadius:"6px",fontSize:"12px",color:t.text,background:t.inputBg,outline:"none",width:"100%"}} onFocus={e=>e.target.style.borderColor=blue} onBlur={e=>e.target.style.borderColor=t.inputBorder}/></div>};
+const Tab=({a,onClick,children,icon,badge,t:th})=>{const t=th||themes.light;return <button onClick={onClick} style={{padding:"8px 12px",border:"none",borderBottom:a?"3px solid "+blue:"3px solid transparent",background:a?t.tabActive:"transparent",color:a?blue:t.textSec,fontWeight:a?"700":"500",fontSize:"11px",cursor:"pointer",display:"flex",alignItems:"center",gap:"4px",borderRadius:"6px 6px 0 0",whiteSpace:"nowrap"}}><span style={{fontSize:"13px"}}>{icon}</span>{children}{badge>0&&<span style={{background:"#dc2626",color:"#fff",borderRadius:"9px",padding:"0 4px",fontSize:"8px",fontWeight:"800",lineHeight:"15px",minWidth:"15px",textAlign:"center",marginLeft:"1px"}}>{badge}</span>}</button>};
+const Inp=({label,value,onChange,placeholder,style:sx,t:th,error})=>{const t=th||themes.light;return <div style={{display:"flex",flexDirection:"column",gap:"2px",...sx}}>{label&&<label style={{fontSize:"9px",fontWeight:"600",color:error?"#dc2626":t.textSec,textTransform:"uppercase",letterSpacing:".4px"}}>{label}{error&&<span style={{marginLeft:"4px",fontWeight:"700"}}>⚠</span>}</label>}<input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{padding:"8px 10px",border:`1.5px solid ${error?"#dc2626":t.inputBorder}`,borderRadius:"6px",fontSize:"12px",color:t.text,background:error?"#fef2f2":t.inputBg,outline:"none",width:"100%"}} onFocus={e=>e.target.style.borderColor=error?"#dc2626":blue} onBlur={e=>e.target.style.borderColor=error?"#dc2626":t.inputBorder}/>{error&&<span style={{fontSize:"8px",color:"#dc2626",fontWeight:"600"}}>{error}</span>}</div>};
 const Sel=({label,value,onChange,options,style:sx,t:th})=>{const t=th||themes.light;return <div style={{display:"flex",flexDirection:"column",gap:"2px",...sx}}>{label&&<label style={{fontSize:"9px",fontWeight:"600",color:t.textSec,textTransform:"uppercase",letterSpacing:".4px"}}>{label}</label>}<select value={value} onChange={e=>onChange(e.target.value)} style={{padding:"8px 10px",border:`1.5px solid ${t.inputBorder}`,borderRadius:"6px",fontSize:"12px",color:t.text,background:t.inputBg}}>{options.map(o=><option key={typeof o==="string"?o:o.value} value={typeof o==="string"?o:o.value}>{typeof o==="string"?o:o.label}</option>)}</select></div>};
 const Card=({children,t:th})=>{const t=th||themes.light;return <div style={{background:t.card,borderRadius:"10px",padding:"20px",boxShadow:t.shadow,border:`1px solid ${t.cardBorder}`}}>{children}</div>};
 const ST=({icon,children})=><h3 style={{fontSize:"14px",fontWeight:"700",color:blue,marginBottom:"14px",display:"flex",alignItems:"center",gap:"6px"}}><span>{icon}</span>{children}</h3>;
@@ -447,7 +464,8 @@ export default function App(){
   const [client,setCl]=useState({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:""});
   const uc=f=>v=>setCl(p=>({...p,[f]:v}));
   const [pool,setPool]=useState({length:"10.00",width:"4.00",depth:"1.40",depthMin:"",depthMax:""});
-  const up=f=>v=>setPool(p=>({...p,[f]:v}));
+  const [fieldErrors,setFieldErrors]=useState({});
+  const up=f=>v=>{setPool(p=>({...p,[f]:v}));if(parseFloat(v)>0)setFieldErrors(e=>({...e,[f]:false}));};
 
   // DISPOSITIVOS HIDRAULICOS
   const [disps,setDisps]=useState({retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4});
@@ -730,6 +748,26 @@ export default function App(){
     setStkReview({items:stkItems.map(s=>({...s,selected:true,editQty:String(s.qty)})),unmatched,clientName:q.cN||"Cliente",quoteId:q.id});
   };
   const [stkReview,setStkReview]=useState(null); // {items:[{catId,qty,name,matched}], clientName}
+  const exportStkCSV=()=>{
+    const rows=[["Produto","Categoria","Qtd em Estoque","Qtd Mínima","Custo Unit. (R$)","Valor Total (R$)","Status"]];
+    CAT.forEach(p=>{const s=stk[p.id]||{qty:0,minQty:2,lastCost:p.p};const status=s.qty<=0?"Zerado":s.qty<=(s.minQty||2)?"Baixo":"OK";rows.push([p.n,p.c,s.qty,s.minQty||2,(s.lastCost||p.p).toFixed(2),(s.qty*(s.lastCost||p.p)).toFixed(2),status])});
+    const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(",")).join("\n");
+    const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
+    const url=URL.createObjectURL(blob);const a=document.createElement("a");
+    a.href=url;a.download="estoque_vinilvale_"+new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")+".csv";
+    document.body.appendChild(a);a.click();setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url)},1000);
+    setFbMsg("CSV exportado!");setTimeout(()=>setFbMsg(""),2000);
+  };
+  const exportStkLogCSV=()=>{
+    const rows=[["Data","Tipo","Produto","Qtd","NF/Cliente","Modo"]];
+    stkLog.forEach(l=>rows.push([l.date||"",l.type||"",l.name||"",l.qty||0,l.nf||l.client||"",l.mode||""]));
+    const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(",")).join("\n");
+    const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
+    const url=URL.createObjectURL(blob);const a=document.createElement("a");
+    a.href=url;a.download="movimentacoes_vinilvale_"+new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")+".csv";
+    document.body.appendChild(a);a.click();setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url)},1000);
+    setFbMsg("Movimentações exportadas!");setTimeout(()=>setFbMsg(""),2000);
+  };
   const [catO,setCatO]=useState(false);
   const [catQ,setCatQ]=useState("");
   const [viewContract,setVC]=useState(null);
@@ -758,6 +796,7 @@ export default function App(){
   const inc=items.filter(i=>i.on);
   // Calculate effective quantity based on unit type
   const ar=calcA(pool,spa,wMode,walls);
+  const lowStockCount=Object.entries(stk).filter(([,s])=>s.qty>0&&s.qty<=(s.minQty||2)).length;
 
   const effQ=(i)=>{
     if(i.un==="m²")return parseFloat(ar.tot)||0; // area total m²
@@ -777,7 +816,16 @@ export default function App(){
   const apM=()=>{setItems(p=>p.map(i=>({...i,m:gM})));setFbMsg("Margem aplicada!");setTimeout(()=>setFbMsg(""),1500)};
 
   const gData=()=>({client,pool,items,guar,ci,pay,totOv:String(total),vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,wMode,walls});
-  const save=()=>{const d=gData();const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setFbMsg("Salvo!");setTimeout(()=>setFbMsg(""),2000)};
+  const save=()=>{
+    const errs={};
+    if(!client.name||client.name.trim()==="")errs.clientName="Nome obrigatório";
+    if(!(parseFloat(pool.length)>0))errs.length="Informe o comprimento";
+    if(!(parseFloat(pool.width)>0))errs.width="Informe a largura";
+    if(!(parseFloat(pool.depth)>0))errs.depth="Informe a profundidade";
+    if(Object.keys(errs).length>0){setFieldErrors(errs);setFbMsg("Preencha os campos obrigatórios");setTimeout(()=>setFbMsg(""),3000);return;}
+    setFieldErrors({});
+    const d=gData();const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setFbMsg("Salvo!");setTimeout(()=>setFbMsg(""),2000);
+  };
   const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);autoStockOut(item)}setFbMsg("✅ Cliente fechado!");setTimeout(()=>setFbMsg(""),2000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
   const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8"});setWM(d.wMode||"regular");setWalls(d.walls||[]);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
@@ -841,7 +889,7 @@ export default function App(){
 
   if(view==="quote")return <QP d={gData()} onBack={()=>setView("editor")} onSave={()=>{const d=gData();const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item)}}/>;
 
-  const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};
+  const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};// use className="vv-g2" for responsive
 
   return(
     <div style={{fontFamily:"'Segoe UI',sans-serif",maxWidth:"920px",margin:"0 auto",background:t.bg,minHeight:"100vh",color:t.text,transition:"background .3s,color .3s"}}>
@@ -857,20 +905,20 @@ export default function App(){
         <div style={{display:"flex",gap:"5px",marginTop:"10px",flexWrap:"wrap"}}>{SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(mkItems(sv.id));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20")}} style={{padding:"5px 10px",borderRadius:"16px",border:"1.5px solid rgba(255,255,255,.3)",background:svcType===sv.id?"rgba(255,255,255,.2)":"transparent",color:"#fff",fontSize:"10px",fontWeight:svcType===sv.id?"700":"400",cursor:"pointer"}}>{sv.icon} {sv.label}</button>)}</div>
       </div>
 
-      <div style={{display:"flex",padding:"0 14px",background:t.tabBg,borderBottom:`1px solid ${t.cardBorder}`,overflowX:"auto"}}>
-        {[["cliente","👤","Cliente"],["piscina","🏊","Piscina"],["itens","🛒","Custos"],["garantias","🛡","Garantias"],["pagamento","💰","Valor"],["historico","📋","Salvos"],["crm","📈","CRM"],["estoque","📦","Estoque"],["planta","📐","Planta"],["contratos","📝","Contratos"]].map(([k,ic,lb])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} t={t}>{lb}</Tab>)}
+      <div className="vv-tab-bar" style={{display:"flex",padding:"0 14px",background:t.tabBg,borderBottom:`1px solid ${t.cardBorder}`,overflowX:"auto"}}>
+        {[["cliente","👤","Cliente",0],["piscina","🏊","Piscina",0],["itens","🛒","Custos",0],["garantias","🛡","Garantias",0],["pagamento","💰","Valor",0],["historico","📋","Salvos",0],["crm","📈","CRM",0],["estoque","📦","Estoque",lowStockCount],["planta","📐","Planta",0],["contratos","📝","Contratos",0]].map(([k,ic,lb,badge])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} badge={badge} t={t}>{lb}</Tab>)}
       </div>
 
       <div style={{padding:"14px"}}>
         {/* CLIENTE */}
         {tab==="cliente"&&<Card t={t}><ST icon="👤">Dados do Cliente</ST>
-          <div style={{display:"flex",gap:"10px",marginBottom:"10px"}}><Inp label="Proposta" value={propNum} onChange={setPN} placeholder="03/26" style={{flex:"0 0 90px"}} t={t}/><Inp label="Nome completo" value={client.name} onChange={uc("name")} placeholder="Nome" style={{flex:1}} t={t}/></div>
-          <div style={g2}><Inp label="WhatsApp" value={client.phone} onChange={uc("phone")} placeholder="(13) 99999-9999" t={t}/><Inp label="Email" value={client.email} onChange={uc("email")} placeholder="email@email.com" t={t}/><Inp label="Endereço" value={client.address} onChange={uc("address")} placeholder="Rua, nº, bairro" t={t}/><Inp label="Cidade" value={client.city} onChange={uc("city")} placeholder="Registro-SP" t={t}/><Inp label="CPF/CNPJ" value={client.cpf} onChange={uc("cpf")} placeholder="000.000.000-00" t={t}/><Inp label="RG" value={client.rg} onChange={uc("rg")} t={t}/></div>
+          <div style={{display:"flex",gap:"10px",marginBottom:"10px"}}><Inp label="Proposta" value={propNum} onChange={setPN} placeholder="03/26" style={{flex:"0 0 90px"}} t={t}/><Inp label="Nome completo *" value={client.name} onChange={v=>{uc("name")(v);if(v.trim())setFieldErrors(e=>({...e,clientName:false}))}} placeholder="Nome" style={{flex:1}} t={t} error={fieldErrors.clientName}/></div>
+          <div className="vv-g2" style={g2}><Inp label="WhatsApp" value={client.phone} onChange={uc("phone")} placeholder="(13) 99999-9999" t={t}/><Inp label="Email" value={client.email} onChange={uc("email")} placeholder="email@email.com" t={t}/><Inp label="Endereço" value={client.address} onChange={uc("address")} placeholder="Rua, nº, bairro" t={t}/><Inp label="Cidade" value={client.city} onChange={uc("city")} placeholder="Registro-SP" t={t}/><Inp label="CPF/CNPJ" value={client.cpf} onChange={uc("cpf")} placeholder="000.000.000-00" t={t}/><Inp label="RG" value={client.rg} onChange={uc("rg")} t={t}/></div>
         </Card>}
 
         {/* PISCINA */}
         {tab==="piscina"&&<Card t={t}><ST icon="🏊">Piscina</ST>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Comp. (m)" value={pool.length} onChange={up("length")} t={t}/><Inp label="Larg. (m)" value={pool.width} onChange={up("width")} t={t}/><Inp label="Prof. (m)" value={pool.depth} onChange={up("depth")} t={t}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
+          <div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Comp. (m) *" value={pool.length} onChange={up("length")} t={t} error={fieldErrors.length}/><Inp label="Larg. (m) *" value={pool.width} onChange={up("width")} t={t} error={fieldErrors.width}/><Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Formato" value={poolFmt} onChange={setPF} options={PFMT} t={t}/></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={setVT} options={VOPTS.map(v=>({value:v.t,label:`${v.t} (${v.w}a)`}))} t={t}/><Sel label="Estampa" value={stamp} onChange={setSt} options={[{value:"",label:"— Escolha —"},...ALLST.map(s=>({value:s,label:s}))]} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
 
@@ -1124,6 +1172,7 @@ export default function App(){
               <div style={{fontSize:"9px",color:t.textMuted}}>{Object.values(stk).filter(s=>s.qty>0).length} itens em estoque</div>
               <div style={{display:"flex",gap:"3px"}}>
                 
+                <Btn onClick={exportStkCSV} style={{fontSize:"7px",padding:"2px 6px",background:"#16a34a",color:"#fff",border:"none"}}>📊 CSV</Btn>
                 <Btn onClick={()=>{saveStk(stk);stkOrderRef.current._key="";setFbMsg("Salvo!");setTimeout(()=>setFbMsg(""),2000)}} style={{fontSize:"7px",padding:"2px 6px",background:"#0055a4",color:"#fff",border:"none"}}>Salvar</Btn>
                 <Btn onClick={()=>{if(confirm("Zerar TODO o estoque?")){const ns={};CAT.forEach(p=>{ns[p.id]={qty:0,minQty:2,lastCost:stk[p.id]?.lastCost||p.p}});saveStk(ns,[...stkLog,{type:"saida",name:"ZERADO",qty:0,date:new Date().toLocaleDateString("pt-BR"),ts:Date.now(),mode:"zerar"}]);setFbMsg("Estoque zerado!");setTimeout(()=>setFbMsg(""),2000)}}} style={{fontSize:"7px",padding:"2px 6px",background:"#dc2626",color:"#fff",border:"none"}}>Zerar Tudo</Btn>
               </div>
@@ -1152,7 +1201,10 @@ export default function App(){
               <input type="file" accept=".xml,.pdf" onChange={async(e)=>{const file=e.target.files?.[0];if(!file)return;const fname=file.name.toLowerCase();setFbMsg("Lendo arquivo...");try{let rawItems=[];if(fname.endsWith(".xml")){const txt=await file.text();const parser=new DOMParser();const xml=parser.parseFromString(txt,"text/xml");const dets=xml.getElementsByTagName("det");for(let i=0;i<dets.length;i++){const det=dets[i];const xProd=(det.getElementsByTagName("xProd")[0]?.textContent||"");const qCom=parseFloat(det.getElementsByTagName("qCom")[0]?.textContent||"0");const vUnCom=parseFloat(det.getElementsByTagName("vUnCom")[0]?.textContent||"0");rawItems.push({desc:xProd,qty:qCom,cost:vUnCom})}}else if(fname.endsWith(".pdf")){if(!window.pdfjsLib){const sc=document.createElement("script");sc.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";document.head.appendChild(sc);await new Promise(r=>{sc.onload=r;setTimeout(r,5000)})}if(window.pdfjsLib){window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";const ab=await file.arrayBuffer();const pdf=await window.pdfjsLib.getDocument({data:ab}).promise;let ft="";for(let pg=1;pg<=pdf.numPages;pg++){const page=await pdf.getPage(pg);const tc=await page.getTextContent();ft+=tc.items.map(z=>z.str).join(" ")+"\n"}ft.split("\n").forEach(row=>{const u=row.toUpperCase();if(u.includes("VINIL")||u.includes("LONA")||u.includes("MANTA")||u.includes("FILTRO")||u.includes("REFLETOR")||u.includes("SKIMMER")||u.includes("PERFIL")){const nums=row.match(/[\d]+[.,]?[\d]*/g);if(nums&&nums.length>=2){rawItems.push({desc:row,qty:parseFloat(nums[nums.length-3]?.replace(",",".")||nums[0].replace(",","."))||1,cost:parseFloat(nums[nums.length-2]?.replace(",",".")||"0")||0})}}})}else{setFbMsg("Erro leitor PDF")}}const entries=[];rawItems.forEach(it=>{const d=it.desc.toUpperCase();const is073=d.includes("0,73")||d.includes("0.73");const thick=is073?"8":"7";let matchId="";if(d.includes("LONA AQUATICA")||d.includes("LONA AQUÁTICA")){matchId=d.includes("14")?"lona14":"lona10"}else if(d.includes("VINIL")||d.includes("REVESTIMENTO")){const vinilCat=CAT.filter(p=>p.c==="Vinil 0,"+thick+"mm");for(const vc of vinilCat){const stampName=vc.n.replace(/ 0,[78]mm/,"").toUpperCase();const words=stampName.split(" ").filter(w=>w.length>2);if(words.length>0&&words.every(w=>d.includes(w))){matchId=vc.id;break}}}else{for(const p of CAT){const words=p.n.toUpperCase().split(" ").filter(w=>w.length>3);if(words.length>0&&words.every(w=>d.includes(w))){matchId=p.id;break}}}entries.push({catId:matchId,qty:String(it.qty),cost:String(it.cost),_desc:it.desc})});if(entries.length>0){setEntItems(entries);const ok=entries.filter(x=>x.catId).length;const nok=entries.filter(x=>!x.catId).length;setFbMsg(ok+" reconhecidos"+(nok>0?", "+nok+" para selecionar manual":"")+" - Confira e clique Dar Entrada")}else{setFbMsg("Nenhum item encontrado")}setTimeout(()=>setFbMsg(""),8000)}catch(err){console.error(err);setFbMsg("Erro: "+(err.message||err));setTimeout(()=>setFbMsg(""),4000)}e.target.value=""}} style={{fontSize:"11px",color:t.text}}/>
             </div></>}
           {stkTab==="historico"&&<>
-            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"8px"}}>Movimentacoes</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}}>
+              <div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>Movimentações</div>
+              {stkLog.length>0&&<Btn onClick={exportStkLogCSV} style={{fontSize:"7px",padding:"2px 6px",background:"#16a34a",color:"#fff",border:"none"}}>📊 Exportar CSV</Btn>}
+            </div>
             {stkLog.length===0?<div style={{textAlign:"center",padding:"16px",color:t.textMuted,fontSize:"11px"}}>Nenhuma movimentacao</div>:
             <div style={{display:"flex",flexDirection:"column",gap:"3px",maxHeight:"400px",overflow:"auto"}}>
               {stkLog.slice(0,50).map((log,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 8px",background:t.sectionBg,borderRadius:"5px",border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${log.type==="entrada"?"#16a34a":"#dc2626"}`}}>
