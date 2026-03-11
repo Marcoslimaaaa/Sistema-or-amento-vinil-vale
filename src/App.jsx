@@ -54,6 +54,7 @@ const PIPE=[
   {id:"fechou",label:"Fechou",icon:"✅",color:"#16a34a"},
   {id:"execucao",label:"Em Execução",icon:"🔨",color:"#f97316"},
   {id:"concluido",label:"Concluído",icon:"🏁",color:"#06b6d4"},
+  {id:"perdido",label:"Perdido",icon:"❌",color:"#dc2626"},
 ];
 const CO={name:"Vinil Vale Revestimentos e Capas para Piscinas Ltda",short:"Vinil Vale",addr:"Rodovia SP 139, KM 3, s/n, Jardim Hatori II, Registro-SP",cnpj:"42.749.688/0001-57",ie:"574.128.060.119",ph1:"(13) 99730-5949",ph2:"(13) 99678-1966",email:"vinilvale@hotmail.com",insta:"@vinilvaleoficial"};
 const SVC=[{id:"construcao",label:"Construção de Piscina",icon:"🏗️"},{id:"revestimento",label:"Revestimento em Vinil",icon:"🎨"},{id:"reforma",label:"Reforma de Piscina",icon:"🔧"}];
@@ -591,6 +592,14 @@ export default function App(){
   const [interacoes,setInteracoes]=useState({});
   const [crmDetail,setCrmDetail]=useState(null);
   const [newNote,setNewNote]=useState("");
+  const [crmView,setCrmView]=useState("pipeline");
+  const [crmSearch,setCrmSearch]=useState("");
+  const [crmSvcF,setCrmSvcF]=useState("todos");
+  const [crmShowLost,setCrmShowLost]=useState(false);
+  const [crmNextContact,setCrmNextContact]=useState({});
+  const [crmTags,setCrmTags]=useState({});
+  const [crmNoteType,setCrmNoteType]=useState("nota");
+  const [crmSort,setCrmSort]=useState("data");
 
   useEffect(()=>{
     if(!user||!fbReady||!fb.db||user.uid==="local")return;
@@ -607,6 +616,24 @@ export default function App(){
     setInteracoes(data);
     if(fbReady&&fb.db&&user&&user.uid!=="local"){
       try{await fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","interacoes"),{data})}catch{}
+    }
+  };
+
+  useEffect(()=>{
+    if(!user||!fbReady||!fb.db||user.uid==="local")return;
+    try{
+      const ref=fbFns.doc(fb.db,"users",user.uid,"config","crmMeta");
+      const unsub=fbFns.onSnapshot(ref,(snap)=>{
+        if(snap.exists()){const d=snap.data();if(d.nextContact)setCrmNextContact(d.nextContact);if(d.tags)setCrmTags(d.tags);}
+      });
+      return ()=>unsub();
+    }catch{}
+  },[user,fbReady]);
+
+  const saveCrmMeta=(nc,tags)=>{
+    setCrmNextContact(nc);setCrmTags(tags);
+    if(fbReady&&fb.db&&user&&user.uid!=="local"){
+      try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","crmMeta"),{nextContact:nc,tags})}catch{}
     }
   };
 
@@ -633,8 +660,35 @@ export default function App(){
   };
 
   const needsFollowUp=(qId,status)=>{
-    if(["concluido"].includes(status))return false;
+    if(["concluido","perdido"].includes(status))return false;
     return getDaysSince(qId)>=5;
+  };
+
+  const getTemp=(qId,status)=>{
+    if(["concluido","perdido"].includes(status))return null;
+    const d=getDaysSince(qId);
+    if(d<=2)return{icon:"🔥",label:"Quente",color:"#ef4444",bg:"#fef2f2"};
+    if(d<=7)return{icon:"🌡️",label:"Morno",color:"#f97316",bg:"#fff7ed"};
+    if(d<=14)return{icon:"❄️",label:"Frio",color:"#06b6d4",bg:"#ecfeff"};
+    return{icon:"🧊",label:"Gelado",color:"#64748b",bg:"#f1f5f9"};
+  };
+
+  const setLeadTag=(qId,tag)=>{
+    const cur=crmTags[qId]||[];
+    const updated=cur.includes(tag)?cur.filter(t=>t!==tag):[...cur,tag];
+    const nt={...crmTags,[qId]:updated};
+    saveCrmMeta(crmNextContact,nt);
+  };
+
+  const setNextContact=(qId,date)=>{
+    const nn={...crmNextContact,[qId]:date};
+    saveCrmMeta(nn,crmTags);
+  };
+
+  const isNextContactOverdue=(qId)=>{
+    const d=crmNextContact[qId];if(!d)return false;
+    const parts=d.split("-");
+    return new Date(parts[0],parts[1]-1,parts[2])<new Date();
   };
   const [newFornec,setNF2]=useState({name:"",phone:"",products:""});
 
@@ -1084,54 +1138,229 @@ export default function App(){
           </>}
         </Card>}
 
-        {/* CRM PIPELINE */}
-        {tab==="crm"&&<Card t={t}><ST icon="📈">Pipeline de Vendas</ST>
-          {hist.length===0?<div style={{textAlign:"center",padding:"24px",color:t.textMuted}}><div style={{fontSize:"28px"}}>📈</div><div style={{fontSize:"11px"}}>Nenhum orçamento salvo ainda.</div></div>:<>
-          {/* RESUMO */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"8px",marginBottom:"16px"}}>
-            <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",textAlign:"center",border:`1px solid ${t.cardBorder}`}}><div style={{fontSize:"20px",fontWeight:"800",color:blue}}>{hist.length}</div><div style={{fontSize:"8px",color:t.textMuted,fontWeight:"600"}}>TOTAL</div></div>
-            <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",textAlign:"center",border:`1px solid ${t.cardBorder}`}}><div style={{fontSize:"20px",fontWeight:"800",color:"#16a34a"}}>{hist.filter(q=>["fechou","execucao","concluido"].includes(q.status)).length}</div><div style={{fontSize:"8px",color:t.textMuted,fontWeight:"600"}}>FECHADOS</div></div>
-            <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",textAlign:"center",border:`1px solid ${t.cardBorder}`}}><div style={{fontSize:"20px",fontWeight:"800",color:"#f59e0b"}}>{fmt(hist.filter(q=>["fechou","execucao","concluido"].includes(q.status)).reduce((s,q)=>s+(parseFloat(q.tot)||0),0))}</div><div style={{fontSize:"8px",color:t.textMuted,fontWeight:"600"}}>FATURAMENTO</div></div>
-            <div style={{background:"#fef2f2",borderRadius:"8px",padding:"10px",textAlign:"center",border:"1px solid #fecaca"}}><div style={{fontSize:"20px",fontWeight:"800",color:"#dc2626"}}>{hist.filter(q=>needsFollowUp(q.id,q.status||"lead")).length}</div><div style={{fontSize:"8px",color:"#dc2626",fontWeight:"600"}}>FOLLOW UP</div></div>
+        {/* CRM */}
+        {tab==="crm"&&<Card t={t}>{(()=>{
+          const TAGS_OPTS=["Interessado","Aguardando","Sem resposta","Retornar","Urgente","Visita agendada"];
+          const TIPO_ICONS={whatsapp:{icon:"📱",color:"#25d366",label:"WhatsApp"},ligacao:{icon:"📞",color:"#3b82f6",label:"Ligação"},visita:{icon:"🏠",color:"#8b5cf6",label:"Visita"},email:{icon:"📧",color:"#f59e0b",label:"Email"},nota:{icon:"📝",color:"#64748b",label:"Nota"},orcamento:{icon:"📄",color:"#0055a4",label:"Orçamento"}};
+          const activePipe=PIPE.filter(p=>p.id!=="perdido");
+          const fechados=hist.filter(q=>["fechou","execucao","concluido"].includes(q.status));
+          const ativos=hist.filter(q=>!["concluido","perdido"].includes(q.status));
+          const perdidos=hist.filter(q=>q.status==="perdido");
+          const receita=fechados.reduce((s,q)=>s+(parseFloat(q.tot)||0),0);
+          const txConv=hist.length>0?Math.round((fechados.length/hist.length)*100):0;
+          const ticketMedio=fechados.length>0?receita/fechados.length:0;
+          const followUps=hist.filter(q=>needsFollowUp(q.id,q.status||"lead"));
+          const overdueNC=Object.keys(crmNextContact).filter(id=>isNextContactOverdue(id)&&hist.find(q=>q.id==id&&!["concluido","perdido"].includes(q.status)));
+
+          const filteredHist=hist.filter(q=>{
+            if(!crmShowLost&&q.status==="perdido")return false;
+            if(crmSearch&&!q.cN?.toLowerCase().includes(crmSearch.toLowerCase())&&!q.data?.client?.city?.toLowerCase().includes(crmSearch.toLowerCase()))return false;
+            if(crmSvcF!=="todos"&&q.type!==crmSvcF)return false;
+            return true;
+          });
+
+          const NotePanel=({q})=><div style={{marginTop:"8px",borderTop:`1px solid ${t.cardBorder}`,paddingTop:"8px"}}>
+            {/* Tipo + input */}
+            <div style={{display:"flex",gap:"3px",marginBottom:"6px",flexWrap:"wrap"}}>
+              {Object.entries(TIPO_ICONS).map(([k,v])=><button key={k} onClick={()=>setCrmNoteType(k)} style={{fontSize:"7px",padding:"2px 5px",borderRadius:"4px",border:`1.5px solid ${crmNoteType===k?v.color:t.cardBorder}`,background:crmNoteType===k?v.color+"22":"transparent",color:crmNoteType===k?v.color:t.textMuted,cursor:"pointer",fontWeight:"600"}}>{v.icon}</button>)}
+            </div>
+            <div style={{display:"flex",gap:"3px",marginBottom:"6px"}}>
+              <input value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder={`Registrar ${TIPO_ICONS[crmNoteType]?.label||"nota"}...`} onKeyDown={e=>{if(e.key==="Enter"&&newNote.trim()){addInteracao(q.id,crmNoteType,newNote.trim());setNewNote("")}}} style={{flex:1,padding:"4px 7px",border:`1px solid ${t.cardBorder}`,borderRadius:"5px",fontSize:"9px",background:t.inputBg,color:t.text}}/>
+              <button onClick={()=>{if(newNote.trim()){addInteracao(q.id,crmNoteType,newNote.trim());setNewNote("")}}} style={{padding:"4px 8px",borderRadius:"5px",border:"none",background:blue,color:"#fff",fontSize:"9px",cursor:"pointer",fontWeight:"700"}}>+</button>
+            </div>
+            {/* Próximo contato */}
+            <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"6px",background:isNextContactOverdue(q.id)?"#fef2f2":t.sectionBg,padding:"4px 7px",borderRadius:"5px",border:`1px solid ${isNextContactOverdue(q.id)?"#fecaca":t.cardBorder}`}}>
+              <span style={{fontSize:"8px",fontWeight:"700",color:isNextContactOverdue(q.id)?"#dc2626":t.textSec}}>📅 Próx. contato:</span>
+              <input type="date" value={crmNextContact[q.id]||""} onChange={e=>setNextContact(q.id,e.target.value)} style={{fontSize:"8px",border:"none",background:"transparent",color:isNextContactOverdue(q.id)?"#dc2626":t.text,cursor:"pointer"}}/>
+              {crmNextContact[q.id]&&<button onClick={()=>setNextContact(q.id,"")} style={{fontSize:"8px",background:"none",border:"none",color:t.textMuted,cursor:"pointer"}}>✕</button>}
+            </div>
+            {/* Tags */}
+            <div style={{display:"flex",gap:"3px",flexWrap:"wrap",marginBottom:"6px"}}>
+              {TAGS_OPTS.map(tag=>{const active=(crmTags[q.id]||[]).includes(tag);return <button key={tag} onClick={()=>setLeadTag(q.id,tag)} style={{fontSize:"7px",padding:"1px 5px",borderRadius:"9px",border:`1px solid ${active?blue:t.cardBorder}`,background:active?blue+"22":"transparent",color:active?blue:t.textMuted,cursor:"pointer",fontWeight:active?"700":"400"}}>{tag}</button>})}
+            </div>
+            {/* Histórico */}
+            <div style={{maxHeight:"110px",overflow:"auto",display:"flex",flexDirection:"column",gap:"3px"}}>
+              {(interacoes[q.id]||[]).map((it,i)=>{const ti=TIPO_ICONS[it.tipo]||TIPO_ICONS.nota;return <div key={i} style={{fontSize:"8px",display:"flex",gap:"5px",alignItems:"flex-start",padding:"3px 5px",borderRadius:"4px",background:t.sectionBg}}><span style={{color:ti.color,flexShrink:0}}>{ti.icon}</span><div><span style={{fontWeight:"700",color:t.textSec}}>{it.data} {it.hora} </span><span style={{color:t.text}}>{it.texto}</span></div></div>})}
+              {(!interacoes[q.id]||interacoes[q.id].length===0)&&<div style={{fontSize:"8px",color:t.textMuted,textAlign:"center",padding:"8px"}}>Nenhuma interação registrada</div>}
+            </div>
+          </div>;
+
+          return <>
+          {/* HEADER */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px",flexWrap:"wrap",gap:"8px"}}>
+            <div style={{fontSize:"14px",fontWeight:"800",color:blue}}>📈 CRM — Pipeline de Vendas</div>
+            <div style={{display:"flex",gap:"4px"}}>
+              {[["pipeline","🗂️","Pipeline"],["lista","☰","Lista"],["dashboard","📊","Analytics"]].map(([k,ic,lb])=><button key={k} onClick={()=>setCrmView(k)} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${crmView===k?blue:t.cardBorder}`,background:crmView===k?blue:"transparent",color:crmView===k?"#fff":t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>{ic} {lb}</button>)}
+            </div>
           </div>
-          {/* PIPELINE COLUMNS */}
-          <div style={{display:"flex",gap:"8px",overflowX:"auto",paddingBottom:"8px"}}>
-            {PIPE.map(stage=>{
-              const items=hist.filter(q=>(q.status||"lead")===stage.id||(stage.id==="fechou"&&["cliente","fechou","execucao","concluido"].includes(q.status)));
-              return <div key={stage.id} style={{minWidth:"160px",flex:1}}>
-                <div style={{background:stage.color+"22",borderRadius:"8px 8px 0 0",padding:"8px 10px",borderBottom:`3px solid ${stage.color}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div style={{fontSize:"11px",fontWeight:"700",color:stage.color}}>{stage.icon} {stage.label}</div>
-                  <div style={{fontSize:"10px",fontWeight:"800",color:stage.color,background:stage.color+"22",borderRadius:"10px",padding:"1px 6px"}}>{items.length}</div>
-                </div>
-                <div style={{background:t.sectionBg,borderRadius:"0 0 8px 8px",padding:"6px",minHeight:"60px",border:`1px solid ${t.cardBorder}`,borderTop:"none",display:"flex",flexDirection:"column",gap:"4px"}}>
-                  {items.length===0?<div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",padding:"12px"}}>—</div>:
-                  items.map(q=><div key={q.id} style={{background:t.card,borderRadius:"6px",padding:"8px",border:`1px solid ${t.cardBorder}`,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"2px"}}><div style={{fontSize:"10px",fontWeight:"700",color:t.text}}>{q.cN||"Sem nome"}</div>{needsFollowUp(q.id,q.status)&&<span style={{fontSize:"7px",background:"#fef2f2",color:"#dc2626",padding:"1px 4px",borderRadius:"3px",fontWeight:"700",animation:"pulse 2s infinite"}}>FOLLOW UP!</span>}</div>
-                    <div style={{fontSize:"8px",color:t.textMuted,marginBottom:"4px"}}>{q.data?.client?.city||""} · {q.ps}m · {getDaysSince(q.id)<999?getDaysSince(q.id)+"d atras":"Sem contato"}</div>
-                    <div style={{fontSize:"12px",fontWeight:"800",color:stage.color,marginBottom:"6px"}}>{fmt(parseFloat(q.tot)||0)}</div>
-                    <div style={{display:"flex",gap:"3px",flexWrap:"wrap"}}>
-                      <button onClick={()=>{msgWA(q);addInteracao(q.id,"whatsapp","Mensagem enviada via WhatsApp")}} style={{fontSize:"8px",padding:"2px 5px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📱 Zap</button>
-                      <button onClick={()=>{sendOrcWA(q);addInteracao(q.id,"orcamento","Orcamento enviado via WhatsApp")}} style={{fontSize:"8px",padding:"2px 5px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📨 PDF</button>
-                      {stage.id!=="concluido"&&<select value="" onChange={e=>{if(e.target.value)movePipe(q.id,e.target.value);e.target.value=""}} style={{fontSize:"8px",padding:"2px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer"}}>
-                        <option value="">Mover →</option>
-                        {PIPE.filter(p=>p.id!==stage.id&&p.id!==(q.status||"lead")).map(p=><option key={p.id} value={p.id}>{p.icon} {p.label}</option>)}
-                      </select>}
-                      <button onClick={()=>setCrmDetail(crmDetail===q.id?null:q.id)} style={{fontSize:"8px",padding:"2px 5px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:crmDetail===q.id?blue:"transparent",color:crmDetail===q.id?"#fff":t.text,cursor:"pointer",fontWeight:"600"}}>Notas</button>
-                    </div>
-                    {crmDetail===q.id&&<div style={{marginTop:"6px",borderTop:`1px solid ${t.cardBorder}`,paddingTop:"6px"}}>
-                      <div style={{display:"flex",gap:"3px",marginBottom:"4px"}}><input value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder="Anotar..." onKeyDown={e=>{if(e.key==="Enter"&&newNote.trim()){addInteracao(q.id,"nota",newNote.trim());setNewNote("")}}} style={{flex:1,padding:"3px 5px",border:`1px solid ${t.cardBorder}`,borderRadius:"4px",fontSize:"8px",background:t.inputBg,color:t.text}}/><button onClick={()=>{if(newNote.trim()){addInteracao(q.id,"nota",newNote.trim());setNewNote("")}}} style={{fontSize:"7px",padding:"2px 5px",borderRadius:"4px",border:"none",background:blue,color:"#fff",cursor:"pointer"}}>+</button></div>
-                      <div style={{maxHeight:"80px",overflow:"auto",display:"flex",flexDirection:"column",gap:"2px"}}>
-                        {(interacoes[q.id]||[]).slice(0,10).map((it,i)=><div key={i} style={{fontSize:"7px",color:t.textMuted,display:"flex",gap:"4px",alignItems:"center"}}><span style={{color:it.tipo==="whatsapp"?"#25d366":it.tipo==="orcamento"?"#0055a4":"#666"}}>{it.tipo==="whatsapp"?"📱":it.tipo==="orcamento"?"📄":"📝"}</span><span style={{fontWeight:"600"}}>{it.data} {it.hora}</span><span>{it.texto}</span></div>)}
-                        {(!interacoes[q.id]||interacoes[q.id].length===0)&&<div style={{fontSize:"7px",color:t.textMuted,textAlign:"center"}}>Sem interacoes</div>}
-                      </div>
-                    </div>}
-                  </div>)}
-                </div>
-              </div>
-            })}
-          </div>
+
+          {hist.length===0?<div style={{textAlign:"center",padding:"32px",color:t.textMuted}}><div style={{fontSize:"40px"}}>📈</div><div style={{fontSize:"12px",marginTop:"8px"}}>Salve orçamentos para gerenciar no CRM</div></div>:<>
+
+          {/* ── ANALYTICS ── */}
+          {crmView==="dashboard"&&<>
+            {/* KPIs */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px",marginBottom:"14px"}}>
+              {[
+                {label:"Total",val:hist.length,color:blue,bg:"linear-gradient(135deg,#0055a4,#003d7a)"},
+                {label:"Ativos",val:ativos.length,color:"#f97316",bg:"linear-gradient(135deg,#f97316,#ea580c)"},
+                {label:"Fechados",val:fechados.length,color:"#16a34a",bg:"linear-gradient(135deg,#16a34a,#15803d)"},
+                {label:"Conversão",val:txConv+"%",color:"#8b5cf6",bg:"linear-gradient(135deg,#8b5cf6,#7c3aed)"},
+                {label:"Ticket Médio",val:fmt(ticketMedio),color:"#f59e0b",bg:"linear-gradient(135deg,#f59e0b,#d97706)"},
+                {label:"Follow-up",val:followUps.length+(overdueNC.length>0?"  ⏰"+overdueNC.length:""),color:"#dc2626",bg:"linear-gradient(135deg,#dc2626,#991b1b)"},
+              ].map((k,i)=><div key={i} style={{borderRadius:"10px",padding:"12px",color:"#fff",background:k.bg}}><div style={{fontSize:"18px",fontWeight:"800"}}>{k.val}</div><div style={{fontSize:"8px",opacity:.85,marginTop:"2px",fontWeight:"600",textTransform:"uppercase",letterSpacing:".5px"}}>{k.label}</div></div>)}
+            </div>
+            {/* Receita total */}
+            <div style={{background:"linear-gradient(135deg,#001d3d,#0055a4)",borderRadius:"10px",padding:"14px",marginBottom:"14px",color:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div><div style={{fontSize:"9px",opacity:.7,fontWeight:"600",textTransform:"uppercase",letterSpacing:"1px"}}>Receita Total Fechada</div><div style={{fontSize:"26px",fontWeight:"800"}}>{fmt(receita)}</div></div>
+              <div style={{textAlign:"right"}}><div style={{fontSize:"9px",opacity:.7}}>Perdidos</div><div style={{fontSize:"16px",fontWeight:"700",color:"#fca5a5"}}>{perdidos.length} leads</div></div>
+            </div>
+            {/* Funil */}
+            <div style={{background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`,marginBottom:"14px"}}>
+              <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Funil de Vendas</div>
+              {activePipe.map(stage=>{const cnt=hist.filter(q=>(q.status||"lead")===stage.id).length;const pct=hist.length>0?Math.round((cnt/hist.length)*100):0;const val=hist.filter(q=>(q.status||"lead")===stage.id).reduce((s,q)=>s+(parseFloat(q.tot)||0),0);return <div key={stage.id} style={{marginBottom:"6px"}}><div style={{display:"flex",justifyContent:"space-between",fontSize:"9px",marginBottom:"2px"}}><span style={{fontWeight:"700",color:stage.color}}>{stage.icon} {stage.label}</span><span style={{color:t.textSec}}>{cnt} leads · {fmt(val)}</span></div><div style={{height:"10px",background:t.cardBorder,borderRadius:"5px",overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:stage.color,borderRadius:"5px",transition:"width .5s"}}/></div></div>})}
+            </div>
+            {/* Por tipo de serviço */}
+            <div style={{background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`,marginBottom:"14px"}}>
+              <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Receita por Tipo de Serviço</div>
+              {SVC.map(sv=>{const items=fechados.filter(q=>q.type===sv.id);const val=items.reduce((s,q)=>s+(parseFloat(q.tot)||0),0);const pct=receita>0?Math.round((val/receita)*100):0;return <div key={sv.id} style={{marginBottom:"6px"}}><div style={{display:"flex",justifyContent:"space-between",fontSize:"9px",marginBottom:"2px"}}><span style={{fontWeight:"600",color:t.text}}>{sv.icon} {sv.label}</span><span style={{color:t.textSec}}>{items.length}x · {fmt(val)} ({pct}%)</span></div><div style={{height:"8px",background:t.cardBorder,borderRadius:"4px",overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:blue,borderRadius:"4px"}}/></div></div>})}
+            </div>
+            {/* Top cidades */}
+            <div style={{background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`}}>
+              <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Top Cidades</div>
+              {(()=>{const cc={};hist.forEach(q=>{const c=q.data?.client?.city||q.cC||"Não informada";cc[c]=(cc[c]||0)+1});return Object.entries(cc).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([c,n])=><div key={c} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${t.cardBorder}`}}><span style={{fontSize:"10px",fontWeight:"600",color:t.text}}>📍 {c}</span><span style={{fontSize:"10px",fontWeight:"800",color:blue,background:blue+"15",padding:"1px 7px",borderRadius:"9px"}}>{n}</span></div>)})()}
+            </div>
           </>}
-        </Card>}
+
+          {/* ── PIPELINE ── */}
+          {crmView==="pipeline"&&<>
+            {/* Filtros */}
+            <div style={{display:"flex",gap:"6px",marginBottom:"10px",flexWrap:"wrap",alignItems:"center"}}>
+              <input value={crmSearch} onChange={e=>setCrmSearch(e.target.value)} placeholder="🔍 Buscar cliente ou cidade..." style={{flex:1,minWidth:"140px",padding:"6px 10px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"10px",background:t.inputBg,color:t.text,outline:"none"}}/>
+              <select value={crmSvcF} onChange={e=>setCrmSvcF(e.target.value)} style={{padding:"6px 8px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"9px",background:t.inputBg,color:t.text}}>
+                <option value="todos">Todos serviços</option>
+                {SVC.map(sv=><option key={sv.id} value={sv.id}>{sv.label}</option>)}
+              </select>
+              <button onClick={()=>setCrmShowLost(p=>!p)} style={{padding:"6px 10px",borderRadius:"6px",border:`1.5px solid ${crmShowLost?"#dc2626":t.cardBorder}`,background:crmShowLost?"#fef2f2":"transparent",color:crmShowLost?"#dc2626":t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>❌ Perdidos</button>
+            </div>
+            {/* Follow-up banner */}
+            {(followUps.length>0||overdueNC.length>0)&&<div style={{background:"#fef2f2",borderRadius:"8px",padding:"8px 12px",marginBottom:"10px",border:"1px solid #fecaca",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:"10px",fontWeight:"700",color:"#dc2626"}}>⚠️ {followUps.length} leads precisam de follow-up{overdueNC.length>0?` · ${overdueNC.length} contatos atrasados`:""}</span>
+              <button onClick={()=>{setCrmSearch("");setCrmSvcF("todos")}} style={{fontSize:"8px",background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontWeight:"700"}}>Ver todos</button>
+            </div>}
+            {/* Pipeline columns */}
+            <div style={{display:"flex",gap:"8px",overflowX:"auto",paddingBottom:"8px"}}>
+              {(crmShowLost?PIPE:activePipe).map(stage=>{
+                const items=filteredHist.filter(q=>(q.status||"lead")===stage.id||(stage.id==="lead"&&!PIPE.find(p=>p.id===(q.status||"lead"))));
+                const stageVal=items.reduce((s,q)=>s+(parseFloat(q.tot)||0),0);
+                return <div key={stage.id} style={{minWidth:"175px",flex:1}}>
+                  <div style={{background:stage.color+"22",borderRadius:"8px 8px 0 0",padding:"8px 10px",borderBottom:`3px solid ${stage.color}`}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div style={{fontSize:"11px",fontWeight:"700",color:stage.color}}>{stage.icon} {stage.label}</div>
+                      <div style={{fontSize:"10px",fontWeight:"800",color:stage.color,background:stage.color+"22",borderRadius:"10px",padding:"1px 6px"}}>{items.length}</div>
+                    </div>
+                    <div style={{fontSize:"8px",color:stage.color,opacity:.8,fontWeight:"600",marginTop:"2px"}}>{fmt(stageVal)}</div>
+                  </div>
+                  <div style={{background:t.sectionBg,borderRadius:"0 0 8px 8px",padding:"6px",minHeight:"80px",border:`1px solid ${t.cardBorder}`,borderTop:"none",display:"flex",flexDirection:"column",gap:"5px"}}>
+                    {items.length===0?<div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",padding:"16px"}}>—</div>:
+                    items.map(q=>{
+                      const temp=getTemp(q.id,q.status||"lead");
+                      const overdue=isNextContactOverdue(q.id);
+                      const tags=crmTags[q.id]||[];
+                      const days=getDaysSince(q.id);
+                      return <div key={q.id} style={{background:t.card,borderRadius:"8px",padding:"9px",border:`1px solid ${overdue?"#fca5a5":t.cardBorder}`,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+                        {/* Header do card */}
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"3px"}}>
+                          <div style={{fontSize:"11px",fontWeight:"700",color:t.text,lineHeight:"1.2"}}>{q.cN||"Sem nome"}</div>
+                          <div style={{display:"flex",gap:"3px",alignItems:"center"}}>
+                            {temp&&<span title={temp.label} style={{fontSize:"12px"}}>{temp.icon}</span>}
+                            {needsFollowUp(q.id,q.status)&&<span style={{fontSize:"7px",background:"#fef2f2",color:"#dc2626",padding:"1px 4px",borderRadius:"3px",fontWeight:"700",animation:"pulse 2s infinite"}}>UP!</span>}
+                          </div>
+                        </div>
+                        {/* Infos */}
+                        <div style={{fontSize:"8px",color:t.textMuted,marginBottom:"3px"}}>
+                          {q.data?.client?.city&&<span>📍{q.data.client.city} · </span>}
+                          <span>{q.ps}m · </span>
+                          {days<999?<span style={{color:days<=5?"#16a34a":days<=10?"#f59e0b":"#dc2626"}}>{days}d atrás</span>:<span>Sem contato</span>}
+                        </div>
+                        {/* Valor */}
+                        <div style={{fontSize:"13px",fontWeight:"800",color:stage.color,marginBottom:"5px"}}>{fmt(parseFloat(q.tot)||0)}</div>
+                        {/* Tags */}
+                        {tags.length>0&&<div style={{display:"flex",gap:"2px",flexWrap:"wrap",marginBottom:"5px"}}>
+                          {tags.map(tg=><span key={tg} style={{fontSize:"6px",padding:"1px 5px",borderRadius:"9px",background:blue+"15",color:blue,fontWeight:"700"}}>{tg}</span>)}
+                        </div>}
+                        {/* Próximo contato */}
+                        {crmNextContact[q.id]&&<div style={{fontSize:"7px",marginBottom:"5px",color:overdue?"#dc2626":"#16a34a",fontWeight:"600"}}>📅 {overdue?"Atrasado:":"Próx:"} {new Date(crmNextContact[q.id]+"T12:00").toLocaleDateString("pt-BR")}</div>}
+                        {/* Ações */}
+                        <div style={{display:"flex",gap:"3px",flexWrap:"wrap"}}>
+                          <button onClick={()=>{msgWA(q);addInteracao(q.id,"whatsapp","Mensagem enviada via WhatsApp")}} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📱</button>
+                          <button onClick={()=>{sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado via WhatsApp")}} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📄</button>
+                          {!["concluido","perdido"].includes(stage.id)&&<select value="" onChange={e=>{if(e.target.value)movePipe(q.id,e.target.value);e.target.value=""}} style={{fontSize:"8px",padding:"2px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer",flex:1}}>
+                            <option value="">Mover →</option>
+                            {PIPE.filter(p=>p.id!==(q.status||"lead")).map(p=><option key={p.id} value={p.id}>{p.icon} {p.label}</option>)}
+                          </select>}
+                          <button onClick={()=>setCrmDetail(crmDetail===q.id?null:q.id)} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:`1px solid ${crmDetail===q.id?blue:t.cardBorder}`,background:crmDetail===q.id?blue:"transparent",color:crmDetail===q.id?"#fff":t.text,cursor:"pointer",fontWeight:"600"}}>📋</button>
+                        </div>
+                        {crmDetail===q.id&&<NotePanel q={q}/>}
+                      </div>
+                    })}
+                  </div>
+                </div>
+              })}
+            </div>
+          </>}
+
+          {/* ── LISTA ── */}
+          {crmView==="lista"&&<>
+            <div style={{display:"flex",gap:"6px",marginBottom:"10px",flexWrap:"wrap",alignItems:"center"}}>
+              <input value={crmSearch} onChange={e=>setCrmSearch(e.target.value)} placeholder="🔍 Buscar..." style={{flex:1,minWidth:"130px",padding:"6px 10px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"10px",background:t.inputBg,color:t.text,outline:"none"}}/>
+              <select value={crmSvcF} onChange={e=>setCrmSvcF(e.target.value)} style={{padding:"6px 8px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"9px",background:t.inputBg,color:t.text}}>
+                <option value="todos">Todos serviços</option>
+                {SVC.map(sv=><option key={sv.id} value={sv.id}>{sv.label}</option>)}
+              </select>
+              <select value={crmSort} onChange={e=>setCrmSort(e.target.value)} style={{padding:"6px 8px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"9px",background:t.inputBg,color:t.text}}>
+                <option value="data">Mais recentes</option>
+                <option value="valor">Maior valor</option>
+                <option value="nome">Nome A-Z</option>
+                <option value="followup">Follow-up</option>
+              </select>
+              <button onClick={()=>setCrmShowLost(p=>!p)} style={{padding:"6px 8px",borderRadius:"6px",border:`1.5px solid ${crmShowLost?"#dc2626":t.cardBorder}`,background:crmShowLost?"#fef2f2":"transparent",color:crmShowLost?"#dc2626":t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>❌</button>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+              {[...filteredHist].sort((a,b)=>{
+                if(crmSort==="valor")return (parseFloat(b.tot)||0)-(parseFloat(a.tot)||0);
+                if(crmSort==="nome")return (a.cN||"").localeCompare(b.cN||"");
+                if(crmSort==="followup")return getDaysSince(a.id)-getDaysSince(b.id);
+                return b.id-a.id;
+              }).map(q=>{
+                const stage=PIPE.find(p=>p.id===(q.status||"lead"))||PIPE[0];
+                const temp=getTemp(q.id,q.status||"lead");
+                const days=getDaysSince(q.id);
+                const tags=crmTags[q.id]||[];
+                return <div key={q.id}>
+                  <div onClick={()=>setCrmDetail(crmDetail===q.id?null:q.id)} style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:"8px",alignItems:"center",padding:"8px 10px",background:t.card,borderRadius:"8px",border:`1px solid ${t.cardBorder}`,cursor:"pointer",transition:"background .15s"}}>
+                    <div>
+                      <div style={{display:"flex",alignItems:"center",gap:"5px"}}><span style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{q.cN||"Sem nome"}</span>{temp&&<span style={{fontSize:"11px"}}>{temp.icon}</span>}{needsFollowUp(q.id,q.status)&&<span style={{fontSize:"7px",background:"#fef2f2",color:"#dc2626",padding:"1px 4px",borderRadius:"3px",fontWeight:"700"}}>UP!</span>}</div>
+                      <div style={{fontSize:"8px",color:t.textMuted}}>{q.data?.client?.city||""} · {SVC.find(s=>s.id===q.type)?.label||""} · {q.ps}m</div>
+                      {tags.length>0&&<div style={{display:"flex",gap:"2px",marginTop:"2px"}}>{tags.map(tg=><span key={tg} style={{fontSize:"6px",padding:"1px 4px",borderRadius:"8px",background:blue+"15",color:blue,fontWeight:"700"}}>{tg}</span>)}</div>}
+                    </div>
+                    <div style={{textAlign:"right"}}><div style={{fontSize:"12px",fontWeight:"800",color:stage.color}}>{fmt(parseFloat(q.tot)||0)}</div><div style={{fontSize:"8px",color:t.textMuted}}>{q.date||""}</div></div>
+                    <div style={{textAlign:"center"}}><span style={{fontSize:"9px",background:stage.color+"22",color:stage.color,padding:"2px 7px",borderRadius:"9px",fontWeight:"700",whiteSpace:"nowrap"}}>{stage.icon} {stage.label}</span></div>
+                    <div style={{fontSize:"9px",textAlign:"center",color:days<=5?"#16a34a":days<=10?"#f59e0b":"#dc2626",fontWeight:"700"}}>{days<999?days+"d":"—"}</div>
+                    <div style={{display:"flex",gap:"3px"}}>
+                      <button onClick={e=>{e.stopPropagation();msgWA(q);addInteracao(q.id,"whatsapp","Mensagem enviada via WhatsApp")}} style={{fontSize:"9px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer"}}>📱</button>
+                      <button onClick={e=>{e.stopPropagation();sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado")}} style={{fontSize:"9px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer"}}>📄</button>
+                    </div>
+                  </div>
+                  {crmDetail===q.id&&<div style={{padding:"0 10px 8px",background:t.card,borderRadius:"0 0 8px 8px",borderLeft:`1px solid ${t.cardBorder}`,borderRight:`1px solid ${t.cardBorder}`,borderBottom:`1px solid ${t.cardBorder}`,marginTop:"-4px"}}><NotePanel q={q}/></div>}
+                </div>
+              })}
+              {filteredHist.length===0&&<div style={{textAlign:"center",padding:"24px",color:t.textMuted,fontSize:"11px"}}>Nenhum lead encontrado</div>}
+            </div>
+          </>}
+
+          </>}
+          </>;
+        })()}</Card>}
 
         {/* ESTOQUE */}
         {tab==="estoque"&&<Card t={t}><ST icon="📦">Estoque</ST>
