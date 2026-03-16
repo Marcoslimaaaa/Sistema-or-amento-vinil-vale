@@ -256,21 +256,52 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   const dk=dark;const els=[];
   // Background
   els.push(<rect key="bg" x="0" y="0" width={svgW} height={svgH} fill={dk?"#0f172a":"#f8fafc"}/>);
-  // Pool floor
-  els.push(<polygon key="fl" points={pts([[0,0,0],[L,0,0],[L,W,0],[0,W,0]])} fill={dk?"#1e3a5f":"#bfdbfe"} opacity="0.7"/>);
-  // Far walls (drawn first - behind)
-  els.push(<polygon key="wL" points={pts([[0,0,0],[0,W,0],[0,W,D],[0,0,D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);
-  els.push(<polygon key="wB" points={pts([[0,W,0],[L,W,0],[L,W,D],[0,W,D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);
-  // Water surface
   const wZ=D*0.91;
-  els.push(<polygon key="wtr" points={pts([[0,0,wZ],[L,0,wZ],[L,W,wZ],[0,W,wZ]])} fill={dk?"#1d4ed8":"#3b82f6"} opacity="0.22" stroke={dk?"#3b82f6":"#2563eb"} strokeWidth="0.5"/>);
-  [0.25,0.5,0.75].forEach((f,i)=>els.push(<line key={`sh${i}`} x1={iso(L*0.1,W*f,wZ).x} y1={iso(L*0.1,W*f,wZ).y} x2={iso(L*0.9,W*f,wZ).x} y2={iso(L*0.9,W*f,wZ).y} stroke="#93c5fd" strokeWidth="0.5" opacity="0.45" strokeDasharray="5,4"/>));
-  // Near walls (drawn after water)
-  els.push(<polygon key="wF" points={pts([[0,0,0],[L,0,0],[L,0,D],[0,0,D]])} fill={dk?"#1e4080":"#93c5fd"} stroke="#2563eb" strokeWidth="1"/>);
-  els.push(<polygon key="wR" points={pts([[L,0,0],[L,W,0],[L,W,D],[L,0,D]])} fill={dk?"#1a3570":"#7dd3fc"} stroke="#2563eb" strokeWidth="1"/>);
-  // Pool rim
-  els.push(<polygon key="rim" points={pts([[0,0,D],[L,0,D],[L,W,D],[0,W,D]])} fill="none" stroke="#2563eb" strokeWidth="2.5"/>);
-  [[0,0],[L,0],[L,W],[0,W]].forEach(([x,y],i)=>{const a=iso(x,y,0),b=iso(x,y,D);els.push(<line key={`cv${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#2563eb" strokeWidth="1" opacity="0.35"/>);});
+  const isOval=poolFmt==="Oval"||poolFmt==="Feijão";
+  const isLFmt=poolFmt==="Formato L";
+  const N=24;
+  if(isOval){
+    // Elipse: chão, paredes, água e borda como fatias triangulares
+    for(let i=0;i<N;i++){const a1=i/N*2*Math.PI,a2=(i+1)/N*2*Math.PI;const x1=L/2+L/2*Math.cos(a1),y1=W/2+W/2*Math.sin(a1),x2=L/2+L/2*Math.cos(a2),y2=W/2+W/2*Math.sin(a2);
+      els.push(<polygon key={`fl${i}`} points={pts([[L/2,W/2,0],[x1,y1,0],[x2,y2,0]])} fill={dk?"#1e3a5f":"#bfdbfe"} opacity="0.7"/>);
+      const wallFill=a1>Math.PI&&a1<2*Math.PI?(dk?"#1a3060":"#7dd3fc"):(dk?"#1e4080":"#93c5fd");
+      els.push(<polygon key={`wl${i}`} points={pts([[x1,y1,0],[x2,y2,0],[x2,y2,D],[x1,y1,D]])} fill={wallFill} stroke="#2563eb" strokeWidth="0.5" opacity="0.75"/>);
+      els.push(<polygon key={`wt${i}`} points={pts([[L/2,W/2,wZ],[x1,y1,wZ],[x2,y2,wZ]])} fill={dk?"#1d4ed8":"#3b82f6"} opacity="0.22"/>);
+      const r1=iso(x1,y1,D),r2=iso(x2,y2,D);els.push(<line key={`rim${i}`} x1={r1.x} y1={r1.y} x2={r2.x} y2={r2.y} stroke="#2563eb" strokeWidth="2.5"/>);
+    }
+    [0.25,0.5,0.75].forEach((f,i)=>els.push(<line key={`sh${i}`} x1={iso(L/2-L/2*0.8,W/2+W/2*f*0.6,wZ).x} y1={iso(L/2-L/2*0.8,W/2+W/2*f*0.6,wZ).y} x2={iso(L/2+L/2*0.8,W/2+W/2*f*0.6,wZ).x} y2={iso(L/2+L/2*0.8,W/2+W/2*f*0.6,wZ).y} stroke="#93c5fd" strokeWidth="0.5" opacity="0.4" strokeDasharray="5,4"/>));
+  } else if(isLFmt){
+    const W1=W*0.6,W2=W-W1,L2=L*0.6;
+    // Chão (2 retângulos)
+    els.push(<polygon key="fl1" points={pts([[0,0,0],[L,0,0],[L,W1,0],[0,W1,0]])} fill={dk?"#1e3a5f":"#bfdbfe"} opacity="0.7"/>);
+    els.push(<polygon key="fl2" points={pts([[0,W1,0],[L2,W1,0],[L2,W,0],[0,W,0]])} fill={dk?"#1e3a5f":"#bfdbfe"} opacity="0.7"/>);
+    // Paredes traseiras
+    els.push(<polygon key="wL" points={pts([[0,0,0],[0,W,0],[0,W,D],[0,0,D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);
+    els.push(<polygon key="wB" points={pts([[0,W,0],[L2,W,0],[L2,W,D],[0,W,D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);
+    // Água
+    els.push(<polygon key="wt1" points={pts([[0,0,wZ],[L,0,wZ],[L,W1,wZ],[0,W1,wZ]])} fill={dk?"#1d4ed8":"#3b82f6"} opacity="0.22"/>);
+    els.push(<polygon key="wt2" points={pts([[0,W1,wZ],[L2,W1,wZ],[L2,W,wZ],[0,W,wZ]])} fill={dk?"#1d4ed8":"#3b82f6"} opacity="0.22"/>);
+    [0.25,0.5,0.75].forEach((f,i)=>els.push(<line key={`sh${i}`} x1={iso(L*0.1,W1*f,wZ).x} y1={iso(L*0.1,W1*f,wZ).y} x2={iso(L*0.9,W1*f,wZ).x} y2={iso(L*0.9,W1*f,wZ).y} stroke="#93c5fd" strokeWidth="0.5" opacity="0.4" strokeDasharray="5,4"/>));
+    // Paredes da frente
+    els.push(<polygon key="wF" points={pts([[0,0,0],[L,0,0],[L,0,D],[0,0,D]])} fill={dk?"#1e4080":"#93c5fd"} stroke="#2563eb" strokeWidth="1"/>);
+    els.push(<polygon key="wR1" points={pts([[L,0,0],[L,W1,0],[L,W1,D],[L,0,D]])} fill={dk?"#1a3570":"#7dd3fc"} stroke="#2563eb" strokeWidth="1"/>);
+    els.push(<polygon key="wRi" points={pts([[L2,W1,0],[L,W1,0],[L,W1,D],[L2,W1,D]])} fill={dk?"#1a3570":"#7dd3fc"} stroke="#2563eb" strokeWidth="1"/>);
+    els.push(<polygon key="wR2" points={pts([[L2,W1,0],[L2,W,0],[L2,W,D],[L2,W1,D]])} fill={dk?"#1a3570":"#7dd3fc"} stroke="#2563eb" strokeWidth="1"/>);
+    // Borda
+    els.push(<polygon key="rim" points={pts([[0,0,D],[L,0,D],[L,W1,D],[L2,W1,D],[L2,W,D],[0,W,D]])} fill="none" stroke="#2563eb" strokeWidth="2.5"/>);
+    [[0,0],[L,0],[L,W1],[L2,W1],[L2,W],[0,W]].forEach(([x,y],i)=>{const a=iso(x,y,0),b=iso(x,y,D);els.push(<line key={`cv${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#2563eb" strokeWidth="1" opacity="0.35"/>);});
+  } else {
+    // Retangular (padrão)
+    els.push(<polygon key="fl" points={pts([[0,0,0],[L,0,0],[L,W,0],[0,W,0]])} fill={dk?"#1e3a5f":"#bfdbfe"} opacity="0.7"/>);
+    els.push(<polygon key="wL" points={pts([[0,0,0],[0,W,0],[0,W,D],[0,0,D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);
+    els.push(<polygon key="wB" points={pts([[0,W,0],[L,W,0],[L,W,D],[0,W,D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);
+    els.push(<polygon key="wtr" points={pts([[0,0,wZ],[L,0,wZ],[L,W,wZ],[0,W,wZ]])} fill={dk?"#1d4ed8":"#3b82f6"} opacity="0.22" stroke={dk?"#3b82f6":"#2563eb"} strokeWidth="0.5"/>);
+    [0.25,0.5,0.75].forEach((f,i)=>els.push(<line key={`sh${i}`} x1={iso(L*0.1,W*f,wZ).x} y1={iso(L*0.1,W*f,wZ).y} x2={iso(L*0.9,W*f,wZ).x} y2={iso(L*0.9,W*f,wZ).y} stroke="#93c5fd" strokeWidth="0.5" opacity="0.45" strokeDasharray="5,4"/>));
+    els.push(<polygon key="wF" points={pts([[0,0,0],[L,0,0],[L,0,D],[0,0,D]])} fill={dk?"#1e4080":"#93c5fd"} stroke="#2563eb" strokeWidth="1"/>);
+    els.push(<polygon key="wR" points={pts([[L,0,0],[L,W,0],[L,W,D],[L,0,D]])} fill={dk?"#1a3570":"#7dd3fc"} stroke="#2563eb" strokeWidth="1"/>);
+    els.push(<polygon key="rim" points={pts([[0,0,D],[L,0,D],[L,W,D],[0,W,D]])} fill="none" stroke="#2563eb" strokeWidth="2.5"/>);
+    [[0,0],[L,0],[L,W],[0,W]].forEach(([x,y],i)=>{const a=iso(x,y,0),b=iso(x,y,D);els.push(<line key={`cv${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#2563eb" strokeWidth="1" opacity="0.35"/>);});
+  }
   // Pool labels
   const pm=iso(L/2,W/2,wZ*0.5);els.push(<text key="plbl" x={pm.x} y={pm.y} textAnchor="middle" fontSize="9" fontWeight="700" fill={dk?"#93c5fd":"#1d4ed8"} opacity="0.85">PISCINA</text>);
   const pd=iso(L/2,W/2,wZ*0.2);els.push(<text key="pdim" x={pd.x} y={pd.y} textAnchor="middle" fontSize="7" fill={dk?"#60a5fa":"#3b82f6"} opacity="0.8">{L}×{W}m · {D}m prof.</text>);
