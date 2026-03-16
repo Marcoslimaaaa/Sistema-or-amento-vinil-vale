@@ -969,9 +969,11 @@ export default function App(){
   // FINANCEIRO
   const [contasReceber,setContasReceber]=useState(()=>{try{const s=localStorage.getItem("vv_receber");return s?JSON.parse(s):[]}catch{return[]}});
   const [contasPagar,setContasPagar]=useState(()=>{try{const s=localStorage.getItem("vv_pagar");return s?JSON.parse(s):[]}catch{return[]}});
+  const [despesasFixas,setDespesasFixas]=useState(()=>{try{const s=localStorage.getItem("vv_fixas");return s?JSON.parse(s):[]}catch{return[]}});
   const [finTab,setFinTab]=useState("receber");
   const [finFormR,setFinFormR]=useState({desc:"",valor:"",venc:"",obs:"",parcelas:"1"});
   const [finFormP,setFinFormP]=useState({desc:"",valor:"",venc:"",cat:"materiais",obs:"",parcelas:"1",obra:""});
+  const [finFormF,setFinFormF]=useState({desc:"",valor:"",cat:"fixas",dia:"5",obs:""});
 
   useEffect(()=>{
     if(!user||!fbReady||!fb.db||user.uid==="local")return;
@@ -1023,6 +1025,29 @@ export default function App(){
     if(fbReady&&fb.db&&user&&user.uid!=="local"){
       try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","pagar"),{data})}catch{}
     }
+  };
+
+  const saveFixas=(data)=>{
+    setDespesasFixas(data);
+    try{localStorage.setItem("vv_fixas",JSON.stringify(data))}catch{}
+    if(fbReady&&fb.db&&user&&user.uid!=="local"){
+      try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","fixas"),{data})}catch{}
+    }
+  };
+
+  const lancarFixasDoMes=()=>{
+    if(despesasFixas.length===0)return 0;
+    const now=new Date();
+    const mesKey=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+    // Não lança se já existir lançamento deste mês para cada fixa
+    const jaLancadas=contasPagar.filter(c=>c.fixaId&&c.mesRef===mesKey).map(c=>c.fixaId);
+    const novas=despesasFixas.filter(f=>!jaLancadas.includes(f.id)).map(f=>{
+      const dia=Math.min(parseInt(f.dia)||5,28);
+      const venc=`${mesKey}-${String(dia).padStart(2,"0")}`;
+      return{id:"pag_"+Date.now()+"_"+f.id,desc:f.desc,valor:parseFloat(f.valor),venc,cat:f.cat||"fixas",status:"pendente",obs:f.obs||"",fixaId:f.id,mesRef:mesKey};
+    });
+    if(novas.length>0)savePagar([...novas,...contasPagar]);
+    return novas.length;
   };
 
   const syncReceberFromHist=()=>{
@@ -2130,8 +2155,8 @@ export default function App(){
         const margem=recBruta>0?((lucroLiq/recBruta)*100).toFixed(1):0;
 
         // categorias expandidas
-        const CAT_CORES={materiais:"#8b5cf6",maodeobra:"#3b82f6",combustivel:"#f97316",impostos:"#dc2626",marketing:"#ec4899",aluguel:"#f59e0b",outros:"#64748b"};
-        const CAT_LABELS={materiais:"Materiais",maodeobra:"Mão de Obra",combustivel:"Combustível",impostos:"Impostos",marketing:"Marketing",aluguel:"Aluguel",outros:"Outros"};
+        const CAT_CORES={materiais:"#8b5cf6",maodeobra:"#3b82f6",combustivel:"#f97316",impostos:"#dc2626",marketing:"#ec4899",aluguel:"#f59e0b",fixas:"#06b6d4",outros:"#64748b"};
+        const CAT_LABELS={materiais:"Materiais",maodeobra:"Mão de Obra",combustivel:"Combustível",impostos:"Impostos",marketing:"Marketing",aluguel:"Aluguel",fixas:"Fixa Mensal",outros:"Outros"};
 
         // breakdown despesas por categoria
         const breakdownCat={};
@@ -2172,6 +2197,7 @@ export default function App(){
           <div style={{display:"flex",gap:"6px",marginBottom:"14px",flexWrap:"wrap"}}>
             {subBtn("receber","📥 Receber")}
             {subBtn("pagar","📤 Pagar")}
+            {subBtn("fixas","📌 Fixas Mensais")}
             {subBtn("fluxo","📊 Fluxo de Caixa")}
             {subBtn("dre","📑 DRE")}
             {subBtn("obra","🏗 Por Obra")}
@@ -2249,6 +2275,7 @@ export default function App(){
                   <option value="impostos">Impostos</option>
                   <option value="marketing">Marketing</option>
                   <option value="aluguel">Aluguel</option>
+                  <option value="fixas">Fixa Mensal</option>
                   <option value="outros">Outros</option>
                 </select>
                 <select value={finFormP.obra} onChange={e=>setFinFormP(p=>({...p,obra:e.target.value}))} style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}>
@@ -2293,6 +2320,81 @@ export default function App(){
                 </div>;
               })}
             </div>}
+          </>}
+
+          {/* DESPESAS FIXAS MENSAIS */}
+          {finTab==="fixas"&&<>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px",flexWrap:"wrap",gap:"6px"}}>
+              <div>
+                <div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>Despesas Fixas Mensais</div>
+                <div style={{fontSize:"9px",color:t.textMuted,marginTop:"1px"}}>Cadastre despesas que se repetem todo mês e lance com um clique</div>
+              </div>
+              <Btn onClick={()=>{const n=lancarFixasDoMes();setFbMsg(n>0?`📌 ${n} despesa(s) lançada(s) no mês!`:"Todas já foram lançadas este mês");setTimeout(()=>setFbMsg(""),3000);}} style={{background:"#06b6d4",color:"#fff",border:"none",fontWeight:"700",fontSize:"11px"}}>
+                ⚡ Lançar este mês
+              </Btn>
+            </div>
+
+            {/* Formulário nova fixa */}
+            <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",marginBottom:"12px",border:`1px solid ${t.cardBorder}`}}>
+              <div style={{fontSize:"10px",fontWeight:"700",color:"#06b6d4",marginBottom:"8px"}}>+ Nova despesa fixa</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 90px 70px",gap:"6px",marginBottom:"6px"}} className="vv-g3">
+                <input value={finFormF.desc} onChange={e=>setFinFormF(p=>({...p,desc:e.target.value}))} placeholder="Descrição (ex: Aluguel escritório)" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+                <input value={finFormF.valor} onChange={e=>setFinFormF(p=>({...p,valor:e.target.value}))} placeholder="R$ valor" type="number" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+                <input value={finFormF.dia} onChange={e=>setFinFormF(p=>({...p,dia:e.target.value}))} placeholder="Dia" type="number" min="1" max="28" title="Dia do mês para vencimento (1-28)" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+              </div>
+              <div style={{display:"flex",gap:"6px",alignItems:"center",flexWrap:"wrap"}}>
+                <select value={finFormF.cat} onChange={e=>setFinFormF(p=>({...p,cat:e.target.value}))} style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}>
+                  <option value="fixas">Fixa Mensal</option>
+                  <option value="aluguel">Aluguel</option>
+                  <option value="maodeobra">Mão de Obra</option>
+                  <option value="impostos">Impostos</option>
+                  <option value="marketing">Marketing</option>
+                  <option value="outros">Outros</option>
+                </select>
+                <input value={finFormF.obs} onChange={e=>setFinFormF(p=>({...p,obs:e.target.value}))} placeholder="Obs (opcional)" style={{flex:1,padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+                <Btn onClick={()=>{
+                  if(!finFormF.desc||!finFormF.valor)return;
+                  const nova={id:"fix_"+Date.now(),desc:finFormF.desc,valor:parseFloat(finFormF.valor),cat:finFormF.cat,dia:finFormF.dia||"5",obs:finFormF.obs};
+                  saveFixas([nova,...despesasFixas]);
+                  setFinFormF({desc:"",valor:"",cat:"fixas",dia:"5",obs:""});
+                }} style={{background:"#06b6d4",color:"#fff",border:"none",whiteSpace:"nowrap",fontSize:"11px"}}>Cadastrar</Btn>
+              </div>
+            </div>
+
+            {/* Lista de fixas */}
+            {despesasFixas.length===0
+              ?<div style={{textAlign:"center",padding:"28px",color:t.textMuted,fontSize:"11px"}}>
+                  Nenhuma despesa fixa cadastrada.<br/>
+                  <span style={{fontSize:"9px"}}>Ex: Aluguel, internet, contador, salários fixos…</span>
+                </div>
+              :<div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+                {despesasFixas.map(f=>{
+                  const cor=CAT_CORES[f.cat]||"#06b6d4";
+                  const now=new Date();
+                  const mesKey=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+                  const jaLancada=contasPagar.some(c=>c.fixaId===f.id&&c.mesRef===mesKey);
+                  return <div key={f.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:t.sectionBg,borderRadius:"8px",border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${cor}`}}>
+                    <div style={{flex:1}}>
+                      <div style={{display:"flex",alignItems:"center",gap:"5px"}}>
+                        <span style={{fontSize:"8px",background:cor,color:"#fff",padding:"1px 5px",borderRadius:"3px",fontWeight:"600"}}>{CAT_LABELS[f.cat]||f.cat}</span>
+                        <span style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{f.desc}</span>
+                      </div>
+                      <div style={{fontSize:"9px",color:t.textMuted,marginTop:"1px"}}>Vence dia {f.dia} de cada mês {f.obs?" · "+f.obs:""}</div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:"8px",flexShrink:0}}>
+                      <span style={{fontSize:"13px",fontWeight:"800",color:cor}}>{fmtV(f.valor)}</span>
+                      <span style={{fontSize:"8px",padding:"2px 6px",borderRadius:"4px",background:jaLancada?"#dcfce7":"#f1f5f9",color:jaLancada?"#16a34a":t.textMuted,fontWeight:"600"}}>
+                        {jaLancada?"✓ Lançada":"Pendente"}
+                      </span>
+                      <button onClick={()=>saveFixas(despesasFixas.filter(x=>x.id!==f.id))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>✕</button>
+                    </div>
+                  </div>;
+                })}
+                <div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",marginTop:"6px"}}>
+                  Total fixo mensal: <strong style={{color:t.text}}>{fmtV(despesasFixas.reduce((a,f)=>a+(parseFloat(f.valor)||0),0))}</strong>
+                </div>
+              </div>
+            }
           </>}
 
           {/* FLUXO DE CAIXA */}
