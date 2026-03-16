@@ -970,8 +970,8 @@ export default function App(){
   const [contasReceber,setContasReceber]=useState(()=>{try{const s=localStorage.getItem("vv_receber");return s?JSON.parse(s):[]}catch{return[]}});
   const [contasPagar,setContasPagar]=useState(()=>{try{const s=localStorage.getItem("vv_pagar");return s?JSON.parse(s):[]}catch{return[]}});
   const [finTab,setFinTab]=useState("receber");
-  const [finFormR,setFinFormR]=useState({desc:"",valor:"",venc:"",obs:""});
-  const [finFormP,setFinFormP]=useState({desc:"",valor:"",venc:"",cat:"fornecedor",obs:""});
+  const [finFormR,setFinFormR]=useState({desc:"",valor:"",venc:"",obs:"",parcelas:"1"});
+  const [finFormP,setFinFormP]=useState({desc:"",valor:"",venc:"",cat:"materiais",obs:"",parcelas:"1",obra:""});
 
   useEffect(()=>{
     if(!user||!fbReady||!fb.db||user.uid==="local")return;
@@ -1250,6 +1250,7 @@ export default function App(){
   // Calculate effective quantity based on unit type
   const ar=calcA(pool,spa,wMode,walls);
   const lowStockCount=Object.entries(stk).filter(([,s])=>s.qty>0&&s.qty<=(s.minQty||2)).length;
+  const alertasFinCount=(()=>{const today=new Date().toISOString().split("T")[0];const d3=new Date();d3.setDate(d3.getDate()+3);const d3s=d3.toISOString().split("T")[0];return[...contasReceber,...contasPagar].filter(c=>c.status==="pendente"&&c.venc&&(c.venc<today||c.venc<=d3s)).length;})();
 
   const effQ=(i)=>{
     if(i.un==="m²")return parseFloat(ar.tot)||0; // area total m²
@@ -1358,7 +1359,7 @@ export default function App(){
       </div>
 
       <div className="vv-tab-bar" style={{display:"flex",padding:"0 14px",background:t.tabBg,borderBottom:`1px solid ${t.cardBorder}`,overflowX:"auto"}}>
-        {[["cliente","👤","Cliente",0],["piscina","🏊","Piscina",0],["itens","🛒","Custos",0],["garantias","🛡","Garantias",0],["pagamento","💰","Valor",0],["historico","📋","Salvos",0],["crm","📈","CRM",0],["estoque","📦","Estoque",lowStockCount],["planta","📐","Planta",0],["contratos","📝","Contratos",0],["financeiro","💵","Financeiro",0]].map(([k,ic,lb,badge])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} badge={badge} t={t}>{lb}</Tab>)}
+        {[["cliente","👤","Cliente",0],["piscina","🏊","Piscina",0],["itens","🛒","Custos",0],["garantias","🛡","Garantias",0],["pagamento","💰","Valor",0],["historico","📋","Salvos",0],["crm","📈","CRM",0],["estoque","📦","Estoque",lowStockCount],["planta","📐","Planta",0],["contratos","📝","Contratos",0],["financeiro","💵","Financeiro",alertasFinCount]].map(([k,ic,lb,badge])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} badge={badge} t={t}>{lb}</Tab>)}
       </div>
 
       <div style={{padding:"14px"}}>
@@ -2128,10 +2129,31 @@ export default function App(){
         const lucroLiq=lucroBruto-despesasOp;
         const margem=recBruta>0?((lucroLiq/recBruta)*100).toFixed(1):0;
 
+        // categorias expandidas
+        const CAT_CORES={materiais:"#8b5cf6",maodeobra:"#3b82f6",combustivel:"#f97316",impostos:"#dc2626",marketing:"#ec4899",aluguel:"#f59e0b",outros:"#64748b"};
+        const CAT_LABELS={materiais:"Materiais",maodeobra:"Mão de Obra",combustivel:"Combustível",impostos:"Impostos",marketing:"Marketing",aluguel:"Aluguel",outros:"Outros"};
+
+        // breakdown despesas por categoria
+        const breakdownCat={};
+        contasPagar.filter(c=>c.status==="pago").forEach(c=>{
+          const k=c.cat||"outros";
+          if(!breakdownCat[k])breakdownCat[k]=0;
+          breakdownCat[k]+=parseFloat(c.valor)||0;
+        });
+
+        // obras para centro de custo
+        const obrasAtivas=hist.filter(q=>["fechou","execucao","concluido"].includes(q.status));
+
         const subBtn=(k,lb)=><button onClick={()=>setFinTab(k)} style={{padding:"6px 14px",borderRadius:"20px",border:`1.5px solid ${finTab===k?blue:t.cardBorder}`,background:finTab===k?blue:"transparent",color:finTab===k?"#fff":t.text,fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>{lb}</button>;
 
         return <>
           <ST icon="💵">Financeiro</ST>
+
+          {/* ALERTA DE VENCIMENTO */}
+          {alertasFinCount>0&&<div style={{background:"#fef2f2",border:"1.5px solid #dc2626",borderRadius:"8px",padding:"10px 14px",marginBottom:"12px",display:"flex",alignItems:"center",gap:"8px"}}>
+            <span style={{fontSize:"16px"}}>⚠️</span>
+            <span style={{fontSize:"11px",fontWeight:"700",color:"#dc2626"}}>{alertasFinCount} conta(s) vencida(s) ou vencendo em até 3 dias!</span>
+          </div>}
 
           {/* CARDS RESUMO */}
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"8px",marginBottom:"14px"}} className="vv-g4">
@@ -2152,6 +2174,7 @@ export default function App(){
             {subBtn("pagar","📤 Pagar")}
             {subBtn("fluxo","📊 Fluxo de Caixa")}
             {subBtn("dre","📑 DRE")}
+            {subBtn("obra","🏗 Por Obra")}
           </div>
 
           {/* CONTAS A RECEBER */}
@@ -2163,14 +2186,26 @@ export default function App(){
             {/* Formulário adicionar */}
             <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",marginBottom:"10px",border:`1px solid ${t.cardBorder}`}}>
               <div style={{fontSize:"10px",fontWeight:"700",color:blue,marginBottom:"8px"}}>+ Nova conta a receber</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 100px 120px",gap:"6px",marginBottom:"6px"}} className="vv-g3">
+              <div style={{display:"grid",gridTemplateColumns:"1fr 100px 120px 70px",gap:"6px",marginBottom:"6px"}} className="vv-g3">
                 <input value={finFormR.desc} onChange={e=>setFinFormR(p=>({...p,desc:e.target.value}))} placeholder="Descrição (ex: Obra João - sinal)" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
                 <input value={finFormR.valor} onChange={e=>setFinFormR(p=>({...p,valor:e.target.value}))} placeholder="Valor R$" type="number" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
                 <input value={finFormR.venc} onChange={e=>setFinFormR(p=>({...p,venc:e.target.value}))} type="date" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+                <input value={finFormR.parcelas} onChange={e=>setFinFormR(p=>({...p,parcelas:e.target.value}))} placeholder="Parcelas" type="number" min="1" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}} title="Número de parcelas"/>
               </div>
               <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
                 <input value={finFormR.obs} onChange={e=>setFinFormR(p=>({...p,obs:e.target.value}))} placeholder="Obs (opcional)" style={{flex:1,padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                <Btn onClick={()=>{if(!finFormR.desc||!finFormR.valor)return;const nova={id:"rcb_"+Date.now(),desc:finFormR.desc,valor:parseFloat(finFormR.valor),venc:finFormR.venc,status:"pendente",obs:finFormR.obs};saveReceber([nova,...contasReceber]);setFinFormR({desc:"",valor:"",venc:"",obs:""})}} style={{background:"#16a34a",color:"#fff",border:"none",whiteSpace:"nowrap",fontSize:"11px"}}>Adicionar</Btn>
+                <Btn onClick={()=>{
+                  if(!finFormR.desc||!finFormR.valor)return;
+                  const n=Math.max(1,parseInt(finFormR.parcelas)||1);
+                  const valUnit=parseFloat(finFormR.valor)/n;
+                  const novas=Array.from({length:n},(_,i)=>{
+                    let vencP=finFormR.venc;
+                    if(finFormR.venc&&n>1){const d=new Date(finFormR.venc+"T00:00");d.setDate(d.getDate()+i*30);vencP=d.toISOString().split("T")[0];}
+                    return{id:"rcb_"+Date.now()+"_"+i,desc:n>1?`${finFormR.desc} (${i+1}/${n})`:finFormR.desc,valor:valUnit,venc:vencP,status:"pendente",obs:finFormR.obs,parcela:n>1?i+1:undefined,totalParcelas:n>1?n:undefined};
+                  });
+                  saveReceber([...novas,...contasReceber]);
+                  setFinFormR({desc:"",valor:"",venc:"",obs:"",parcelas:"1"});
+                }} style={{background:"#16a34a",color:"#fff",border:"none",whiteSpace:"nowrap",fontSize:"11px"}}>Adicionar</Btn>
               </div>
             </div>
             {/* Lista */}
@@ -2200,21 +2235,39 @@ export default function App(){
             {/* Formulário */}
             <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",marginBottom:"10px",border:`1px solid ${t.cardBorder}`}}>
               <div style={{fontSize:"10px",fontWeight:"700",color:"#dc2626",marginBottom:"8px"}}>+ Nova despesa</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 100px 120px",gap:"6px",marginBottom:"6px"}} className="vv-g3">
+              <div style={{display:"grid",gridTemplateColumns:"1fr 100px 120px 70px",gap:"6px",marginBottom:"6px"}} className="vv-g3">
                 <input value={finFormP.desc} onChange={e=>setFinFormP(p=>({...p,desc:e.target.value}))} placeholder="Descrição (ex: Fornecedor Acqualiner)" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
                 <input value={finFormP.valor} onChange={e=>setFinFormP(p=>({...p,valor:e.target.value}))} placeholder="Valor R$" type="number" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
                 <input value={finFormP.venc} onChange={e=>setFinFormP(p=>({...p,venc:e.target.value}))} type="date" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+                <input value={finFormP.parcelas} onChange={e=>setFinFormP(p=>({...p,parcelas:e.target.value}))} placeholder="Parcelas" type="number" min="1" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}} title="Número de parcelas"/>
               </div>
               <div style={{display:"flex",gap:"6px",alignItems:"center",flexWrap:"wrap"}}>
                 <select value={finFormP.cat} onChange={e=>setFinFormP(p=>({...p,cat:e.target.value}))} style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}>
-                  <option value="fornecedor">Fornecedor</option>
-                  <option value="funcionario">Funcionário</option>
+                  <option value="materiais">Materiais</option>
+                  <option value="maodeobra">Mão de Obra</option>
+                  <option value="combustivel">Combustível</option>
+                  <option value="impostos">Impostos</option>
+                  <option value="marketing">Marketing</option>
                   <option value="aluguel">Aluguel</option>
-                  <option value="servico">Serviço</option>
                   <option value="outros">Outros</option>
                 </select>
+                <select value={finFormP.obra} onChange={e=>setFinFormP(p=>({...p,obra:e.target.value}))} style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}>
+                  <option value="">— Despesa geral —</option>
+                  {obrasAtivas.map(o=><option key={o.id} value={String(o.id)}>{o.cN||"Cliente"}</option>)}
+                </select>
                 <input value={finFormP.obs} onChange={e=>setFinFormP(p=>({...p,obs:e.target.value}))} placeholder="Obs (opcional)" style={{flex:1,padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                <Btn onClick={()=>{if(!finFormP.desc||!finFormP.valor)return;const nova={id:"pag_"+Date.now(),desc:finFormP.desc,valor:parseFloat(finFormP.valor),venc:finFormP.venc,cat:finFormP.cat,status:"pendente",obs:finFormP.obs};savePagar([nova,...contasPagar]);setFinFormP({desc:"",valor:"",venc:"",cat:"fornecedor",obs:""})}} style={{background:"#dc2626",color:"#fff",border:"none",whiteSpace:"nowrap",fontSize:"11px"}}>Adicionar</Btn>
+                <Btn onClick={()=>{
+                  if(!finFormP.desc||!finFormP.valor)return;
+                  const n=Math.max(1,parseInt(finFormP.parcelas)||1);
+                  const valUnit=parseFloat(finFormP.valor)/n;
+                  const novas=Array.from({length:n},(_,i)=>{
+                    let vencP=finFormP.venc;
+                    if(finFormP.venc&&n>1){const d=new Date(finFormP.venc+"T00:00");d.setDate(d.getDate()+i*30);vencP=d.toISOString().split("T")[0];}
+                    return{id:"pag_"+Date.now()+"_"+i,desc:n>1?`${finFormP.desc} (${i+1}/${n})`:finFormP.desc,valor:valUnit,venc:vencP,cat:finFormP.cat,obra:finFormP.obra,status:"pendente",obs:finFormP.obs,parcela:n>1?i+1:undefined,totalParcelas:n>1?n:undefined};
+                  });
+                  savePagar([...novas,...contasPagar]);
+                  setFinFormP({desc:"",valor:"",venc:"",cat:"materiais",obs:"",parcelas:"1",obra:""});
+                }} style={{background:"#dc2626",color:"#fff",border:"none",whiteSpace:"nowrap",fontSize:"11px"}}>Adicionar</Btn>
               </div>
             </div>
             {/* Lista */}
@@ -2222,11 +2275,11 @@ export default function App(){
             <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
               {contasPagar.map(c=>{
                 const cor=statusColor(c.status,c.venc);
-                const catColors={fornecedor:"#8b5cf6",funcionario:"#3b82f6",aluguel:"#f97316",servico:"#06b6d4",outros:"#64748b"};
+                const catColors={...CAT_CORES,fornecedor:"#8b5cf6",funcionario:"#3b82f6",servico:"#06b6d4"};
                 return <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:t.sectionBg,borderRadius:"8px",border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${cor}`}}>
                   <div style={{flex:1}}>
                     <div style={{display:"flex",alignItems:"center",gap:"5px"}}>
-                      <span style={{fontSize:"8px",background:catColors[c.cat]||"#64748b",color:"#fff",padding:"1px 5px",borderRadius:"3px",fontWeight:"600"}}>{c.cat}</span>
+                      <span style={{fontSize:"8px",background:catColors[c.cat]||"#64748b",color:"#fff",padding:"1px 5px",borderRadius:"3px",fontWeight:"600"}}>{CAT_LABELS[c.cat]||c.cat}</span>
                       <div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{c.desc}</div>
                     </div>
                     <div style={{fontSize:"9px",color:t.textMuted}}>{c.venc?new Date(c.venc+"T00:00").toLocaleDateString("pt-BR"):""} {c.obs?" · "+c.obs:""}</div>
@@ -2244,7 +2297,31 @@ export default function App(){
 
           {/* FLUXO DE CAIXA */}
           {finTab==="fluxo"&&<>
-            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"12px"}}>Fluxo de Caixa — entradas e saídas confirmadas por mês</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px",flexWrap:"wrap",gap:"6px"}}>
+              <div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>Fluxo de Caixa — entradas e saídas confirmadas por mês</div>
+              <Btn onClick={()=>{
+                const fmtM=v=>(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+                const pendRcb=contasReceber.filter(c=>c.status!=="recebido");
+                const pendPag=contasPagar.filter(c=>c.status!=="pago");
+                const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;box-sizing:border-box;-webkit-print-color-adjust:exact!important}body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;padding:16mm;font-size:13px;line-height:1.7;color:#111}@page{size:A4;margin:10mm}.hdr{background:#0a1f44;color:#fff;padding:16px 24px;border-radius:8px;text-align:center;margin-bottom:16px}.hdr h1{font-size:22px;color:#e8b100;margin:0}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}.card{border-radius:8px;padding:10px 14px;text-align:center}.card .lbl{font-size:10px;color:#666;margin-bottom:4px}.card .val{font-size:16px;font-weight:800}.tbl{width:100%;border-collapse:collapse;margin:10px 0}.tbl th{background:#0055a4;color:#fff;padding:6px 10px;text-align:left;font-size:11px}.tbl td{padding:5px 10px;border-bottom:1px solid #e2e8f0;font-size:12px}.sec{font-size:14px;font-weight:700;margin:16px 0 8px;color:#0a1f44;border-bottom:2px solid #0055a4;padding-bottom:4px}.ft{text-align:center;font-size:10px;color:#888;margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px}</style></head><body>
+<div class="hdr"><h1>VINILVALE</h1><div style="font-size:11px;margin-top:4px">Relatório Financeiro</div><div style="font-size:10px;opacity:.7;margin-top:2px">Gerado em ${new Date().toLocaleDateString("pt-BR")}</div></div>
+<div class="cards">
+  <div class="card" style="background:#fffbeb;border:1px solid #fde68a"><div class="lbl">A Receber</div><div class="val" style="color:#f59e0b">${fmtM(totRcbPend)}</div></div>
+  <div class="card" style="background:#f0fdf4;border:1px solid #bbf7d0"><div class="lbl">Recebido</div><div class="val" style="color:#16a34a">${fmtM(totRcbRecb)}</div></div>
+  <div class="card" style="background:#fef2f2;border:1px solid #fecaca"><div class="lbl">A Pagar</div><div class="val" style="color:#dc2626">${fmtM(totPagPend)}</div></div>
+  <div class="card" style="background:${saldo>=0?"#f0fdf4":"#fef2f2"};border:1px solid ${saldo>=0?"#bbf7d0":"#fecaca"}"><div class="lbl">Saldo</div><div class="val" style="color:${saldo>=0?"#16a34a":"#dc2626"}">${fmtM(saldo)}</div></div>
+</div>
+<div class="sec">Fluxo Mensal</div>
+${fluxoData.length===0?"<p style='color:#888;font-size:12px'>Sem dados</p>":`<table class="tbl"><tr><th>Mês</th><th>Entradas</th><th>Saídas</th><th>Saldo</th></tr>${fluxoData.map(m=>`<tr><td>${m.mes}</td><td style="color:#16a34a">${fmtM(m.entradas)}</td><td style="color:#dc2626">${fmtM(m.saidas)}</td><td style="color:${m.saldo>=0?"#16a34a":"#dc2626"};font-weight:700">${fmtM(m.saldo)}</td></tr>`).join("")}</table>`}
+<div class="sec">Contas a Receber Pendentes</div>
+${pendRcb.length===0?"<p style='color:#888;font-size:12px'>Nenhuma</p>":`<table class="tbl"><tr><th>Descrição</th><th>Vencimento</th><th>Valor</th></tr>${pendRcb.map(c=>`<tr><td>${c.desc}</td><td>${c.venc?new Date(c.venc+"T00:00").toLocaleDateString("pt-BR"):"-"}</td><td style="font-weight:700;color:#f59e0b">${fmtM(parseFloat(c.valor))}</td></tr>`).join("")}</table>`}
+<div class="sec">Contas a Pagar Pendentes</div>
+${pendPag.length===0?"<p style='color:#888;font-size:12px'>Nenhuma</p>":`<table class="tbl"><tr><th>Descrição</th><th>Categoria</th><th>Vencimento</th><th>Valor</th></tr>${pendPag.map(c=>`<tr><td>${c.desc}</td><td>${c.cat||"-"}</td><td>${c.venc?new Date(c.venc+"T00:00").toLocaleDateString("pt-BR"):"-"}</td><td style="font-weight:700;color:#dc2626">${fmtM(parseFloat(c.valor))}</td></tr>`).join("")}</table>`}
+<div class="ft">${CO.name} · ${CO.ph1} / ${CO.ph2}</div>
+<script>window.onload=function(){setTimeout(function(){window.print()},800)}<\/script></body></html>`;
+                const w=window.open("","_blank");if(w){w.document.write(html);w.document.close();}
+              }} style={{background:blue,color:"#fff",border:"none",fontSize:"10px"}}>📊 Exportar PDF</Btn>
+            </div>
             {fluxoData.length===0?<div style={{textAlign:"center",padding:"32px",color:t.textMuted,fontSize:"11px"}}>Sem dados ainda. Marque contas como Recebido/Pago para gerar o gráfico.</div>:
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={fluxoData} margin={{top:4,right:8,left:0,bottom:4}}>
@@ -2285,7 +2362,55 @@ export default function App(){
                 <span style={{fontSize:"16px",fontWeight:"800",color:parseFloat(margem)>=0?"#16a34a":"#dc2626"}}>{margem}%</span>
               </div>
               <div style={{fontSize:"9px",color:t.textMuted,marginTop:"4px",textAlign:"center"}}>* Baseado nos orçamentos com status Fechou/Em Execução/Concluído e despesas marcadas como Pago</div>
+
+              {/* BREAKDOWN POR CATEGORIA */}
+              {Object.keys(breakdownCat).length>0&&<>
+                <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginTop:"16px",marginBottom:"8px"}}>Despesas por Categoria (pagas)</div>
+                <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+                  {Object.entries(breakdownCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=><div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 12px",borderRadius:"6px",background:t.sectionBg,border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${CAT_CORES[k]||"#64748b"}`}}>
+                    <span style={{fontSize:"11px",fontWeight:"600",color:t.text}}>{CAT_LABELS[k]||k}</span>
+                    <span style={{fontSize:"12px",fontWeight:"800",color:CAT_CORES[k]||"#64748b"}}>{fmtV(v)}</span>
+                  </div>)}
+                </div>
+              </>}
             </div>
+          </>}
+
+          {/* CENTRO DE CUSTO POR OBRA */}
+          {finTab==="obra"&&<>
+            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"12px"}}>Centro de Custo por Obra</div>
+            {obrasAtivas.length===0?<div style={{textAlign:"center",padding:"32px",color:t.textMuted,fontSize:"11px"}}>Nenhuma obra ativa (Fechou/Em Execução/Concluído) no CRM.</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
+              {obrasAtivas.map(o=>{
+                const orcado=parseFloat(o.tot)||0;
+                const custoReal=contasPagar.filter(c=>c.obra===String(o.id)&&c.status==="pago").reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
+                const saldoO=orcado-custoReal;
+                const lucro=saldoO>=0;
+                return <div key={o.id} style={{padding:"12px 14px",borderRadius:"8px",background:t.sectionBg,border:`1.5px solid ${lucro?"#16a34a":"#dc2626"}`,borderLeft:`4px solid ${lucro?"#16a34a":"#dc2626"}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:"6px"}}>
+                    <div>
+                      <div style={{fontSize:"12px",fontWeight:"700",color:t.text}}>{o.cN||"Cliente"}</div>
+                      <div style={{fontSize:"9px",color:t.textMuted}}>{PIPE.find(p=>p.id===o.status)?.label||o.status} · {o.data||""}</div>
+                    </div>
+                    <span style={{fontSize:"10px",fontWeight:"700",padding:"2px 8px",borderRadius:"4px",background:lucro?"#f0fdf4":"#fef2f2",color:lucro?"#16a34a":"#dc2626"}}>{lucro?"✅ Lucro":"🔴 Prejuízo"}</span>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px",marginTop:"10px"}}>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{fontSize:"9px",color:t.textMuted,marginBottom:"2px"}}>Orçado</div>
+                      <div style={{fontSize:"12px",fontWeight:"700",color:"#3b82f6"}}>{fmtV(orcado)}</div>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{fontSize:"9px",color:t.textMuted,marginBottom:"2px"}}>Custo Real</div>
+                      <div style={{fontSize:"12px",fontWeight:"700",color:"#dc2626"}}>{fmtV(custoReal)}</div>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{fontSize:"9px",color:t.textMuted,marginBottom:"2px"}}>Saldo</div>
+                      <div style={{fontSize:"12px",fontWeight:"800",color:lucro?"#16a34a":"#dc2626"}}>{fmtV(saldoO)}</div>
+                    </div>
+                  </div>
+                </div>;
+              })}
+            </div>}
           </>}
         </>;
       })()}</Card>}
