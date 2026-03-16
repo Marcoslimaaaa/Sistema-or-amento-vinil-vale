@@ -671,7 +671,23 @@ const QP=({d,onBack,onSave,autoPositions})=>{
       <div id="pq" style={{fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif",color:"#1a1a2e",fontSize:"10px",lineHeight:"1.5",maxWidth:"780px",margin:"0 auto",background:"#fff",borderRadius:"8px",boxShadow:"0 4px 20px rgba(0,0,0,.1)",overflow:"hidden"}}>
         {/* Header */}
         <div style={{background:`linear-gradient(135deg,${navy},${blue})`,padding:"18px 28px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{display:"flex",alignItems:"center",gap:"10px"}}><div style={{width:"40px",height:"40px",borderRadius:"50%",background:gold,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"18px",fontWeight:"800",color:navy}}>V</div><div><div style={{fontSize:"20px",fontWeight:"800",color:"#fff"}}>VINIL VALE</div><div style={{fontSize:"7.5px",color:"rgba(255,255,255,.7)",letterSpacing:"1.5px",textTransform:"uppercase"}}>Revestimentos e Capas para Piscinas</div></div></div>
+          <div style={{display:"flex",flexDirection:"column",gap:"2px"}}>
+            <div style={{
+              fontFamily:"'Arial Black','Arial Bold',Impact,sans-serif",
+              fontSize:"30px",
+              fontWeight:"900",
+              fontStyle:"italic",
+              letterSpacing:"-1px",
+              lineHeight:1,
+              background:"linear-gradient(180deg,#4fc3f7 0%,#0077cc 40%,#003d7a 100%)",
+              WebkitBackgroundClip:"text",
+              WebkitTextFillColor:"transparent",
+              backgroundClip:"text",
+              filter:"drop-shadow(0 2px 4px rgba(0,0,0,.4))",
+              textShadow:"none",
+            }}>VINILVALE</div>
+            <div style={{fontSize:"7.5px",color:"rgba(255,255,255,.75)",letterSpacing:"2px",textTransform:"uppercase",fontStyle:"italic",marginTop:"1px"}}>Revestimento e Capas para Piscinas</div>
+          </div>
           <div style={{background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.2)",borderRadius:"8px",padding:"6px 14px",textAlign:"right"}}><div style={{fontSize:"6.5px",textTransform:"uppercase",letterSpacing:"1px",color:"rgba(255,255,255,.6)"}}>Proposta</div><div style={{fontSize:"18px",fontWeight:"800",color:"#fff"}}>{d.propNum||"—"}</div><div style={{fontSize:"7px",color:"rgba(255,255,255,.6)"}}>{today}</div></div>
         </div>
         <div style={{background:gold,padding:"5px 28px",display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:"3px",fontSize:"7.5px",color:navy,fontWeight:"600"}}><span>CNPJ: {CO.cnpj}</span><span>IE: {CO.ie}</span><span>{CO.ph1} / {CO.ph2}</span><span>{CO.email}</span><span>{CO.insta}</span></div>
