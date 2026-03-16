@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense, lazy } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
+const Pool3DView = lazy(() => import('./Pool3DView'));
 
 // Firebase config
 const FB_CFG = {
@@ -778,6 +779,7 @@ export default function App(){
   const [invertSide,setInvertSide]=useState(false);
   const [includePlanta,setIncludePlanta]=useState(true);
   const [isoView,setIsoView]=useState(false);
+  const [show3D,setShow3D]=useState(false);
   const isoRef=useRef(null);
   const downloadISO=(asPng=false)=>{
     const svg=isoRef.current;if(!svg)return;
@@ -1802,14 +1804,16 @@ export default function App(){
         {/* PLANTA */}
         {tab==="planta"&&<Card t={t}><ST icon="📐">Planta Hidraulica</ST>
           <div style={{display:"flex",gap:"8px",marginBottom:"10px",alignItems:"center",flexWrap:"wrap"}}>
-            <label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={includePlanta} onChange={e=>setIncludePlanta(e.target.checked)}/> Incluir no PDF</label>
-            {!isoView&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={invertSide} onChange={e=>{setInvertSide(e.target.checked);setCustomPos({})}}/> Inverter lado</label>}
+            {!show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={includePlanta} onChange={e=>setIncludePlanta(e.target.checked)}/> Incluir no PDF</label>}
+            {!isoView&&!show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={invertSide} onChange={e=>{setInvertSide(e.target.checked);setCustomPos({})}}/> Inverter lado</label>}
+            {show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={invertSide} onChange={e=>{setInvertSide(e.target.checked);setCustomPos({})}}/> Inverter lado</label>}
             <div style={{marginLeft:"auto",display:"flex",gap:"6px",alignItems:"center"}}>
               <div style={{display:"flex",borderRadius:"6px",overflow:"hidden",border:"1.5px solid "+t.cardBorder}}>
-                <button onClick={()=>setIsoView(false)} title="Planta baixa 2D" style={{padding:"4px 10px",fontSize:"10px",fontWeight:"700",border:"none",cursor:"pointer",background:!isoView?blue:"transparent",color:!isoView?"#fff":t.textSec}}>2D</button>
-                <button onClick={()=>setIsoView(true)} title="Vista isométrica 3D" style={{padding:"4px 10px",fontSize:"10px",fontWeight:"700",border:"none",cursor:"pointer",background:isoView?blue:"transparent",color:isoView?"#fff":t.textSec}}>Isométrico</button>
+                <button onClick={()=>{setIsoView(false);setShow3D(false)}} title="Planta baixa 2D" style={{padding:"4px 10px",fontSize:"10px",fontWeight:"700",border:"none",cursor:"pointer",background:!isoView&&!show3D?blue:"transparent",color:!isoView&&!show3D?"#fff":t.textSec}}>2D</button>
+                <button onClick={()=>{setIsoView(true);setShow3D(false)}} title="Vista isométrica" style={{padding:"4px 10px",fontSize:"10px",fontWeight:"700",border:"none",cursor:"pointer",background:isoView&&!show3D?blue:"transparent",color:isoView&&!show3D?"#fff":t.textSec}}>Isométrico</button>
+                <button onClick={()=>setShow3D(true)} title="Vista 3D interativa" style={{padding:"4px 10px",fontSize:"10px",fontWeight:"700",border:"none",cursor:"pointer",background:show3D?"#7c3aed":"transparent",color:show3D?"#fff":t.textSec}}>✦ 3D</button>
               </div>
-              {isoView&&<>
+              {isoView&&!show3D&&<>
                 <button onClick={()=>downloadISO(false)} title="Baixar como SVG (vetorial)" style={{padding:"4px 10px",fontSize:"10px",fontWeight:"700",borderRadius:"6px",border:"1.5px solid #16a34a",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",display:"flex",alignItems:"center",gap:"4px"}}>⬇ SVG</button>
                 <button onClick={()=>downloadISO(true)} title="Baixar como PNG (imagem)" style={{padding:"4px 10px",fontSize:"10px",fontWeight:"700",borderRadius:"6px",border:"1.5px solid "+blue,background:"#eff6ff",color:blue,cursor:"pointer",display:"flex",alignItems:"center",gap:"4px"}}>⬇ PNG</button>
               </>}
@@ -1824,9 +1828,11 @@ export default function App(){
               <button onClick={()=>{setDisps(p=>({...p,[k]:p[k]+1}));setCustomPos(p=>{const n={...p};Object.keys(n).forEach(key=>{if(key.startsWith(k.substring(0,3)))delete n[key]});return n})}} style={{width:"14px",height:"14px",borderRadius:"3px",border:"none",background:"#dcfce7",color:"#16a34a",fontSize:"9px",cursor:"pointer",fontWeight:"700"}}>+</button>
             </div>)}
           </div>
-          {isoView
-            ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide}/>
-            :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls}/>}
+          {show3D
+            ?<Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark}/></Suspense>
+            :isoView
+              ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide}/>
+              :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls}/>}
         </Card>}
 
         {/* CONTRATOS */}
