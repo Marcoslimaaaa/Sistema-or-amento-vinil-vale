@@ -14,13 +14,15 @@ const C = {
 };
 
 // Mesma lógica de altura por tipo (igual ao IsometricView typeZ)
-function devZ(type, isFloor, D) {
+function devZ(type, isFloor, D, devHeights) {
   if (isFloor) return 0;
   if (type === 'skimmer')   return D;
   if (type === 'nivelador') return D * 0.88;
   if (type === 'refletor')  return D * 0.5;
   if (type === 'aspiracao') return D * 0.5;
-  return D * 0.55; // retorno, hidro
+  if (type === 'retorno' && devHeights?.retorno) return Math.min(parseFloat(devHeights.retorno) || D*0.55, D);
+  if (type === 'hidro'   && devHeights?.hidro)   return Math.min(parseFloat(devHeights.hidro)   || D*0.55, D);
+  return D * 0.55; // retorno, hidro (padrão)
 }
 
 // Converte coordenadas isométricas (ix=0..L, iy=0..W, iz=0..D)
@@ -30,20 +32,18 @@ function iso2three(ix, iy, iz, L, W) {
 }
 
 // Constrói dispositivos e tubulações com a MESMA lógica do IsometricView
-function buildScene(allPos, L, W, D, invertSide, customPos) {
+function buildScene(allPos, L, W, D, invertSide, customPos, devHeights) {
   const lo  = 0.32;
   const pZ  = Math.max(0, D - 0.30);
   const sysOrder = ['retorno', 'hidro', 'dreno', 'aspiracao', 'skimmer', 'nivelador', 'refletor'];
 
-  // Posição da casa de máquinas (igual ao IsometricView)
   const casaFrac = customPos?.casa || (invertSide ? { x: -0.15, y: 0.5 } : { x: 1.12, y: 0.5 });
-  const cmX0  = casaFrac.x * L;
-  const cmBY0 = W * 0.1;
-  const cmWd  = W * 0.8;
-  const cmWw  = Math.min(1.4, W * 0.5);
+  const cmX0   = casaFrac.x * L;
+  const cmBY0  = W * 0.1;
+  const cmWd   = W * 0.8;
+  const cmWw   = Math.min(1.4, W * 0.5);
   const cmMidY = cmBY0 + cmWd / 2;
 
-  // Agrupar dispositivos por tipo
   const byType = {};
   Object.entries(allPos).filter(([, p]) => !p.special).forEach(([key, p]) => {
     if (!byType[p.type]) byType[p.type] = [];
@@ -53,74 +53,115 @@ function buildScene(allPos, L, W, D, invertSide, customPos) {
   const devices = [];
   const pipes   = [];
 
+  // Converte array de [ix,iy,iz] → Three.js points
+  const toP = pts => pts.map(([rx,ry,rz]) => iso2three(rx,ry,rz,L,W));
+
   sysOrder.forEach((sysType, sysIdx) => {
     const devs = byType[sysType];
     if (!devs || devs.length === 0) return;
-    const col      = C[sysType] || '#999';
-    const laneOff  = lo + sysIdx * 0.16;
-    const exitIso  = []; // pontos de saída em coords iso
+    const col     = C[sysType] || '#999';
+    const laneOff = lo + sysIdx * 0.16;
+
+    // Para cada dispositivo: ramo individual até a lane externa a pZ
+    // exits acumula os pontos de chegada na lane (todos em height=pZ)
+    const exits = []; // { side, x, y }  (z é sempre pZ)
 
     devs.forEach(([key, p]) => {
       const ix = p.x * L;
       const iy = p.y * W;
-      const iz = devZ(sysType, p.floor, D);
+      const iz = devZ(sysType, p.floor, D, devHeights);
 
-      // Dispositivo em Three.js
-      devices.push({ key, pos: iso2three(ix, iy, iz, L, W), color: col, type: sysType, label: p.label });
+      devices.push({ key, pos: iso2three(ix, iy, iz, L, W), color: col, type: sysType });
 
-      // Roteamento (mesma lógica do isométrico)
-      let route; // array de [ix,iy,iz] em coordenadas iso
+      let branch, exit;
+
       if (p.floor) {
-        route = [[ix,iy,0],[L,iy,0],[L+laneOff,iy,0],[L+laneOff,iy,pZ]];
-        exitIso.push([L+laneOff, iy, pZ]);
+        // Dreno no fundo → anda pelo chão até a lane direita, sobe até pZ
+        const xL = L + laneOff;
+        branch = [[ix,iy,0],[xL,iy,0],[xL,iy,pZ]];
+        exit   = { side:'right', x:xL, y:iy };
       } else if (p.x < 0.12) {
-        route = [[0,iy,iz],[-laneOff,iy,iz]];
-        exitIso.push([-laneOff, iy, iz]);
+        // Parede esquerda → sai para lane esquerda, desce até pZ
+        const xL = -laneOff;
+        branch = [[0,iy,iz],[xL,iy,iz],[xL,iy,pZ]];
+        exit   = { side:'left', x:xL, y:iy };
       } else if (p.x > 0.88) {
-        route = [[L,iy,iz],[L+laneOff,iy,iz]];
-        exitIso.push([L+laneOff, iy, iz]);
+        // Parede direita → sai para lane direita, desce até pZ
+        const xL = L + laneOff;
+        branch = [[L,iy,iz],[xL,iy,iz],[xL,iy,pZ]];
+        exit   = { side:'right', x:xL, y:iy };
       } else if (p.y < 0.08) {
-        route = [[ix,0,iz],[ix,-laneOff,iz]];
-        exitIso.push([ix, -laneOff, iz]);
+        // Parede frontal → sai para lane frontal, desce até pZ
+        const yL = -laneOff;
+        branch = [[ix,0,iz],[ix,yL,iz],[ix,yL,pZ]];
+        exit   = { side:'front', x:ix, y:yL };
       } else if (p.y > 0.88) {
-        route = [[ix,W,iz],[ix,W+laneOff,iz]];
-        exitIso.push([ix, W+laneOff, iz]);
+        // Parede traseira → sai para lane traseira, desce até pZ
+        const yL = W + laneOff;
+        branch = [[ix,W,iz],[ix,yL,iz],[ix,yL,pZ]];
+        exit   = { side:'back', x:ix, y:yL };
       } else {
-        route = [[ix,iy,iz],[L,iy,iz],[L+laneOff,iy,iz]];
-        exitIso.push([L+laneOff, iy, iz]);
+        // Interior/padrão → vai à parede direita, desce até pZ
+        const xL = L + laneOff;
+        branch = [[ix,iy,iz],[L,iy,iz],[xL,iy,iz],[xL,iy,pZ]];
+        exit   = { side:'right', x:xL, y:iy };
       }
 
-      pipes.push({ points: route.map(([rx,ry,rz]) => iso2three(rx,ry,rz,L,W)), color: col, width: 2 });
+      exits.push(exit);
+      pipes.push({ points: toP(branch), color: col, width: 2 });
     });
 
-    // Coletor até a casa de máquinas (mesma lógica do isométrico)
-    if (exitIso.length === 0) return;
-    const eZ          = exitIso[0][2];
-    const isLeftExit  = exitIso[0][0] < 0;
-    const isFrontExit = exitIso[0][1] < 0;
-    const isBackExit  = exitIso[0][1] > W;
+    if (exits.length === 0) return;
 
-    let col3;
-    if (isLeftExit) {
-      const midY = exitIso.reduce((s,p)=>s+p[1],0)/exitIso.length;
-      col3 = [[-laneOff,midY,eZ],[-laneOff,W+laneOff,eZ],[cmX0,W+laneOff,eZ],[cmX0,cmMidY,eZ]];
-    } else if (isFrontExit) {
-      const midX = exitIso.reduce((s,p)=>s+p[0],0)/exitIso.length;
-      col3 = [[midX,-laneOff,eZ],[cmX0,-laneOff,eZ],[cmX0,cmMidY,eZ]];
-    } else if (isBackExit) {
-      const midX = exitIso.reduce((s,p)=>s+p[0],0)/exitIso.length;
-      col3 = [[midX,W+laneOff,eZ],[cmX0,W+laneOff,eZ],[cmX0,cmMidY,eZ]];
-    } else {
-      const midY = exitIso.reduce((s,p)=>s+p[1],0)/exitIso.length;
-      col3 = [[L+laneOff,midY,eZ],[cmX0,midY,eZ],[cmX0,cmMidY,eZ]];
-    }
+    // Agrupar saídas por lado
+    const bySide = {};
+    exits.forEach(e => {
+      if (!bySide[e.side]) bySide[e.side] = [];
+      bySide[e.side].push(e);
+    });
 
-    pipes.push({ points: col3.map(([rx,ry,rz])=>iso2three(rx,ry,rz,L,W)), color: col, width: 3 });
+    Object.entries(bySide).forEach(([side, sideExits]) => {
+      if (side === 'right' || side === 'left') {
+        // Lane vertical: mesmo X, diferentes Y — spine ao longo de Y
+        const xL = sideExits[0].x;
+        const ys = sideExits.map(e => e.y).sort((a,b) => a-b);
+        const yMin = ys[0], yMax = ys[ys.length-1];
+
+        // Spine (manifold) conectando todos os ramos
+        if (yMin < yMax) {
+          pipes.push({ points: toP([[xL,yMin,pZ],[xL,yMax,pZ]]), color: col, width: 3 });
+        }
+
+        // Da spine até a casa de máquinas
+        let toCM;
+        if (side === 'left') {
+          // CM à esquerda: sobe para o fundo, depois vai até cmX0
+          toCM = [[xL,yMin,pZ],[xL,W+laneOff,pZ],[cmX0,W+laneOff,pZ],[cmX0,cmMidY,pZ]];
+        } else {
+          // CM à direita: vai horizontal do topo da spine até cmX0
+          toCM = [[xL,yMax,pZ],[cmX0,yMax,pZ],[cmX0,cmMidY,pZ]];
+        }
+        pipes.push({ points: toP(toCM), color: col, width: 3 });
+
+      } else {
+        // Lane horizontal (front/back): mesmo Y, diferentes X — spine ao longo de X
+        const yL = sideExits[0].y;
+        const xs = sideExits.map(e => e.x).sort((a,b) => a-b);
+        const xMin = xs[0], xMax = xs[xs.length-1];
+
+        if (xMin < xMax) {
+          pipes.push({ points: toP([[xMin,yL,pZ],[xMax,yL,pZ]]), color: col, width: 3 });
+        }
+
+        // Da spine até CM: escolhe o extremo mais próximo do CM
+        const startX = Math.abs(xMin - cmX0) < Math.abs(xMax - cmX0) ? xMin : xMax;
+        const toCM = [[startX,yL,pZ],[cmX0,yL,pZ],[cmX0,cmMidY,pZ]];
+        pipes.push({ points: toP(toCM), color: col, width: 3 });
+      }
+    });
   });
 
-  // Casa de máquinas: centro em Three.js
   const cmPos3 = iso2three(cmX0 + cmWw/2, cmMidY, pZ, L, W);
-
   return { devices, pipes, cmPos3, cmWw, cmWd };
 }
 
@@ -219,7 +260,7 @@ function Ground({ L, W }) {
 }
 
 // ── Cena principal ────────────────────────────────────────────────────────────
-function Scene({ pool, disps, customPos, poolFmt, autoPositions, invertSide }) {
+function Scene({ pool, disps, customPos, poolFmt, autoPositions, invertSide, devHeights }) {
   const L = parseFloat(pool?.length) || 6;
   const W = parseFloat(pool?.width)  || 3;
   const D = parseFloat(pool?.depth)  || 1.4;
@@ -236,7 +277,7 @@ function Scene({ pool, disps, customPos, poolFmt, autoPositions, invertSide }) {
     active[k] = p;
   });
 
-  const { devices, pipes, cmPos3, cmWw, cmWd } = buildScene(active, L, W, D, invertSide, customPos);
+  const { devices, pipes, cmPos3, cmWw, cmWd } = buildScene(active, L, W, D, invertSide, customPos, devHeights);
 
   return (
     <>
@@ -289,7 +330,7 @@ function Legend({ disps }) {
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
-export default function Pool3DView({ pool, disps, customPos, poolFmt, autoPositions, invertSide, dark }) {
+export default function Pool3DView({ pool, disps, customPos, poolFmt, autoPositions, invertSide, dark, devHeights }) {
   const L  = parseFloat(pool?.length) || 6;
   const D  = parseFloat(pool?.depth)  || 1.4;
   const bg = dark ? '#0f172a' : '#bfdbfe';
@@ -306,6 +347,7 @@ export default function Pool3DView({ pool, disps, customPos, poolFmt, autoPositi
             poolFmt={poolFmt}
             autoPositions={autoPositions}
             invertSide={invertSide}
+            devHeights={devHeights}
           />
         </Suspense>
       </Canvas>

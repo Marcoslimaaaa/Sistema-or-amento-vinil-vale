@@ -242,7 +242,7 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
 };
 
 // ═══ ISOMETRIC VIEW ═══
-const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,autoPositions,customPos={},invertSide=false},ref)=>{
+const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,autoPositions,customPos={},invertSide=false,devHeights={}},ref)=>{
   const L=parseFloat(pool.length)||6,W=parseFloat(pool.width)||3,D=parseFloat(pool.depth)||1.4;
   const svgW=640,svgH=440,cos30=Math.cos(Math.PI/6),sin30=0.5;
   const mX=28,mYt=54,mYb=90;
@@ -340,6 +340,8 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
     if(type==='nivelador')return D*0.88;
     if(type==='refletor')return D*0.5;
     if(type==='aspiracao')return D*0.5;
+    if(type==='retorno'&&devHeights?.retorno)return Math.min(parseFloat(devHeights.retorno)||D*0.55,D);
+    if(type==='hidro'&&devHeights?.hidro)return Math.min(parseFloat(devHeights.hidro)||D*0.55,D);
     return D*0.55;
   };
   // CM position (same as 2D autoPositions default)
@@ -776,6 +778,7 @@ export default function App(){
 
   // DISPOSITIVOS HIDRAULICOS
   const [disps,setDisps]=useState({retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4});
+  const [devHeights,setDevHeights]=useState({retorno:"",hidro:""});
   const [invertSide,setInvertSide]=useState(false);
   const [includePlanta,setIncludePlanta]=useState(true);
   const [isoView,setIsoView]=useState(false);
@@ -1232,7 +1235,7 @@ export default function App(){
   const addM=()=>setItems(p=>[...p,{id:Date.now(),n:"Novo item",q:1,c:0,m:gM,nt:"",on:true,un:"un"}]);
   const apM=()=>{setItems(p=>p.map(i=>({...i,m:gM})));setFbMsg("Margem aplicada!");setTimeout(()=>setFbMsg(""),1500)};
 
-  const gData=()=>({client,pool,items,guar,ci,pay,totOv:String(total),vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,wMode,walls,includePlanta,disps,customPos,isoView,invertSide});
+  const gData=()=>({client,pool,items,guar,ci,pay,totOv:String(total),vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,wMode,walls,includePlanta,disps,customPos,isoView,invertSide,devHeights});
   const save=()=>{
     const errs={};
     if(!client.name||client.name.trim()==="")errs.clientName="Nome obrigatório";
@@ -1828,10 +1831,33 @@ export default function App(){
               <button onClick={()=>{setDisps(p=>({...p,[k]:p[k]+1}));setCustomPos(p=>{const n={...p};Object.keys(n).forEach(key=>{if(key.startsWith(k.substring(0,3)))delete n[key]});return n})}} style={{width:"14px",height:"14px",borderRadius:"3px",border:"none",background:"#dcfce7",color:"#16a34a",fontSize:"9px",cursor:"pointer",fontWeight:"700"}}>+</button>
             </div>)}
           </div>
+          {/* Alturas configuráveis: Retorno e Hidro */}
+          {(disps.retorno>0||disps.hidro>0)&&<div style={{display:"flex",gap:"8px",marginBottom:"10px",flexWrap:"wrap",alignItems:"center"}}>
+            <span style={{fontSize:"9px",fontWeight:"700",color:t.textSec}}>Altura dos bicos (m):</span>
+            {disps.retorno>0&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"9px",color:t.text}}>
+              <div style={{width:"6px",height:"6px",borderRadius:"50%",background:"#3b82f6",flexShrink:0}}/>
+              Retorno:
+              <input type="number" min="0.1" max="3" step="0.05"
+                placeholder={`${((parseFloat(pool?.depth)||1.4)*0.55).toFixed(2)}`}
+                value={devHeights.retorno}
+                onChange={e=>setDevHeights(p=>({...p,retorno:e.target.value}))}
+                style={{width:"52px",padding:"1px 4px",fontSize:"9px",border:"1px solid "+t.cardBorder,borderRadius:"3px",background:t.card,color:t.text}}/>
+            </label>}
+            {disps.hidro>0&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"9px",color:t.text}}>
+              <div style={{width:"6px",height:"6px",borderRadius:"50%",background:"#10b981",flexShrink:0}}/>
+              Hidro:
+              <input type="number" min="0.1" max="3" step="0.05"
+                placeholder={`${((parseFloat(pool?.depth)||1.4)*0.55).toFixed(2)}`}
+                value={devHeights.hidro}
+                onChange={e=>setDevHeights(p=>({...p,hidro:e.target.value}))}
+                style={{width:"52px",padding:"1px 4px",fontSize:"9px",border:"1px solid "+t.cardBorder,borderRadius:"3px",background:t.card,color:t.text}}/>
+            </label>}
+            <span style={{fontSize:"8px",color:t.textMuted}}>(vazio = padrão {((parseFloat(pool?.depth)||1.4)*0.55).toFixed(2)}m)</span>
+          </div>}
           {show3D
-            ?<Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark}/></Suspense>
+            ?<Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights}/></Suspense>
             :isoView
-              ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide}/>
+              ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide} devHeights={devHeights}/>
               :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls}/>}
         </Card>}
 
