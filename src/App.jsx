@@ -877,12 +877,13 @@ export default function App(){
 
   // Init Firebase on mount
   useEffect(()=>{
-    initFB().then(ok=>{
+    initFB().then(async ok=>{
       setFBR(ok);
       if(ok&&fb.auth){
+        // Aguarda resultado do redirect ANTES de liberar a tela de login
+        // Isso evita o flash de "tela de login" quando volta do Google no mobile
+        try{ await fbFns.getRedirectResult(fb.auth); }catch(e){ console.log("redirect:",e.code); }
         fbFns.onAuthStateChanged(fb.auth,(u)=>{setUser(u);setAL(false)});
-        // Captura resultado do redirect (login Google em mobile)
-        fbFns.getRedirectResult(fb.auth).catch(()=>{});
       } else {
         setAL(false);
       }
