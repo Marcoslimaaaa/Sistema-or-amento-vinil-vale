@@ -80,7 +80,7 @@ const CAT=[
 // un: "m²" = custo por m² (usa área total), "ml" = custo por metro linear (usa perímetro), "un" = custo unitário
 
 const SYSTEMS=["dreno","aspiracao","skimmer","retorno","hidro"];
-const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,dark,poolFmt,ar,autoPositions,blue,t,tubeOffsets={},setTubeOffsets=()=>{},invertSide=false})=>{
+const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,dark,poolFmt,ar,autoPositions,blue,t,tubeOffsets={},setTubeOffsets=()=>{},invertSide=false,wMode="regular",walls=[]})=>{
     // const SYSTEMS=["retorno","hidro","aspiracao","dreno","skimmer","nivelador"];
   const L=parseFloat(pool.length)||6,W=parseFloat(pool.width)||3,D=parseFloat(pool.depth)||1.4;
   const svgW=340,svgH=200,pad=30;
@@ -90,10 +90,10 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
   const casaP=customPos["casa"]||(invertSide?{x:-0.15,y:0.5}:{x:1.12,y:0.5});
   const cmX=ox+casaP.x*pw,cmY=oy+casaP.y*ph-cmH/2;
   const hasSpa2=spa?.on,sL=parseFloat(spa?.length||2)*scale,sW=parseFloat(spa?.width||2)*scale;
-  const positions={...autoPositions(L,W,disps,invertSide),...customPos};
+  const positions={...autoPositions(L,W,disps,invertSide,poolFmt),...customPos};
   const tubeColors={retorno:"#ef4444",aspiracao:"#ec4899",dreno:"#8b5cf6",skimmer:"#f59e0b",refletor:"#f97316",nivelador:"#06b6d4",hidro:"#14b8a6"};
   const onDown=(key,e)=>{e.preventDefault();setDragging(key)};
-  const onMove=(e)=>{if(!dragging)return;const svg=e.currentTarget;const r=svg.getBoundingClientRect();const mx=(e.clientX||e.touches?.[0]?.clientX||0)-r.left;const my=(e.clientY||e.touches?.[0]?.clientY||0)-r.top;const rx=(mx-ox)/pw,ry=(my-oy)/ph;if(dragging==="casa"){setCustomPos(p=>({...p,casa:{x:Math.max(0.3,Math.min(1.8,rx)),y:Math.max(-0.3,Math.min(1.3,ry)),label:"CM",type:"casa",special:true}}))}else{setCustomPos(p=>({...p,[dragging]:{...positions[dragging],x:Math.max(0,Math.min(1,rx)),y:Math.max(0,Math.min(1,ry))}}))}};
+  const onMove=(e)=>{if(!dragging)return;const svg=e.currentTarget;const r=svg.getBoundingClientRect();const mx=(e.clientX||e.touches?.[0]?.clientX||0)-r.left;const my=(e.clientY||e.touches?.[0]?.clientY||0)-r.top;const rx=(mx-ox)/pw,ry=(my-oy)/ph;if(dragging==="casa"){setCustomPos(p=>({...p,casa:{x:Math.max(0.3,Math.min(1.8,rx)),y:Math.max(-0.3,Math.min(1.3,ry)),label:"CM",type:"casa",special:true}}))}else{const isOval=poolFmt==="Oval"||poolFmt==="Feijão";let nx=Math.max(0.01,Math.min(0.99,rx)),ny=Math.max(0.01,Math.min(0.99,ry));if(isOval){const dx=(nx-0.5)/0.5,dy=(ny-0.5)/0.5;const d2=dx*dx+dy*dy;if(d2>0.9){const sc=0.9/Math.sqrt(d2);nx=0.5+dx*0.5*sc;ny=0.5+dy*0.5*sc;}}setCustomPos(p=>({...p,[dragging]:{...positions[dragging],x:nx,y:ny}}))}};
   const onUp=()=>setDragging(null);
   const dist=L*0.1;
   const retQ=disps.retorno||0,aspQ=disps.aspiracao||0,drQ=disps.dreno||0,skQ=disps.skimmer||0,nivQ=disps.nivelador||0,hidQ=disps.hidro||0;
@@ -117,10 +117,15 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
     <svg width={svgW} height={svgH} style={{background:dark?"#0f172a":"#f8fafc",borderRadius:"6px",border:"1px solid "+(dark?"#334155":"#e2e8f0"),cursor:dragging?"grabbing":"default",touchAction:"none"}} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onTouchMove={e=>{onMove({currentTarget:e.currentTarget,clientX:e.touches[0].clientX,clientY:e.touches[0].clientY})}} onTouchEnd={onUp}>
       <defs><pattern id="grd" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke={dark?"#1e293b":"#e2e8f0"} strokeWidth="0.3"/></pattern></defs>
       <rect width={svgW} height={svgH} fill="url(#grd)"/>
-      {poolFmt==="Formato L"?<polygon points={ox+","+oy+" "+(ox+pw)+","+oy+" "+(ox+pw)+","+(oy+ph*0.6)+" "+(ox+pw*0.6)+","+(oy+ph*0.6)+" "+(ox+pw*0.6)+","+(oy+ph)+" "+ox+","+(oy+ph)} fill={dark?"#1e3a5f":"#dbeafe"} stroke="#2563eb" strokeWidth="2"/>:poolFmt==="Oval"||poolFmt==="Feijao"?<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2} fill={dark?"#1e3a5f":"#dbeafe"} stroke="#2563eb" strokeWidth="2"/>:<rect x={ox} y={oy} width={pw} height={ph} rx="1" fill={dark?"#1e3a5f":"#dbeafe"} stroke="#2563eb" strokeWidth="2"/>}
+      {(()=>{const fill=dark?"#1e3a5f":"#dbeafe";const stroke="#2563eb";
+        if(poolFmt==="Formato L")return<polygon points={`${ox},${oy} ${ox+pw},${oy} ${ox+pw},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph} ${ox},${oy+ph}`} fill={fill} stroke={stroke} strokeWidth="2"/>;
+        if(poolFmt==="Oval"||poolFmt==="Feijão")return<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2} fill={fill} stroke={stroke} strokeWidth="2"/>;
+        if(poolFmt==="Com Spa")return<><rect x={ox} y={oy} width={pw} height={ph} rx="1" fill={fill} stroke={stroke} strokeWidth="2"/><rect x={ox+pw*0.65} y={oy} width={pw*0.35} height={ph*0.35} rx="2" fill={dark?"#1e3a5f":"#bfdbfe"} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="4,2"/><text x={ox+pw*0.825} y={oy+ph*0.19} textAnchor="middle" fontSize="6" fill="#1d4ed8" fontWeight="700">SPA</text></>;
+        if(wMode==="irregular"&&walls.length>=2){const w0=parseFloat(walls[0]?.l)||L,w1=parseFloat(walls[1]?.l)||W,w2=parseFloat(walls[2]?.l)||L,w3=parseFloat(walls[3]?.l)||W;const topW=Math.min(w0/L,1.2)*pw,botW=Math.min(w2/L,1.2)*pw,leftH=Math.min(w3/W,1.2)*ph,rightH=Math.min(w1/W,1.2)*ph;const offT=(pw-topW)/2,offB=(pw-botW)/2;const pts=`${ox+offT},${oy} ${ox+offT+topW},${oy} ${ox+offB+botW},${oy+Math.max(leftH,rightH)} ${ox+offB},${oy+Math.max(leftH,rightH)}`;return<><polygon points={pts} fill={fill} stroke={stroke} strokeWidth="2" strokeDasharray="6,2"/><text x={ox+pw/2} y={oy-7} textAnchor="middle" fontSize="7" fill="#f59e0b" fontWeight="700">⚠ Fora de esquadro</text></>;};
+        return<rect x={ox} y={oy} width={pw} height={ph} rx="1" fill={fill} stroke={stroke} strokeWidth="2"/>;
+      })()}
       {poolFmt==="Com prainha"&&<rect x={ox} y={oy} width={pw*0.25} height={ph} rx="1" fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#2563eb" strokeWidth="0.5"/>}
-      {hasSpa2&&<rect x={ox+pw-sL} y={oy-sW+2} width={sL} height={sW} rx="3" fill={dark?"#1e3a5f":"#93c5fd"} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="4,2"/>}
-      {hasSpa2&&<text x={ox+pw-sL/2} y={oy-sW/2+5} textAnchor="middle" fontSize="7" fill="#1d4ed8" fontWeight="700">SPA</text>}
+      {hasSpa2&&(()=>{const side=spa.side||"top";let sx,sy,sw2,sh;if(side==="bottom"){sx=ox+pw-sL;sy=oy+ph;sw2=sL;sh=sW;}else if(side==="left"){sx=ox-sW;sy=oy+ph-sL;sw2=sW;sh=sL;}else if(side==="right"){sx=ox+pw;sy=oy+ph-sL;sw2=sW;sh=sL;}else{sx=ox+pw-sL;sy=oy-sW;sw2=sL;sh=sW;}return<><rect x={sx} y={sy} width={sw2} height={sh} rx="3" fill={dark?"#1e3a5f":"#93c5fd"} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="4,2"/><text x={sx+sw2/2} y={sy+sh/2+3} textAnchor="middle" fontSize="7" fill="#1d4ed8" fontWeight="700">SPA</text></>;})()}
       <text x={ox+pw/2} y={oy+ph/2-3} textAnchor="middle" fontSize="8" fill={dark?"#94a3b8":"#64748b"} fontWeight="600">PISCINA</text>
       <text x={ox+pw/2} y={oy+ph/2+7} textAnchor="middle" fontSize="7" fill={dark?"#94a3b8":"#64748b"}>A= {ar.total}m2</text>
       <text x={ox+pw/2} y={oy-10} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{L}m</text>
@@ -133,9 +138,9 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
         const cmMid=cmY+cmH/2;
         let sysIdx=0;
         const sysData={};
-        const totalSys=systems.filter(s=>Object.entries(positions).some(([k,p])=>p.type===s&&!p.special&&autoPositions(L,W,disps,invertSide)[k])).length;
+        const totalSys=systems.filter(s=>Object.entries(positions).some(([k,p])=>p.type===s&&!p.special&&autoPositions(L,W,disps,invertSide,poolFmt)[k])).length;
         systems.forEach(sysType=>{
-          const devs=Object.entries(positions).filter(([k,p])=>p.type===sysType&&!p.special&&autoPositions(L,W,disps,invertSide)[k]);
+          const devs=Object.entries(positions).filter(([k,p])=>p.type===sysType&&!p.special&&autoPositions(L,W,disps,invertSide,poolFmt)[k]);
           if(devs.length===0)return;
           const col=tubeColors[sysType]||"#999";
           const arriveY=cmY+8+sysIdx*((cmH-16)/Math.max(totalSys-1,1));
@@ -198,7 +203,7 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
         window._sysData=sysData;
         return pipes;
       })()}
-      {Object.entries(positions).filter(([k,p])=>!p.special&&autoPositions(L,W,disps,invertSide)[k]).map(([key,p])=>{const cx2=ox+p.x*pw,cy2=oy+p.y*ph,col=tubeColors[p.type]||"#666";return <g key={key} onMouseDown={e=>onDown(key,e)} onTouchStart={e=>{e.preventDefault();setDragging(key)}} style={{cursor:"grab"}}>{p.floor?<><circle cx={cx2} cy={cy2} r="6" fill="none" stroke={col} strokeWidth="1.5"/><line x1={cx2-3} y1={cy2-3} x2={cx2+3} y2={cy2+3} stroke={col} strokeWidth="1"/><line x1={cx2+3} y1={cy2-3} x2={cx2-3} y2={cy2+3} stroke={col} strokeWidth="1"/></>:p.type==="skimmer"?<rect x={cx2-3} y={cy2-6} width="6" height="12" rx="1" fill="none" stroke={col} strokeWidth="1.5"/>:(p.type==="retorno"||p.type==="hidro")?<rect x={cx2-3} y={cy2-5} width="6" height="10" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:p.type==="aspiracao"?<rect x={cx2-5} y={cy2-3} width="10" height="6" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:<circle cx={cx2} cy={cy2} r="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>}<text x={cx2} y={cy2+(p.floor?12:p.type==="skimmer"?10:12)} textAnchor="middle" fontSize="5" fontWeight="700" fill={col}>{p.label}</text></g>})}
+      {Object.entries(positions).filter(([k,p])=>!p.special&&autoPositions(L,W,disps,invertSide,poolFmt)[k]).map(([key,p])=>{const cx2=ox+p.x*pw,cy2=oy+p.y*ph,col=tubeColors[p.type]||"#666";return <g key={key} onMouseDown={e=>onDown(key,e)} onTouchStart={e=>{e.preventDefault();setDragging(key)}} style={{cursor:"grab"}}>{p.floor?<><circle cx={cx2} cy={cy2} r="6" fill="none" stroke={col} strokeWidth="1.5"/><line x1={cx2-3} y1={cy2-3} x2={cx2+3} y2={cy2+3} stroke={col} strokeWidth="1"/><line x1={cx2+3} y1={cy2-3} x2={cx2-3} y2={cy2+3} stroke={col} strokeWidth="1"/></>:p.type==="skimmer"?<rect x={cx2-3} y={cy2-6} width="6" height="12" rx="1" fill="none" stroke={col} strokeWidth="1.5"/>:(p.type==="retorno"||p.type==="hidro")?<rect x={cx2-3} y={cy2-5} width="6" height="10" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:p.type==="aspiracao"?<rect x={cx2-5} y={cy2-3} width="10" height="6" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:<circle cx={cx2} cy={cy2} r="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>}<text x={cx2} y={cy2+(p.floor?12:p.type==="skimmer"?10:12)} textAnchor="middle" fontSize="5" fontWeight="700" fill={col}>{p.label}</text></g>})}
     </svg>
     <div style={{display:"flex",gap:"6px",marginTop:"6px",flexWrap:"wrap"}}>
       {[["R","Retorno","#ef4444"],["A","Asp.","#ec4899"],["D","Dreno","#8b5cf6"],["SK","Skim.","#f59e0b"],["L","LED","#f97316"],["N","Niv.","#06b6d4"],["H","Hidro","#14b8a6"],["CM","Casa M.","#475569"]].map(([s,lb,c])=><div key={s} style={{display:"flex",alignItems:"center",gap:"2px"}}><div style={{width:"8px",height:"3px",borderRadius:"1px",background:c}}/><span style={{fontSize:"6px",color:t.textMuted}}>{lb}</span></div>)}
@@ -309,8 +314,8 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   // CM entry y per system
   const cmEntryY=(sysType,idx)=>cmBY0+cmWd*(0.1+idx*0.12);
   // Get actual device positions from autoPositions (same as 2D PlantaView)
-  const allPos=autoPositions?{...autoPositions(L,W,disps,invertSide),...(customPos||{})}:{};
-  const activeDevs=Object.entries(allPos).filter(([k,p])=>!p.special&&autoPositions&&autoPositions(L,W,disps,invertSide)[k]);
+  const allPos=autoPositions?{...autoPositions(L,W,disps,invertSide,poolFmt),...(customPos||{})}:{};
+  const activeDevs=Object.entries(allPos).filter(([k,p])=>!p.special&&autoPositions&&autoPositions(L,W,disps,invertSide,poolFmt)[k]);
   // Group by system type
   const byType={};
   activeDevs.forEach(([key,p])=>{if(!byType[p.type])byType[p.type]=[];byType[p.type].push([key,p]);});
@@ -721,31 +726,36 @@ export default function App(){
   const [customPos,setCustomPos]=useState({});
   const [tubeOffsets,setTubeOffsets]=useState({});
 
-  const autoPositions=(L,W,d,inv)=>{
+  const autoPositions=(L,W,d,inv,fmt)=>{
     const pos={};const r=d.retorno||0;const refs=d.refletor||0;
-    // Retornos: lado esquerdo (lado da prainha)
-    for(let i=0;i<r;i++){pos["ret_"+i]={x:inv?0.95:0.05,y:(i+1)/(r+1),label:"R"+(i+1),type:"retorno"}}
-    // Aspiracao: parede inferior meio, mas rota pela esquerda
-    for(let i=0;i<(d.aspiracao||0);i++){pos["asp_"+i]={x:0.5,y:0.95,label:"A"+(i+1),type:"aspiracao"}}
-    // Drenos de fundo: 50cm da parede direita, 1.50m separacao, centrados na largura
+    const isOval=fmt==="Oval"||fmt==="Feijão";
+    // Para oval/feijão: calcula x na borda da elipse para um dado y
+    const eX=(y,side)=>{const t=Math.max(-0.98,Math.min(0.98,(y-0.5)/0.5));const ins=Math.sqrt(1-t*t)*0.47;return side==="left"?0.5-ins:0.5+ins;};
+    // Para oval/feijão: calcula y na borda da elipse para um dado x
+    const eY=(x,side)=>{const t=Math.max(-0.98,Math.min(0.98,(x-0.5)/0.5));const ins=Math.sqrt(1-t*t)*0.47;return side==="top"?0.5-ins:0.5+ins;};
+    // Retornos: lado esquerdo
+    for(let i=0;i<r;i++){const y=(i+1)/(r+1);const side=inv?"right":"left";pos["ret_"+i]={x:isOval?eX(y,side):(inv?0.95:0.05),y,label:"R"+(i+1),type:"retorno"}}
+    // Aspiracao: parede inferior meio
+    for(let i=0;i<(d.aspiracao||0);i++){const x=0.5;pos["asp_"+i]={x,y:isOval?eY(x,"bottom"):0.95,label:"A"+(i+1),type:"aspiracao"}}
+    // Drenos de fundo: dentro da piscina, centrados
     const drQty=d.dreno||0;
-    if(drQty>0){const drX=inv?(0.5/(L||10)):L>0?(L-0.5)/L:0.9;const sepDr=1.5;const totalSep=(drQty-1)*sepDr;const startY=W>0?(W/2-totalSep/2)/W:0.5;for(let i=0;i<drQty;i++){const yPos=drQty===1?0.5:startY+(i*sepDr)/W;pos["drn_"+i]={x:drX,y:Math.max(0.15,Math.min(0.85,yPos)),label:"DF"+(i+1),type:"dreno",floor:true}}}
-    // Skimmer: parede direita (oposta aos retornos)
-    for(let i=0;i<(d.skimmer||0);i++){pos["skm_"+i]={x:inv?0.05:0.95,y:(i+1)/((d.skimmer||1)+1),label:"SK"+(i+1),type:"skimmer"}}
-    // Refletores: distribuidos nas paredes laterais (superior e inferior)
-    for(let i=0;i<refs;i++){if(i%2===0){pos["ref_"+i]={x:(Math.floor(i/2)+1)/(Math.ceil(refs/2)+1),y:0.03,label:"L"+(i+1),type:"refletor"}}else{pos["ref_"+i]={x:(Math.floor(i/2)+1)/(Math.ceil(refs/2)+1),y:0.97,label:"L"+(i+1),type:"refletor"}}}
-    // Nivelador: parede direita, proximo ao skimmer
-    for(let i=0;i<(d.nivelador||0);i++){pos["niv_"+i]={x:inv?0.05:0.95,y:0.12,label:"N"+(i+1),type:"nivelador"}}
-    // Hidro: mesma parede dos retornos (esquerda), distribuidos iguais
+    if(drQty>0){const drX=inv?(0.5/(L||10)):L>0?(L-0.5)/L:0.9;const sepDr=1.5;const totalSep=(drQty-1)*sepDr;const startY=W>0?(W/2-totalSep/2)/W:0.5;for(let i=0;i<drQty;i++){const yPos=drQty===1?0.5:startY+(i*sepDr)/W;pos["drn_"+i]={x:isOval?Math.max(0.25,Math.min(0.75,drX)):drX,y:Math.max(0.15,Math.min(0.85,yPos)),label:"DF"+(i+1),type:"dreno",floor:true}}}
+    // Skimmer: parede direita
+    for(let i=0;i<(d.skimmer||0);i++){const y=(i+1)/((d.skimmer||1)+1);const side=inv?"left":"right";pos["skm_"+i]={x:isOval?eX(y,side):(inv?0.05:0.95),y,label:"SK"+(i+1),type:"skimmer"}}
+    // Refletores: paredes superior e inferior
+    for(let i=0;i<refs;i++){const x=(Math.floor(i/2)+1)/(Math.ceil(refs/2)+1);if(i%2===0){pos["ref_"+i]={x,y:isOval?eY(x,"top"):0.03,label:"L"+(i+1),type:"refletor"}}else{pos["ref_"+i]={x,y:isOval?eY(x,"bottom"):0.97,label:"L"+(i+1),type:"refletor"}}}
+    // Nivelador: parede direita
+    for(let i=0;i<(d.nivelador||0);i++){const y=0.15;const side=inv?"left":"right";pos["niv_"+i]={x:isOval?eX(y,side):(inv?0.05:0.95),y,label:"N"+(i+1),type:"nivelador"}}
+    // Hidro: mesma parede dos retornos
     const hQty=d.hidro||0;
-    for(let i=0;i<hQty;i++){pos["hid_"+i]={x:inv?0.95:0.05,y:(i+1)/(hQty+1),label:"H"+(i+1),type:"hidro"}}
-    // Casa de maquinas: 10% do comprimento, fora da piscina
+    for(let i=0;i<hQty;i++){const y=(i+1)/(hQty+1);const side=inv?"right":"left";pos["hid_"+i]={x:isOval?eX(y,side):(inv?0.95:0.05),y,label:"H"+(i+1),type:"hidro"}}
+    // Casa de maquinas: fora da piscina
     pos["casa"]={x:1.12,y:0.5,label:"CM",type:"casa",special:true};
     return pos;
   };
 
   // SPA
-  const [spa,setSpa]=useState({on:false,length:"2.00",width:"2.00",depth:"0.80"});
+  const [spa,setSpa]=useState({on:false,length:"2.00",width:"2.00",depth:"0.80",side:"top"});
   const uSpa=f=>v=>setSpa(p=>({...p,[f]:v}));
 
   // WALLS irregular
@@ -1127,7 +1137,7 @@ export default function App(){
   };
   const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);autoStockOut(item)}setFbMsg("✅ Cliente fechado!");setTimeout(()=>setFbMsg(""),2000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
-  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8"});setWM(d.wMode||"regular");setWalls(d.walls||[]);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
+  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setWM(d.wMode||"regular");setWalls(d.walls||[]);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
   const movePipe=(id,stage)=>{const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
   const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const url=`https://wa.me/55${num}${msg?`?text=${encodeURIComponent(msg)}`:""}`;window.open(url,"_blank")};
@@ -1250,7 +1260,7 @@ export default function App(){
               <span style={{fontSize:"11px",fontWeight:"700",color:blue}}>🌊 Spa Externo</span>
               {!spa.on&&<span style={{fontSize:"9px",color:t.textMuted}}>— Clique para adicionar</span>}
             </div>
-            {spa.on&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px"}}><Inp label="Comp. Spa (m)" value={spa.length} onChange={uSpa("length")} t={t}/><Inp label="Larg. Spa (m)" value={spa.width} onChange={uSpa("width")} t={t}/><Inp label="Prof. Spa (m)" value={spa.depth} onChange={uSpa("depth")} t={t}/></div>}
+            {spa.on&&<><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px"}}><Inp label="Comp. Spa (m)" value={spa.length} onChange={uSpa("length")} t={t}/><Inp label="Larg. Spa (m)" value={spa.width} onChange={uSpa("width")} t={t}/><Inp label="Prof. Spa (m)" value={spa.depth} onChange={uSpa("depth")} t={t}/></div><div style={{marginTop:"8px"}}><div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,marginBottom:"5px",textTransform:"uppercase",letterSpacing:".4px"}}>Lado da piscina:</div><div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>{[["top","⬆ Topo"],["bottom","⬇ Baixo"],["left","⬅ Esquerda"],["right","➡ Direita"]].map(([s,lb])=><button key={s} onClick={()=>setSpa(p=>({...p,side:s}))} style={{padding:"5px 12px",borderRadius:"14px",border:`1.5px solid ${(spa.side||"top")===s?blue:"#cbd5e1"}`,background:(spa.side||"top")===s?blue:"#fff",color:(spa.side||"top")===s?"#fff":"#64748b",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>{lb}</button>)}</div></div></>}
           </div>
 
           {/* Stamp catalog */}
@@ -1286,7 +1296,7 @@ export default function App(){
                 <button onClick={()=>{setDisps(p=>({...p,[k]:p[k]+1}));setCustomPos(p=>{const n={...p};Object.keys(n).forEach(key=>{if(key.startsWith(k.substring(0,3)))delete n[key]});return n})}} style={{width:"16px",height:"16px",borderRadius:"3px",border:"none",background:"#dcfce7",color:"#16a34a",fontSize:"10px",cursor:"pointer",fontWeight:"700"}}>+</button>
               </div>)}
             </div>
-            <PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide}/>
+            <PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls}/>
           </div>
         </Card>}
 
@@ -1709,7 +1719,7 @@ export default function App(){
           </div>
           {isoView
             ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide}/>
-            :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide}/>}
+            :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls}/>}
         </Card>}
 
         {/* CONTRATOS */}
