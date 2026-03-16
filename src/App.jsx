@@ -922,6 +922,13 @@ export default function App(){
   const [crmSort,setCrmSort]=useState("data");
   const crmNoteInputRef=useRef(null);
 
+  // FINANCEIRO
+  const [contasReceber,setContasReceber]=useState(()=>{try{const s=localStorage.getItem("vv_receber");return s?JSON.parse(s):[]}catch{return[]}});
+  const [contasPagar,setContasPagar]=useState(()=>{try{const s=localStorage.getItem("vv_pagar");return s?JSON.parse(s):[]}catch{return[]}});
+  const [finTab,setFinTab]=useState("receber");
+  const [finFormR,setFinFormR]=useState({desc:"",valor:"",venc:"",obs:""});
+  const [finFormP,setFinFormP]=useState({desc:"",valor:"",venc:"",cat:"fornecedor",obs:""});
+
   useEffect(()=>{
     if(!user||!fbReady||!fb.db||user.uid==="local")return;
     try{
@@ -956,6 +963,33 @@ export default function App(){
     if(fbReady&&fb.db&&user&&user.uid!=="local"){
       try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","crmMeta"),{nextContact:nc,tags})}catch{}
     }
+  };
+
+  const saveReceber=(data)=>{
+    setContasReceber(data);
+    try{localStorage.setItem("vv_receber",JSON.stringify(data))}catch{}
+    if(fbReady&&fb.db&&user&&user.uid!=="local"){
+      try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","receber"),{data})}catch{}
+    }
+  };
+
+  const savePagar=(data)=>{
+    setContasPagar(data);
+    try{localStorage.setItem("vv_pagar",JSON.stringify(data))}catch{}
+    if(fbReady&&fb.db&&user&&user.uid!=="local"){
+      try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","pagar"),{data})}catch{}
+    }
+  };
+
+  const syncReceberFromHist=()=>{
+    const fechados=hist.filter(q=>["fechou","execucao","concluido"].includes(q.status));
+    const existing=contasReceber.map(c=>c.origemId).filter(Boolean);
+    const novos=fechados.filter(q=>!existing.includes(q.id)).map(q=>({
+      id:"rcb_"+q.id,origemId:q.id,desc:"Obra: "+(q.cN||"Cliente"),
+      valor:parseFloat(q.tot)||0,venc:"",status:"pendente",obs:"Auto do orçamento"
+    }));
+    if(novos.length>0)saveReceber([...contasReceber,...novos]);
+    return novos.length;
   };
 
   const addInteracao=(qId,tipo,texto)=>{
@@ -1280,7 +1314,7 @@ export default function App(){
       </div>
 
       <div className="vv-tab-bar" style={{display:"flex",padding:"0 14px",background:t.tabBg,borderBottom:`1px solid ${t.cardBorder}`,overflowX:"auto"}}>
-        {[["cliente","👤","Cliente",0],["piscina","🏊","Piscina",0],["itens","🛒","Custos",0],["garantias","🛡","Garantias",0],["pagamento","💰","Valor",0],["historico","📋","Salvos",0],["crm","📈","CRM",0],["estoque","📦","Estoque",lowStockCount],["planta","📐","Planta",0],["contratos","📝","Contratos",0]].map(([k,ic,lb,badge])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} badge={badge} t={t}>{lb}</Tab>)}
+        {[["cliente","👤","Cliente",0],["piscina","🏊","Piscina",0],["itens","🛒","Custos",0],["garantias","🛡","Garantias",0],["pagamento","💰","Valor",0],["historico","📋","Salvos",0],["crm","📈","CRM",0],["estoque","📦","Estoque",lowStockCount],["planta","📐","Planta",0],["contratos","📝","Contratos",0],["financeiro","💵","Financeiro",0]].map(([k,ic,lb,badge])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} badge={badge} t={t}>{lb}</Tab>)}
       </div>
 
       <div style={{padding:"14px"}}>
@@ -1969,6 +2003,221 @@ export default function App(){
             </>;
           })() }
         </Card>}
+
+      {/* FINANCEIRO */}
+      {tab==="financeiro"&&<Card t={t}>{(()=>{
+        const fmtV=v=>v?.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})||"R$ 0,00";
+        const today=new Date().toISOString().split("T")[0];
+        const isAtrasado=(venc,status)=>status==="pendente"&&venc&&venc<today;
+        const statusColor=(st,venc)=>{
+          if(st==="recebido"||st==="pago")return"#16a34a";
+          if(isAtrasado(venc,st))return"#dc2626";
+          return"#f59e0b";
+        };
+        const statusLabel=(st,venc)=>{
+          if(st==="recebido")return"✅ Recebido";
+          if(st==="pago")return"✅ Pago";
+          if(isAtrasado(venc,st))return"⚠️ Atrasado";
+          return"⏳ Pendente";
+        };
+
+        // totais
+        const totRcbPend=contasReceber.filter(c=>c.status!=="recebido").reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
+        const totRcbRecb=contasReceber.filter(c=>c.status==="recebido").reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
+        const totPagPend=contasPagar.filter(c=>c.status!=="pago").reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
+        const totPagPago=contasPagar.filter(c=>c.status==="pago").reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
+        const saldo=totRcbRecb-totPagPago;
+
+        // fluxo de caixa mensal
+        const meses={};
+        [...contasReceber].forEach(c=>{
+          if(!c.venc)return;
+          const m=c.venc.substring(0,7);
+          if(!meses[m])meses[m]={mes:m,entradas:0,saidas:0};
+          if(c.status==="recebido")meses[m].entradas+=parseFloat(c.valor)||0;
+        });
+        [...contasPagar].forEach(c=>{
+          if(!c.venc)return;
+          const m=c.venc.substring(0,7);
+          if(!meses[m])meses[m]={mes:m,entradas:0,saidas:0};
+          if(c.status==="pago")meses[m].saidas+=parseFloat(c.valor)||0;
+        });
+        const fluxoData=Object.values(meses).sort((a,b)=>a.mes.localeCompare(b.mes)).map(m=>({
+          ...m,mes:m.mes.substring(5)+"/"+m.mes.substring(2,4),saldo:m.entradas-m.saidas
+        }));
+
+        // DRE
+        const recBruta=hist.filter(q=>["fechou","execucao","concluido"].includes(q.status)).reduce((a,q)=>a+(parseFloat(q.tot)||0),0);
+        const custoObras=hist.filter(q=>["fechou","execucao","concluido"].includes(q.status)).reduce((a,q)=>{
+          const items=(q.data?.items||[]).filter(i=>i.on);
+          return a+items.reduce((s,i)=>s+(parseFloat(i.cost)||0)*(parseFloat(i.qty)||0),0);
+        },0);
+        const lucroBruto=recBruta-custoObras;
+        const despesasOp=contasPagar.filter(c=>c.status==="pago").reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
+        const lucroLiq=lucroBruto-despesasOp;
+        const margem=recBruta>0?((lucroLiq/recBruta)*100).toFixed(1):0;
+
+        const subBtn=(k,lb)=><button onClick={()=>setFinTab(k)} style={{padding:"6px 14px",borderRadius:"20px",border:`1.5px solid ${finTab===k?blue:t.cardBorder}`,background:finTab===k?blue:"transparent",color:finTab===k?"#fff":t.text,fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>{lb}</button>;
+
+        return <>
+          <ST icon="💵">Financeiro</ST>
+
+          {/* CARDS RESUMO */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"8px",marginBottom:"14px"}} className="vv-g4">
+            {[
+              {lb:"A Receber",val:fmtV(totRcbPend),color:"#f59e0b",bg:"#fffbeb"},
+              {lb:"Recebido",val:fmtV(totRcbRecb),color:"#16a34a",bg:"#f0fdf4"},
+              {lb:"A Pagar",val:fmtV(totPagPend),color:"#dc2626",bg:"#fef2f2"},
+              {lb:"Saldo Caixa",val:fmtV(saldo),color:saldo>=0?"#16a34a":"#dc2626",bg:saldo>=0?"#f0fdf4":"#fef2f2"},
+            ].map((c,i)=><div key={i} style={{background:c.bg,borderRadius:"10px",padding:"10px 12px",border:`1px solid ${t.cardBorder}`}}>
+              <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>{c.lb}</div>
+              <div style={{fontSize:"14px",fontWeight:"800",color:c.color}}>{c.val}</div>
+            </div>)}
+          </div>
+
+          {/* SUB-ABAS */}
+          <div style={{display:"flex",gap:"6px",marginBottom:"14px",flexWrap:"wrap"}}>
+            {subBtn("receber","📥 Receber")}
+            {subBtn("pagar","📤 Pagar")}
+            {subBtn("fluxo","📊 Fluxo de Caixa")}
+            {subBtn("dre","📑 DRE")}
+          </div>
+
+          {/* CONTAS A RECEBER */}
+          {finTab==="receber"&&<>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px",flexWrap:"wrap",gap:"6px"}}>
+              <div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>Contas a Receber</div>
+              <Btn onClick={()=>{const n=syncReceberFromHist();setFbMsg(n>0?n+" novo(s) importado(s)":"Tudo já importado");setTimeout(()=>setFbMsg(""),3000)}} style={{fontSize:"9px",background:"#3b82f6",color:"#fff",border:"none"}}>↓ Importar do CRM</Btn>
+            </div>
+            {/* Formulário adicionar */}
+            <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",marginBottom:"10px",border:`1px solid ${t.cardBorder}`}}>
+              <div style={{fontSize:"10px",fontWeight:"700",color:blue,marginBottom:"8px"}}>+ Nova conta a receber</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 100px 120px",gap:"6px",marginBottom:"6px"}} className="vv-g3">
+                <input value={finFormR.desc} onChange={e=>setFinFormR(p=>({...p,desc:e.target.value}))} placeholder="Descrição (ex: Obra João - sinal)" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+                <input value={finFormR.valor} onChange={e=>setFinFormR(p=>({...p,valor:e.target.value}))} placeholder="Valor R$" type="number" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+                <input value={finFormR.venc} onChange={e=>setFinFormR(p=>({...p,venc:e.target.value}))} type="date" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+              </div>
+              <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
+                <input value={finFormR.obs} onChange={e=>setFinFormR(p=>({...p,obs:e.target.value}))} placeholder="Obs (opcional)" style={{flex:1,padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+                <Btn onClick={()=>{if(!finFormR.desc||!finFormR.valor)return;const nova={id:"rcb_"+Date.now(),desc:finFormR.desc,valor:parseFloat(finFormR.valor),venc:finFormR.venc,status:"pendente",obs:finFormR.obs};saveReceber([nova,...contasReceber]);setFinFormR({desc:"",valor:"",venc:"",obs:""})}} style={{background:"#16a34a",color:"#fff",border:"none",whiteSpace:"nowrap",fontSize:"11px"}}>Adicionar</Btn>
+              </div>
+            </div>
+            {/* Lista */}
+            {contasReceber.length===0?<div style={{textAlign:"center",padding:"24px",color:t.textMuted,fontSize:"11px"}}>Nenhuma conta a receber. Importe do CRM ou adicione manualmente.</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+              {contasReceber.map(c=>{
+                const cor=statusColor(c.status,c.venc);
+                return <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:t.sectionBg,borderRadius:"8px",border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${cor}`}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{c.desc}</div>
+                    <div style={{fontSize:"9px",color:t.textMuted}}>{c.venc?new Date(c.venc+"T00:00").toLocaleDateString("pt-BR"):""} {c.obs?" · "+c.obs:""}</div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:"8px",flexShrink:0}}>
+                    <div style={{fontSize:"13px",fontWeight:"800",color:cor}}>{fmtV(parseFloat(c.valor))}</div>
+                    <span style={{fontSize:"8px",fontWeight:"600",color:cor,whiteSpace:"nowrap"}}>{statusLabel(c.status,c.venc)}</span>
+                    {c.status!=="recebido"&&<button onClick={()=>saveReceber(contasReceber.map(x=>x.id===c.id?{...x,status:"recebido"}:x))} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#16a34a",color:"#fff",cursor:"pointer",fontWeight:"600"}}>Recebido</button>}
+                    <button onClick={()=>saveReceber(contasReceber.filter(x=>x.id!==c.id))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>✕</button>
+                  </div>
+                </div>;
+              })}
+            </div>}
+          </>}
+
+          {/* CONTAS A PAGAR */}
+          {finTab==="pagar"&&<>
+            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Contas a Pagar</div>
+            {/* Formulário */}
+            <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",marginBottom:"10px",border:`1px solid ${t.cardBorder}`}}>
+              <div style={{fontSize:"10px",fontWeight:"700",color:"#dc2626",marginBottom:"8px"}}>+ Nova despesa</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 100px 120px",gap:"6px",marginBottom:"6px"}} className="vv-g3">
+                <input value={finFormP.desc} onChange={e=>setFinFormP(p=>({...p,desc:e.target.value}))} placeholder="Descrição (ex: Fornecedor Acqualiner)" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+                <input value={finFormP.valor} onChange={e=>setFinFormP(p=>({...p,valor:e.target.value}))} placeholder="Valor R$" type="number" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+                <input value={finFormP.venc} onChange={e=>setFinFormP(p=>({...p,venc:e.target.value}))} type="date" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+              </div>
+              <div style={{display:"flex",gap:"6px",alignItems:"center",flexWrap:"wrap"}}>
+                <select value={finFormP.cat} onChange={e=>setFinFormP(p=>({...p,cat:e.target.value}))} style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}>
+                  <option value="fornecedor">Fornecedor</option>
+                  <option value="funcionario">Funcionário</option>
+                  <option value="aluguel">Aluguel</option>
+                  <option value="servico">Serviço</option>
+                  <option value="outros">Outros</option>
+                </select>
+                <input value={finFormP.obs} onChange={e=>setFinFormP(p=>({...p,obs:e.target.value}))} placeholder="Obs (opcional)" style={{flex:1,padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+                <Btn onClick={()=>{if(!finFormP.desc||!finFormP.valor)return;const nova={id:"pag_"+Date.now(),desc:finFormP.desc,valor:parseFloat(finFormP.valor),venc:finFormP.venc,cat:finFormP.cat,status:"pendente",obs:finFormP.obs};savePagar([nova,...contasPagar]);setFinFormP({desc:"",valor:"",venc:"",cat:"fornecedor",obs:""})}} style={{background:"#dc2626",color:"#fff",border:"none",whiteSpace:"nowrap",fontSize:"11px"}}>Adicionar</Btn>
+              </div>
+            </div>
+            {/* Lista */}
+            {contasPagar.length===0?<div style={{textAlign:"center",padding:"24px",color:t.textMuted,fontSize:"11px"}}>Nenhuma despesa cadastrada.</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+              {contasPagar.map(c=>{
+                const cor=statusColor(c.status,c.venc);
+                const catColors={fornecedor:"#8b5cf6",funcionario:"#3b82f6",aluguel:"#f97316",servico:"#06b6d4",outros:"#64748b"};
+                return <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:t.sectionBg,borderRadius:"8px",border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${cor}`}}>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",alignItems:"center",gap:"5px"}}>
+                      <span style={{fontSize:"8px",background:catColors[c.cat]||"#64748b",color:"#fff",padding:"1px 5px",borderRadius:"3px",fontWeight:"600"}}>{c.cat}</span>
+                      <div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{c.desc}</div>
+                    </div>
+                    <div style={{fontSize:"9px",color:t.textMuted}}>{c.venc?new Date(c.venc+"T00:00").toLocaleDateString("pt-BR"):""} {c.obs?" · "+c.obs:""}</div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:"8px",flexShrink:0}}>
+                    <div style={{fontSize:"13px",fontWeight:"800",color:cor}}>{fmtV(parseFloat(c.valor))}</div>
+                    <span style={{fontSize:"8px",fontWeight:"600",color:cor,whiteSpace:"nowrap"}}>{statusLabel(c.status,c.venc)}</span>
+                    {c.status!=="pago"&&<button onClick={()=>savePagar(contasPagar.map(x=>x.id===c.id?{...x,status:"pago"}:x))} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#16a34a",color:"#fff",cursor:"pointer",fontWeight:"600"}}>Pago</button>}
+                    <button onClick={()=>savePagar(contasPagar.filter(x=>x.id!==c.id))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>✕</button>
+                  </div>
+                </div>;
+              })}
+            </div>}
+          </>}
+
+          {/* FLUXO DE CAIXA */}
+          {finTab==="fluxo"&&<>
+            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"12px"}}>Fluxo de Caixa — entradas e saídas confirmadas por mês</div>
+            {fluxoData.length===0?<div style={{textAlign:"center",padding:"32px",color:t.textMuted,fontSize:"11px"}}>Sem dados ainda. Marque contas como Recebido/Pago para gerar o gráfico.</div>:
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={fluxoData} margin={{top:4,right:8,left:0,bottom:4}}>
+                <XAxis dataKey="mes" tick={{fontSize:10,fill:t.text}}/>
+                <YAxis tick={{fontSize:9,fill:t.textSec}} tickFormatter={v=>"R$"+v.toLocaleString("pt-BR")}/>
+                <Tooltip formatter={(v,n)=>[v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}),n==="entradas"?"Entradas":n==="saidas"?"Saídas":"Saldo"]}/>
+                <Legend wrapperStyle={{fontSize:"11px"}}/>
+                <Bar dataKey="entradas" name="Entradas" fill="#16a34a" radius={[4,4,0,0]}/>
+                <Bar dataKey="saidas" name="Saídas" fill="#dc2626" radius={[4,4,0,0]}/>
+              </BarChart>
+            </ResponsiveContainer>}
+            {fluxoData.length>0&&<div style={{display:"flex",flexDirection:"column",gap:"3px",marginTop:"10px"}}>
+              {fluxoData.map((m,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 10px",background:t.sectionBg,borderRadius:"6px",border:`1px solid ${t.cardBorder}`}}>
+                <span style={{fontSize:"11px",fontWeight:"600",color:t.text}}>{m.mes}</span>
+                <span style={{fontSize:"11px",color:"#16a34a",fontWeight:"700"}}>+{fmtV(m.entradas)}</span>
+                <span style={{fontSize:"11px",color:"#dc2626",fontWeight:"700"}}>-{fmtV(m.saidas)}</span>
+                <span style={{fontSize:"11px",fontWeight:"800",color:m.saldo>=0?"#16a34a":"#dc2626"}}>{fmtV(m.saldo)}</span>
+              </div>)}
+            </div>}
+          </>}
+
+          {/* DRE */}
+          {finTab==="dre"&&<>
+            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"12px"}}>DRE — Demonstrativo de Resultado</div>
+            <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
+              {[
+                {lb:"(+) Receita Bruta (obras fechadas)",val:recBruta,color:"#16a34a",bold:false},
+                {lb:"(-) Custo dos Materiais (orçamentos)",val:-custoObras,color:"#dc2626",bold:false},
+                {lb:"(=) Lucro Bruto",val:lucroBruto,color:lucroBruto>=0?"#16a34a":"#dc2626",bold:true,sep:true},
+                {lb:"(-) Despesas Operacionais (contas pagas)",val:-despesasOp,color:"#f97316",bold:false},
+                {lb:"(=) Lucro Líquido",val:lucroLiq,color:lucroLiq>=0?"#16a34a":"#dc2626",bold:true,sep:true},
+              ].map((row,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:row.bold?t.sectionBg:"transparent",borderRadius:"8px",border:row.bold?`1.5px solid ${t.cardBorder}`:"none",borderTop:row.sep?`2px solid ${t.cardBorder}`:"none",marginTop:row.sep?"4px":"0"}}>
+                <span style={{fontSize:"12px",fontWeight:row.bold?700:500,color:t.text}}>{row.lb}</span>
+                <span style={{fontSize:"13px",fontWeight:row.bold?800:600,color:row.color}}>{fmtV(Math.abs(row.val))}</span>
+              </div>)}
+              <div style={{marginTop:"8px",padding:"10px 14px",background:"#f0fdf4",borderRadius:"8px",border:"1.5px solid #16a34a",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:"12px",fontWeight:"700",color:"#15803d"}}>Margem Líquida</span>
+                <span style={{fontSize:"16px",fontWeight:"800",color:parseFloat(margem)>=0?"#16a34a":"#dc2626"}}>{margem}%</span>
+              </div>
+              <div style={{fontSize:"9px",color:t.textMuted,marginTop:"4px",textAlign:"center"}}>* Baseado nos orçamentos com status Fechou/Em Execução/Concluído e despesas marcadas como Pago</div>
+            </div>
+          </>}
+        </>;
+      })()}</Card>}
 
       {/* MODAL REVISÃO DE BAIXA NO ESTOQUE */}
       {stkReview&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
