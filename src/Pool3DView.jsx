@@ -18,7 +18,7 @@ function devZ(type, isFloor, D) {
   if (isFloor) return 0;
   if (type === 'skimmer')   return D;
   if (type === 'nivelador') return D * 0.88;
-  if (type === 'refletor')  return D * 0.62;
+  if (type === 'refletor')  return D * 0.5;
   if (type === 'aspiracao') return D * 0.5;
   return D * 0.55; // retorno, hidro
 }

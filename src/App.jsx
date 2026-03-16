@@ -338,7 +338,7 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
     if(isFloor)return 0;
     if(type==='skimmer')return D;
     if(type==='nivelador')return D*0.88;
-    if(type==='refletor')return D*0.62;
+    if(type==='refletor')return D*0.5;
     if(type==='aspiracao')return D*0.5;
     return D*0.55;
   };
@@ -418,7 +418,7 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
       els.push(pip(`${sysType}-tocm`,[[L+laneOff,midY,eZ],[cmX0,midY,eZ],[cmX0,cmEY,eZ]],col,3));
     }
     // Diameter label mid-route
-    if(exitPts.length>0){const ep=exitPts[0];const mp=iso(ep[0]+(cmX0-ep[0])*0.4,ep[1],eZ);els.push(<text key={`${sysType}-diam`} x={mp.x} y={mp.y-5} textAnchor="middle" fontSize="6" fontWeight="700" fill={col} opacity="0.9">Ø50</text>);}
+    if(exitPts.length>0){const ep=exitPts[0];const mp=iso(ep[0]+(cmX0-ep[0])*0.4,ep[1],eZ);const diam=sysType==='refletor'?'Ø3/4"':'Ø50';els.push(<text key={`${sysType}-diam`} x={mp.x} y={mp.y-5} textAnchor="middle" fontSize="6" fontWeight="700" fill={col} opacity="0.9">{diam}</text>);}
   });
   // CASA DE MÁQUINAS (posicionada na altura pZ das tubulações)
   els.push(<polygon key="cmt" points={pts([[cmX0,cmBY0,pZ],[cmX0+cmWw,cmBY0,pZ],[cmX0+cmWw,cmBY0+cmWd,pZ],[cmX0,cmBY0+cmWd,pZ]])} fill={dk?"#334155":"#e2e8f0"} stroke="#475569" strokeWidth="1.5"/>);
@@ -444,7 +444,7 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   const lx=12,ly=svgH-mYb+4;
   els.push(<rect key="lgbg" x={lx-4} y={ly-14} width={205} height={lgSys.length*13+20} rx="4" fill={dk?"#1e293b":"#fff"} stroke={dk?"#334155":"#e2e8f0"} strokeWidth="1" opacity="0.92"/>);
   els.push(<text key="lgtit" x={lx+98} y={ly} textAnchor="middle" fontSize="8" fontWeight="800" fill={dk?"#e2e8f0":"#0a1f44"}>LEGENDA HIDRÁULICA</text>);
-  lgSys.forEach(([qty,lbl,col],i)=>{const lyi=ly+12+i*13;els.push(<line key={`lg${i}`} x1={lx} y1={lyi} x2={lx+18} y2={lyi} stroke={col} strokeWidth="3" strokeLinecap="round"/>);els.push(<text key={`lgt${i}`} x={lx+23} y={lyi+4} fontSize="8" fill={dk?"#e2e8f0":"#334155"} fontWeight="600">{lbl} ({qty}x) — Ø50mm</text>);});
+  lgSys.forEach(([qty,lbl,col],i)=>{const lyi=ly+12+i*13;els.push(<line key={`lg${i}`} x1={lx} y1={lyi} x2={lx+18} y2={lyi} stroke={col} strokeWidth="3" strokeLinecap="round"/>);els.push(<text key={`lgt${i}`} x={lx+23} y={lyi+4} fontSize="8" fill={dk?"#e2e8f0":"#334155"} fontWeight="600">{lbl} ({qty}x) — {lbl.includes('Refletor')?'Ø3/4"':'Ø50mm'}</text>);});
   // Scale bar
   const sb1=iso(0,W+0.4,D),sb2=iso(1,W+0.4,D);
   els.push(<line key="sb" x1={sb1.x} y1={sb1.y} x2={sb2.x} y2={sb2.y} stroke="#64748b" strokeWidth="2" strokeLinecap="round"/>);
