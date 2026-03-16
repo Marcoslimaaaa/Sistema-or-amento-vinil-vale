@@ -328,6 +328,8 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   };
   const pip=(key,arr,col,sw=2.5,dash=false)=><path key={key} d={pth(arr)} fill="none" stroke={col} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash?"6,3":undefined} opacity="0.85"/>;
   const lo=0.32;
+  // Pipe run height: always 30cm below top of wall
+  const pZ=Math.max(0,D-0.30);
   // Z height per device type
   const typeZ=(type,isFloor)=>{
     if(isFloor)return 0;
@@ -363,28 +365,28 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
       // Route pipe from device to a ground-level exit point
       let route;
       if(p.floor){
-        // Floor device → go along floor to right wall, then up
-        route=[[ix,iy,0],[L,iy,0],[L+laneOff,iy,0],[L+laneOff,iy,D]];
-        exitPts.push([L+laneOff,iy,D]);
+        // Floor device → go along floor to right wall, then up to pipe run height
+        route=[[ix,iy,0],[L,iy,0],[L+laneOff,iy,0],[L+laneOff,iy,pZ]];
+        exitPts.push([L+laneOff,iy,pZ]);
       } else if(p.x<0.12){
         // Left short wall (retorno, hidro)
-        route=[[0,iy,iz],[-laneOff,iy,iz],[-laneOff,iy,D]];
-        exitPts.push([-laneOff,iy,D]);
+        route=[[0,iy,iz],[0,iy,pZ],[-laneOff,iy,pZ]];
+        exitPts.push([-laneOff,iy,pZ]);
       } else if(p.x>0.88){
         // Right short wall (skimmer, nivelador)
-        route=[[L,iy,iz],[L+laneOff,iy,iz],[L+laneOff,iy,D]];
-        exitPts.push([L+laneOff,iy,D]);
+        route=[[L,iy,iz],[L,iy,pZ],[L+laneOff,iy,pZ]];
+        exitPts.push([L+laneOff,iy,pZ]);
       } else if(p.y<0.08){
         // Front long wall (refletor front)
-        route=[[ix,0,iz],[ix,-laneOff,iz],[ix,-laneOff,D]];
-        exitPts.push([ix,-laneOff,D]);
+        route=[[ix,0,iz],[ix,0,pZ],[ix,-laneOff,pZ]];
+        exitPts.push([ix,-laneOff,pZ]);
       } else if(p.y>0.88){
         // Back long wall (aspiracao y=0.95, refletor back)
-        route=[[ix,W,iz],[ix,W+laneOff,iz],[ix,W+laneOff,D]];
-        exitPts.push([ix,W+laneOff,D]);
+        route=[[ix,W,iz],[ix,W,pZ],[ix,W+laneOff,pZ]];
+        exitPts.push([ix,W+laneOff,pZ]);
       } else {
-        route=[[ix,iy,iz],[L,iy,iz],[L+laneOff,iy,iz],[L+laneOff,iy,D]];
-        exitPts.push([L+laneOff,iy,D]);
+        route=[[ix,iy,iz],[L,iy,iz],[L,iy,pZ],[L+laneOff,iy,pZ]];
+        exitPts.push([L+laneOff,iy,pZ]);
       }
       els.push(pip(`${key}-pipe`,route,col));
     });
@@ -395,40 +397,40 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
     const isFrontExit=exitPts[0][1]<0;
     const isBackExit=exitPts[0][1]>W;
     if(isLeftExit){
-      // Left exits: collect along x=-laneOff, route below pool (y=W+laneOff), then to CM
-      if(exitPts.length>1){const ys=exitPts.map(p=>p[1]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[-laneOff,ys[0],D],[-laneOff,ys[ys.length-1],D]],col,3));}
+      // Left exits: collect along x=-laneOff at pZ, route to CM
+      if(exitPts.length>1){const ys=exitPts.map(p=>p[1]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[-laneOff,ys[0],pZ],[-laneOff,ys[ys.length-1],pZ]],col,3));}
       const midY=exitPts.reduce((s,p)=>s+p[1],0)/exitPts.length;
-      els.push(pip(`${sysType}-tocm`,[[-laneOff,midY,D],[-laneOff,W+laneOff,D],[cmX0,W+laneOff,D],[cmX0,cmEY,D]],col,3));
+      els.push(pip(`${sysType}-tocm`,[[-laneOff,midY,pZ],[-laneOff,W+laneOff,pZ],[cmX0,W+laneOff,pZ],[cmX0,cmEY,pZ]],col,3));
     } else if(isFrontExit){
-      // Front exits: collect along y=-laneOff, route right to CM
-      if(exitPts.length>1){const xs=exitPts.map(p=>p[0]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[xs[0],-laneOff,D],[xs[xs.length-1],-laneOff,D]],col,3));}
+      // Front exits: collect along y=-laneOff at pZ, route to CM
+      if(exitPts.length>1){const xs=exitPts.map(p=>p[0]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[xs[0],-laneOff,pZ],[xs[xs.length-1],-laneOff,pZ]],col,3));}
       const midX=exitPts.reduce((s,p)=>s+p[0],0)/exitPts.length;
-      els.push(pip(`${sysType}-tocm`,[[midX,-laneOff,D],[cmX0,-laneOff,D],[cmX0,cmEY,D]],col,3));
+      els.push(pip(`${sysType}-tocm`,[[midX,-laneOff,pZ],[cmX0,-laneOff,pZ],[cmX0,cmEY,pZ]],col,3));
     } else if(isBackExit){
-      // Back exits: collect along y=W+laneOff, route right to CM
-      if(exitPts.length>1){const xs=exitPts.map(p=>p[0]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[xs[0],W+laneOff,D],[xs[xs.length-1],W+laneOff,D]],col,3));}
+      // Back exits: collect along y=W+laneOff at pZ, route to CM
+      if(exitPts.length>1){const xs=exitPts.map(p=>p[0]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[xs[0],W+laneOff,pZ],[xs[xs.length-1],W+laneOff,pZ]],col,3));}
       const midX=exitPts.reduce((s,p)=>s+p[0],0)/exitPts.length;
-      els.push(pip(`${sysType}-tocm`,[[midX,W+laneOff,D],[cmX0,W+laneOff,D],[cmX0,cmEY,D]],col,3));
+      els.push(pip(`${sysType}-tocm`,[[midX,W+laneOff,pZ],[cmX0,W+laneOff,pZ],[cmX0,cmEY,pZ]],col,3));
     } else {
-      // Right-side exits: collect along x=L+laneOff, then to CM
-      if(exitPts.length>1){const ys=exitPts.map(p=>p[1]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[L+laneOff,ys[0],D],[L+laneOff,ys[ys.length-1],D]],col,3));}
+      // Right-side exits: collect along x=L+laneOff at pZ, then to CM
+      if(exitPts.length>1){const ys=exitPts.map(p=>p[1]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[L+laneOff,ys[0],pZ],[L+laneOff,ys[ys.length-1],pZ]],col,3));}
       const midY=exitPts.reduce((s,p)=>s+p[1],0)/exitPts.length;
-      els.push(pip(`${sysType}-tocm`,[[L+laneOff,midY,D],[cmX0,midY,D],[cmX0,cmEY,D]],col,3));
+      els.push(pip(`${sysType}-tocm`,[[L+laneOff,midY,pZ],[cmX0,midY,pZ],[cmX0,cmEY,pZ]],col,3));
     }
     // Diameter label mid-route
-    if(exitPts.length>0){const ep=exitPts[0];const mp=iso(ep[0]+(cmX0-ep[0])*0.4,ep[1],D);els.push(<text key={`${sysType}-diam`} x={mp.x} y={mp.y-5} textAnchor="middle" fontSize="6" fontWeight="700" fill={col} opacity="0.9">Ø50</text>);}
+    if(exitPts.length>0){const ep=exitPts[0];const mp=iso(ep[0]+(cmX0-ep[0])*0.4,ep[1],pZ);els.push(<text key={`${sysType}-diam`} x={mp.x} y={mp.y-5} textAnchor="middle" fontSize="6" fontWeight="700" fill={col} opacity="0.9">Ø50</text>);}
   });
-  // CASA DE MÁQUINAS
-  els.push(<polygon key="cmt" points={pts([[cmX0,cmBY0,D],[cmX0+cmWw,cmBY0,D],[cmX0+cmWw,cmBY0+cmWd,D],[cmX0,cmBY0+cmWd,D]])} fill={dk?"#334155":"#e2e8f0"} stroke="#475569" strokeWidth="1.5"/>);
-  els.push(<polygon key="cmf" points={pts([[cmX0,cmBY0,D-cmBoxH],[cmX0+cmWw,cmBY0,D-cmBoxH],[cmX0+cmWw,cmBY0,D],[cmX0,cmBY0,D]])} fill={dk?"#1e293b":"#f1f5f9"} stroke="#475569" strokeWidth="1.5"/>);
-  els.push(<polygon key="cmr" points={pts([[cmX0+cmWw,cmBY0,D-cmBoxH],[cmX0+cmWw,cmBY0+cmWd,D-cmBoxH],[cmX0+cmWw,cmBY0+cmWd,D],[cmX0+cmWw,cmBY0,D]])} fill={dk?"#334155":"#cbd5e1"} stroke="#475569" strokeWidth="1.5"/>);
-  const cmCtr=iso(cmX0+cmWw/2,cmBY0+cmWd/2,D+0.08);
+  // CASA DE MÁQUINAS (posicionada na altura pZ das tubulações)
+  els.push(<polygon key="cmt" points={pts([[cmX0,cmBY0,pZ],[cmX0+cmWw,cmBY0,pZ],[cmX0+cmWw,cmBY0+cmWd,pZ],[cmX0,cmBY0+cmWd,pZ]])} fill={dk?"#334155":"#e2e8f0"} stroke="#475569" strokeWidth="1.5"/>);
+  els.push(<polygon key="cmf" points={pts([[cmX0,cmBY0,pZ-cmBoxH],[cmX0+cmWw,cmBY0,pZ-cmBoxH],[cmX0+cmWw,cmBY0,pZ],[cmX0,cmBY0,pZ]])} fill={dk?"#1e293b":"#f1f5f9"} stroke="#475569" strokeWidth="1.5"/>);
+  els.push(<polygon key="cmr" points={pts([[cmX0+cmWw,cmBY0,pZ-cmBoxH],[cmX0+cmWw,cmBY0+cmWd,pZ-cmBoxH],[cmX0+cmWw,cmBY0+cmWd,pZ],[cmX0+cmWw,cmBY0,pZ]])} fill={dk?"#334155":"#cbd5e1"} stroke="#475569" strokeWidth="1.5"/>);
+  const cmCtr=iso(cmX0+cmWw/2,cmBY0+cmWd/2,pZ+0.08);
   els.push(<text key="cmlbl" x={cmCtr.x} y={cmCtr.y} textAnchor="middle" fontSize="7" fontWeight="800" fill="#475569">CASA DE</text>);
   els.push(<text key="cmlbl2" x={cmCtr.x} y={cmCtr.y+9} textAnchor="middle" fontSize="7" fontWeight="800" fill="#475569">MÁQUINAS</text>);
-  const fp=iso(cmX0+0.22,cmBY0+cmWd*0.25,D+0.06);
+  const fp=iso(cmX0+0.22,cmBY0+cmWd*0.25,pZ+0.06);
   els.push(<ellipse key="filt" cx={fp.x} cy={fp.y} rx="8" ry="4.5" fill={dk?"#064e3b":"#86efac"} stroke="#15803d" strokeWidth="1.5"/>);
   els.push(<text key="ftlbl" x={fp.x} y={fp.y+13} textAnchor="middle" fontSize="6" fontWeight="700" fill="#15803d">Filtro</text>);
-  const pp=iso(cmX0+0.22,cmBY0+cmWd*0.72,D+0.06);
+  const pp=iso(cmX0+0.22,cmBY0+cmWd*0.72,pZ+0.06);
   els.push(<circle key="pump" cx={pp.x} cy={pp.y} r="7" fill={dk?"#1e3a5f":"#dbeafe"} stroke="#2563eb" strokeWidth="1.5"/>);
   els.push(<line key="pumpL" x1={pp.x-4} y1={pp.y} x2={pp.x+4} y2={pp.y} stroke="#2563eb" strokeWidth="1.5"/>);
   els.push(<line key="pumpV" x1={pp.x} y1={pp.y-4} x2={pp.x} y2={pp.y+4} stroke="#2563eb" strokeWidth="1.5"/>);
