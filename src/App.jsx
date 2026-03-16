@@ -970,10 +970,13 @@ export default function App(){
   const [contasReceber,setContasReceber]=useState(()=>{try{const s=localStorage.getItem("vv_receber");return s?JSON.parse(s):[]}catch{return[]}});
   const [contasPagar,setContasPagar]=useState(()=>{try{const s=localStorage.getItem("vv_pagar");return s?JSON.parse(s):[]}catch{return[]}});
   const [despesasFixas,setDespesasFixas]=useState(()=>{try{const s=localStorage.getItem("vv_fixas");return s?JSON.parse(s):[]}catch{return[]}});
-  const [finTab,setFinTab]=useState("receber");
+  const [finTab,setFinTab]=useState("dash");
   const [finFormR,setFinFormR]=useState({desc:"",valor:"",venc:"",obs:"",parcelas:"1"});
   const [finFormP,setFinFormP]=useState({desc:"",valor:"",venc:"",cat:"materiais",obs:"",parcelas:"1",obra:""});
-  const [finFormF,setFinFormF]=useState({desc:"",valor:"",cat:"fixas",dia:"5",obs:""});
+  const [finFormF,setFinFormF]=useState({desc:"",valor:"",cat:"fixas",dia:"5",obs:"",fimEm:""});
+  const [calMes,setCalMes]=useState(new Date());
+  const [calDiaSel,setCalDiaSel]=useState(null);
+  const [fixaExpandida,setFixaExpandida]=useState(null);
 
   useEffect(()=>{
     if(!user||!fbReady||!fb.db||user.uid==="local")return;
@@ -1041,7 +1044,11 @@ export default function App(){
     const mesKey=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
     // Não lança se já existir lançamento deste mês para cada fixa
     const jaLancadas=contasPagar.filter(c=>c.fixaId&&c.mesRef===mesKey).map(c=>c.fixaId);
-    const novas=despesasFixas.filter(f=>!jaLancadas.includes(f.id)).map(f=>{
+    const novas=despesasFixas.filter(f=>{
+      if(jaLancadas.includes(f.id))return false;
+      if(f.fimEm&&mesKey>f.fimEm)return false;
+      return true;
+    }).map(f=>{
       const dia=Math.min(parseInt(f.dia)||5,28);
       const venc=`${mesKey}-${String(dia).padStart(2,"0")}`;
       return{id:"pag_"+Date.now()+"_"+f.id,desc:f.desc,valor:parseFloat(f.valor),venc,cat:f.cat||"fixas",status:"pendente",obs:f.obs||"",fixaId:f.id,mesRef:mesKey};
@@ -2195,13 +2202,144 @@ export default function App(){
 
           {/* SUB-ABAS */}
           <div style={{display:"flex",gap:"6px",marginBottom:"14px",flexWrap:"wrap"}}>
+            {subBtn("dash","📊 Dashboard")}
             {subBtn("receber","📥 Receber")}
             {subBtn("pagar","📤 Pagar")}
             {subBtn("fixas","📌 Fixas Mensais")}
+            {subBtn("calendario","📅 Calendário")}
             {subBtn("fluxo","📊 Fluxo de Caixa")}
             {subBtn("dre","📑 DRE")}
             {subBtn("obra","🏗 Por Obra")}
           </div>
+
+          {/* DASHBOARD */}
+          {finTab==="dash"&&(()=>{
+            const now2=new Date();
+            const anoAtual=now2.getFullYear();
+            const mesAtual=now2.getMonth();
+            const mesKeyAtual=`${anoAtual}-${String(mesAtual+1).padStart(2,"0")}`;
+            const entMes=contasReceber.filter(c=>c.status==="recebido"&&c.venc&&c.venc.startsWith(mesKeyAtual)).reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
+            const saiMes=contasPagar.filter(c=>c.status==="pago"&&c.venc&&c.venc.startsWith(mesKeyAtual)).reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
+            const saldoMes=entMes-saiMes;
+            const fixasMes=despesasFixas.reduce((a,f)=>a+(parseFloat(f.valor)||0),0);
+            const comprPct=entMes>0?Math.min(100,(fixasMes/entMes)*100):0;
+
+            const todayStr=new Date().toISOString().split("T")[0];
+            const d7=new Date();d7.setDate(d7.getDate()+7);
+            const d7str=d7.toISOString().split("T")[0];
+            const prox7=[
+              ...contasReceber.filter(c=>c.status!=="recebido"&&c.venc&&c.venc>=todayStr&&c.venc<=d7str).map(c=>({...c,_tipo:"receber"})),
+              ...contasPagar.filter(c=>c.status!=="pago"&&c.venc&&c.venc>=todayStr&&c.venc<=d7str).map(c=>({...c,_tipo:"pagar"}))
+            ].sort((a,b)=>a.venc.localeCompare(b.venc));
+
+            const ultimos6=fluxoData.slice(-6);
+
+            const catBreak={};
+            contasPagar.filter(c=>c.status==="pago").forEach(c=>{
+              const k=c.cat||"outros";
+              if(!catBreak[k])catBreak[k]=0;
+              catBreak[k]+=parseFloat(c.valor)||0;
+            });
+            const catBreakSorted=Object.entries(catBreak).sort((a,b)=>b[1]-a[1]);
+            const maxCatVal=catBreakSorted.length>0?catBreakSorted[0][1]:1;
+
+            return <div style={{display:"flex",flexDirection:"column",gap:"16px"}}>
+              {/* Seção 2: Saúde do mês */}
+              <div style={{background:t.sectionBg,borderRadius:"10px",padding:"14px",border:`1px solid ${t.cardBorder}`}}>
+                <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Saúde do Mês Atual — {new Date().toLocaleDateString("pt-BR",{month:"long",year:"numeric"})}</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"8px",marginBottom:"12px"}} className="vv-g4">
+                  <div style={{background:"#f0fdf4",borderRadius:"8px",padding:"10px",border:"1px solid #bbf7d0",textAlign:"center"}}>
+                    <div style={{fontSize:"8px",color:"#166534",fontWeight:"600",marginBottom:"3px"}}>ENTRADAS DO MÊS</div>
+                    <div style={{fontSize:"14px",fontWeight:"800",color:"#16a34a"}}>{fmtV(entMes)}</div>
+                  </div>
+                  <div style={{background:"#fef2f2",borderRadius:"8px",padding:"10px",border:"1px solid #fecaca",textAlign:"center"}}>
+                    <div style={{fontSize:"8px",color:"#991b1b",fontWeight:"600",marginBottom:"3px"}}>SAÍDAS DO MÊS</div>
+                    <div style={{fontSize:"14px",fontWeight:"800",color:"#dc2626"}}>{fmtV(saiMes)}</div>
+                  </div>
+                  <div style={{background:saldoMes>=0?"#f0fdf4":"#fef2f2",borderRadius:"8px",padding:"10px",border:`1px solid ${saldoMes>=0?"#bbf7d0":"#fecaca"}`,textAlign:"center"}}>
+                    <div style={{fontSize:"8px",color:saldoMes>=0?"#166534":"#991b1b",fontWeight:"600",marginBottom:"3px"}}>SALDO DO MÊS</div>
+                    <div style={{fontSize:"14px",fontWeight:"800",color:saldoMes>=0?"#16a34a":"#dc2626"}}>{fmtV(saldoMes)}</div>
+                  </div>
+                  <div style={{background:"#eff6ff",borderRadius:"8px",padding:"10px",border:"1px solid #bfdbfe",textAlign:"center"}}>
+                    <div style={{fontSize:"8px",color:"#1e40af",fontWeight:"600",marginBottom:"3px"}}>FIXAS MENSAIS</div>
+                    <div style={{fontSize:"14px",fontWeight:"800",color:"#2563eb"}}>{fmtV(fixasMes)}</div>
+                  </div>
+                </div>
+                <div style={{marginTop:"4px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:"4px"}}>
+                    <span style={{fontSize:"9px",color:t.textSec}}>Comprometimento fixo: {fmtV(fixasMes)} de {fmtV(entMes)} recebidos</span>
+                    <span style={{fontSize:"9px",fontWeight:"700",color:comprPct>100?"#dc2626":"#f59e0b"}}>{comprPct.toFixed(0)}%</span>
+                  </div>
+                  <div style={{height:"8px",borderRadius:"4px",background:t.cardBorder,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:`${Math.min(100,comprPct)}%`,background:comprPct>100?"#dc2626":comprPct>80?"#f59e0b":"#16a34a",borderRadius:"4px",transition:"width .4s"}}/>
+                  </div>
+                </div>
+              </div>
+
+              {/* Seção 3: Próximos vencimentos */}
+              <div style={{background:t.sectionBg,borderRadius:"10px",padding:"14px",border:`1px solid ${t.cardBorder}`}}>
+                <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Próximos Vencimentos (7 dias)</div>
+                {prox7.length===0
+                  ?<div style={{textAlign:"center",padding:"16px",color:"#16a34a",fontSize:"11px"}}>Nenhum vencimento nos próximos 7 dias ✓</div>
+                  :<div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+                    {prox7.map((c,i)=>{
+                      const isR=c._tipo==="receber";
+                      const cor=isR?"#16a34a":"#dc2626";
+                      const dataFmt=c.venc?new Date(c.venc+"T00:00").toLocaleDateString("pt-BR"):"";
+                      return <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",borderRadius:"7px",background:t.card,border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${cor}`}}>
+                        <div style={{flex:1}}>
+                          <div style={{display:"flex",alignItems:"center",gap:"5px"}}>
+                            <span style={{fontSize:"8px",fontWeight:"700",color:cor,background:isR?"#f0fdf4":"#fef2f2",padding:"1px 5px",borderRadius:"3px"}}>{isR?"Receber":"Pagar"}</span>
+                            <span style={{fontSize:"11px",fontWeight:"600",color:t.text}}>{c.desc}</span>
+                          </div>
+                          <div style={{fontSize:"9px",color:t.textMuted,marginTop:"1px"}}>{dataFmt}</div>
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:"6px",flexShrink:0}}>
+                          <span style={{fontSize:"12px",fontWeight:"800",color:cor}}>{fmtV(parseFloat(c.valor))}</span>
+                          <span style={{fontSize:"8px",padding:"2px 6px",borderRadius:"4px",background:"#fffbeb",color:"#f59e0b",fontWeight:"600"}}>⏳ Pendente</span>
+                        </div>
+                      </div>;
+                    })}
+                  </div>
+                }
+              </div>
+
+              {/* Seção 4: Gráfico últimos 6 meses */}
+              {ultimos6.length>0&&<div style={{background:t.sectionBg,borderRadius:"10px",padding:"14px",border:`1px solid ${t.cardBorder}`}}>
+                <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Últimos 6 Meses — Entradas vs Saídas</div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={ultimos6} margin={{top:4,right:8,left:0,bottom:4}}>
+                    <XAxis dataKey="mes" tick={{fontSize:9,fill:t.text}}/>
+                    <YAxis tick={{fontSize:8,fill:t.textSec}} tickFormatter={v=>"R$"+v.toLocaleString("pt-BR")}/>
+                    <Tooltip formatter={(v,n)=>[v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}),n==="entradas"?"Entradas":"Saídas"]}/>
+                    <Legend wrapperStyle={{fontSize:"10px"}}/>
+                    <Bar dataKey="entradas" name="Entradas" fill="#16a34a" radius={[3,3,0,0]}/>
+                    <Bar dataKey="saidas" name="Saídas" fill="#dc2626" radius={[3,3,0,0]}/>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>}
+
+              {/* Seção 5: Despesas por categoria */}
+              {catBreakSorted.length>0&&<div style={{background:t.sectionBg,borderRadius:"10px",padding:"14px",border:`1px solid ${t.cardBorder}`}}>
+                <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Despesas por Categoria (pagas)</div>
+                <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
+                  {catBreakSorted.map(([k,v])=>{
+                    const pct=maxCatVal>0?Math.round((v/maxCatVal)*100):0;
+                    const cor=CAT_CORES[k]||"#64748b";
+                    return <div key={k}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:"2px"}}>
+                        <span style={{fontSize:"10px",fontWeight:"600",color:t.text}}>{CAT_LABELS[k]||k}</span>
+                        <span style={{fontSize:"10px",fontWeight:"700",color:cor}}>{fmtV(v)} · {pct}%</span>
+                      </div>
+                      <div style={{height:"6px",borderRadius:"3px",background:t.cardBorder,overflow:"hidden"}}>
+                        <div style={{height:"100%",width:`${pct}%`,background:cor,borderRadius:"3px"}}/>
+                      </div>
+                    </div>;
+                  })}
+                </div>
+              </div>}
+            </div>;
+          })()}
 
           {/* CONTAS A RECEBER */}
           {finTab==="receber"&&<>
@@ -2342,7 +2480,7 @@ export default function App(){
                 <input value={finFormF.valor} onChange={e=>setFinFormF(p=>({...p,valor:e.target.value}))} placeholder="R$ valor" type="number" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
                 <input value={finFormF.dia} onChange={e=>setFinFormF(p=>({...p,dia:e.target.value}))} placeholder="Dia" type="number" min="1" max="28" title="Dia do mês para vencimento (1-28)" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
               </div>
-              <div style={{display:"flex",gap:"6px",alignItems:"center",flexWrap:"wrap"}}>
+              <div style={{display:"flex",gap:"6px",alignItems:"center",flexWrap:"wrap",marginBottom:"6px"}}>
                 <select value={finFormF.cat} onChange={e=>setFinFormF(p=>({...p,cat:e.target.value}))} style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}>
                   <option value="fixas">Fixa Mensal</option>
                   <option value="aluguel">Aluguel</option>
@@ -2351,12 +2489,18 @@ export default function App(){
                   <option value="marketing">Marketing</option>
                   <option value="outros">Outros</option>
                 </select>
+                <div style={{display:"flex",flexDirection:"column",gap:"2px"}}>
+                  <label style={{fontSize:"9px",color:t.textMuted,fontWeight:"600"}}>Até (opcional)</label>
+                  <input type="month" value={finFormF.fimEm} onChange={e=>setFinFormF(p=>({...p,fimEm:e.target.value}))} style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:"6px",alignItems:"center",flexWrap:"wrap"}}>
                 <input value={finFormF.obs} onChange={e=>setFinFormF(p=>({...p,obs:e.target.value}))} placeholder="Obs (opcional)" style={{flex:1,padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
                 <Btn onClick={()=>{
                   if(!finFormF.desc||!finFormF.valor)return;
-                  const nova={id:"fix_"+Date.now(),desc:finFormF.desc,valor:parseFloat(finFormF.valor),cat:finFormF.cat,dia:finFormF.dia||"5",obs:finFormF.obs};
+                  const nova={id:"fix_"+Date.now(),desc:finFormF.desc,valor:parseFloat(finFormF.valor),cat:finFormF.cat,dia:finFormF.dia||"5",obs:finFormF.obs,fimEm:finFormF.fimEm};
                   saveFixas([nova,...despesasFixas]);
-                  setFinFormF({desc:"",valor:"",cat:"fixas",dia:"5",obs:""});
+                  setFinFormF({desc:"",valor:"",cat:"fixas",dia:"5",obs:"",fimEm:""});
                 }} style={{background:"#06b6d4",color:"#fff",border:"none",whiteSpace:"nowrap",fontSize:"11px"}}>Cadastrar</Btn>
               </div>
             </div>
@@ -2370,24 +2514,56 @@ export default function App(){
               :<div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
                 {despesasFixas.map(f=>{
                   const cor=CAT_CORES[f.cat]||"#06b6d4";
-                  const now=new Date();
-                  const mesKey=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+                  const nowF=new Date();
+                  const mesKey=`${nowF.getFullYear()}-${String(nowF.getMonth()+1).padStart(2,"0")}`;
                   const jaLancada=contasPagar.some(c=>c.fixaId===f.id&&c.mesRef===mesKey);
-                  return <div key={f.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:t.sectionBg,borderRadius:"8px",border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${cor}`}}>
-                    <div style={{flex:1}}>
-                      <div style={{display:"flex",alignItems:"center",gap:"5px"}}>
-                        <span style={{fontSize:"8px",background:cor,color:"#fff",padding:"1px 5px",borderRadius:"3px",fontWeight:"600"}}>{CAT_LABELS[f.cat]||f.cat}</span>
-                        <span style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{f.desc}</span>
+                  const isExp=fixaExpandida===f.id;
+                  const historico=contasPagar.filter(c=>c.fixaId===f.id).sort((a,b)=>a.mesRef?.localeCompare(b.mesRef||"")||0);
+                  const totalPago=historico.filter(c=>c.status==="pago").reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
+                  let mesesRestantes=null;
+                  if(f.fimEm){
+                    const [ayF,amF]=f.fimEm.split("-").map(Number);
+                    const [ayCur,amCur]=[nowF.getFullYear(),nowF.getMonth()+1];
+                    mesesRestantes=(ayF-ayCur)*12+(amF-amCur);
+                  }
+                  const infoVenc=f.fimEm
+                    ?`Vence dia ${f.dia} · até ${f.fimEm.substring(5)}/${f.fimEm.substring(0,4)}`
+                    :`Vence dia ${f.dia} · sem prazo definido`;
+                  return <div key={f.id} style={{borderRadius:"8px",border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${cor}`,overflow:"hidden"}}>
+                    <div onClick={()=>setFixaExpandida(isExp?null:f.id)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:t.sectionBg,cursor:"pointer"}}>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",alignItems:"center",gap:"5px"}}>
+                          <span style={{fontSize:"8px",background:cor,color:"#fff",padding:"1px 5px",borderRadius:"3px",fontWeight:"600"}}>{CAT_LABELS[f.cat]||f.cat}</span>
+                          <span style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{f.desc}</span>
+                          <span style={{fontSize:"9px",color:t.textMuted}}>{isExp?"▲":"▼"}</span>
+                        </div>
+                        <div style={{fontSize:"9px",color:t.textMuted,marginTop:"1px"}}>{infoVenc}{f.obs?" · "+f.obs:""}</div>
                       </div>
-                      <div style={{fontSize:"9px",color:t.textMuted,marginTop:"1px"}}>Vence dia {f.dia} de cada mês {f.obs?" · "+f.obs:""}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:"8px",flexShrink:0}}>
+                        <span style={{fontSize:"13px",fontWeight:"800",color:cor}}>{fmtV(f.valor)}</span>
+                        <span style={{fontSize:"8px",padding:"2px 6px",borderRadius:"4px",background:jaLancada?"#dcfce7":"#f1f5f9",color:jaLancada?"#16a34a":t.textMuted,fontWeight:"600"}}>
+                          {jaLancada?"✓ Lançada":"Pendente"}
+                        </span>
+                        <button onClick={e=>{e.stopPropagation();saveFixas(despesasFixas.filter(x=>x.id!==f.id));}} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>✕</button>
+                      </div>
                     </div>
-                    <div style={{display:"flex",alignItems:"center",gap:"8px",flexShrink:0}}>
-                      <span style={{fontSize:"13px",fontWeight:"800",color:cor}}>{fmtV(f.valor)}</span>
-                      <span style={{fontSize:"8px",padding:"2px 6px",borderRadius:"4px",background:jaLancada?"#dcfce7":"#f1f5f9",color:jaLancada?"#16a34a":t.textMuted,fontWeight:"600"}}>
-                        {jaLancada?"✓ Lançada":"Pendente"}
-                      </span>
-                      <button onClick={()=>saveFixas(despesasFixas.filter(x=>x.id!==f.id))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>✕</button>
-                    </div>
+                    {isExp&&<div style={{background:t.card,padding:"10px 12px",borderTop:`1px solid ${t.cardBorder}`}}>
+                      <div style={{display:"flex",gap:"16px",flexWrap:"wrap",marginBottom:"8px"}}>
+                        <div><span style={{fontSize:"9px",color:t.textMuted}}>Total pago até hoje: </span><strong style={{fontSize:"11px",color:"#16a34a"}}>{fmtV(totalPago)}</strong></div>
+                        {f.fimEm&&<div><span style={{fontSize:"9px",color:t.textMuted}}>Meses restantes: </span><strong style={{fontSize:"11px",color:mesesRestantes&&mesesRestantes>0?"#f59e0b":"#dc2626"}}>{mesesRestantes!==null?mesesRestantes<=0?"Encerrada":mesesRestantes+" mês(es)":"—"}</strong></div>}
+                      </div>
+                      {historico.length===0
+                        ?<div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",padding:"8px"}}>Nenhum lançamento ainda</div>
+                        :<div style={{display:"flex",flexDirection:"column",gap:"3px"}}>
+                          <div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,marginBottom:"4px"}}>Histórico de lançamentos</div>
+                          {historico.map((h,hi)=><div key={hi} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",borderRadius:"5px",background:t.sectionBg,border:`1px solid ${t.cardBorder}`}}>
+                            <span style={{fontSize:"9px",color:t.text,fontWeight:"600"}}>{h.mesRef||"—"}</span>
+                            <span style={{fontSize:"9px",color:t.text}}>{fmtV(parseFloat(h.valor))}</span>
+                            <span style={{fontSize:"8px",padding:"1px 5px",borderRadius:"3px",background:h.status==="pago"?"#dcfce7":"#fffbeb",color:h.status==="pago"?"#16a34a":"#f59e0b",fontWeight:"600"}}>{h.status==="pago"?"Pago":"Pendente"}</span>
+                          </div>)}
+                        </div>
+                      }
+                    </div>}
                   </div>;
                 })}
                 <div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",marginTop:"6px"}}>
@@ -2396,6 +2572,82 @@ export default function App(){
               </div>
             }
           </>}
+
+          {/* CALENDÁRIO */}
+          {finTab==="calendario"&&(()=>{
+            const anoC=calMes.getFullYear();
+            const mesC=calMes.getMonth();
+            const primeiroDia=new Date(anoC,mesC,1).getDay();
+            const diasNoMes=new Date(anoC,mesC+1,0).getDate();
+            const hojeStr=new Date().toISOString().split("T")[0];
+            const byDay={};
+            [...contasReceber.map(c=>({...c,_tipo:"receber"})),...contasPagar.map(c=>({...c,_tipo:"pagar"}))].forEach(c=>{
+              if(c.venc){if(!byDay[c.venc])byDay[c.venc]=[];byDay[c.venc].push(c);}
+            });
+            const nomeMes=calMes.toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+            const navMes=(delta)=>{const d=new Date(calMes);d.setDate(1);d.setMonth(d.getMonth()+delta);setCalMes(d);};
+            const diasSemana=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+            const diasSelecionados=calDiaSel?byDay[calDiaSel]||[]:[];
+            return <div>
+              {/* Cabeçalho */}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"12px"}}>
+                <button onClick={()=>navMes(-1)} style={{padding:"4px 10px",borderRadius:"6px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer",fontSize:"14px",fontWeight:"700"}}>◀</button>
+                <div style={{fontSize:"13px",fontWeight:"700",color:t.text,textTransform:"capitalize"}}>{nomeMes}</div>
+                <button onClick={()=>navMes(1)} style={{padding:"4px 10px",borderRadius:"6px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer",fontSize:"14px",fontWeight:"700"}}>▶</button>
+              </div>
+              {/* Cabeçalho dias da semana */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px",marginBottom:"2px"}}>
+                {diasSemana.map(d=><div key={d} style={{textAlign:"center",fontSize:"9px",fontWeight:"700",color:t.textMuted,padding:"4px 0"}}>{d}</div>)}
+              </div>
+              {/* Grade */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px"}}>
+                {Array.from({length:primeiroDia}).map((_,i)=><div key={"e"+i} style={{minHeight:"38px"}}/>)}
+                {Array.from({length:diasNoMes},(_,i)=>i+1).map(d=>{
+                  const key=`${anoC}-${String(mesC+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+                  const isHoje=key===hojeStr;
+                  const isSel=key===calDiaSel;
+                  const contas=byDay[key]||[];
+                  const temReceber=contas.some(c=>c._tipo==="receber");
+                  const temPagar=contas.some(c=>c._tipo==="pagar");
+                  return <div key={key} onClick={()=>setCalDiaSel(isSel?null:key)} style={{minHeight:"38px",borderRadius:"6px",padding:"4px",cursor:"pointer",position:"relative",background:isHoje?blue:isSel?t.sectionBg:"transparent",border:isSel?`1.5px solid ${blue}`:`1px solid ${t.cardBorder}`,textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",gap:"2px"}}>
+                    <span style={{fontSize:"10px",fontWeight:isHoje?"800":"500",color:isHoje?"#fff":t.text}}>{d}</span>
+                    {contas.length>0&&<div style={{display:"flex",gap:"2px",justifyContent:"center",flexWrap:"wrap"}}>
+                      {temReceber&&<div style={{width:"5px",height:"5px",borderRadius:"50%",background:"#16a34a"}}/>}
+                      {temPagar&&<div style={{width:"5px",height:"5px",borderRadius:"50%",background:"#dc2626"}}/>}
+                    </div>}
+                  </div>;
+                })}
+              </div>
+              {/* Painel dia selecionado */}
+              {calDiaSel&&<div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"8px",padding:"12px",border:`1px solid ${t.cardBorder}`}}>
+                <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"8px"}}>
+                  Vencimentos em {new Date(calDiaSel+"T00:00").toLocaleDateString("pt-BR")}
+                </div>
+                {diasSelecionados.length===0
+                  ?<div style={{fontSize:"10px",color:t.textMuted,textAlign:"center",padding:"12px"}}>Nenhum vencimento neste dia</div>
+                  :<div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+                    {diasSelecionados.map((c,i)=>{
+                      const isR=c._tipo==="receber";
+                      const cor=isR?"#16a34a":"#dc2626";
+                      const stLabel=c.status==="recebido"||c.status==="pago"?"✅ Pago":"⏳ Pendente";
+                      return <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",borderRadius:"6px",background:t.card,border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${cor}`}}>
+                        <div>
+                          <div style={{display:"flex",alignItems:"center",gap:"4px"}}>
+                            <span style={{fontSize:"8px",fontWeight:"700",color:cor,background:isR?"#f0fdf4":"#fef2f2",padding:"1px 4px",borderRadius:"3px"}}>{isR?"Receber":"Pagar"}</span>
+                            <span style={{fontSize:"10px",fontWeight:"600",color:t.text}}>{c.desc}</span>
+                          </div>
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
+                          <span style={{fontSize:"11px",fontWeight:"800",color:cor}}>{fmtV(parseFloat(c.valor))}</span>
+                          <span style={{fontSize:"8px",padding:"2px 5px",borderRadius:"3px",background:c.status==="recebido"||c.status==="pago"?"#dcfce7":"#fffbeb",color:c.status==="recebido"||c.status==="pago"?"#16a34a":"#f59e0b",fontWeight:"600"}}>{stLabel}</span>
+                        </div>
+                      </div>;
+                    })}
+                  </div>
+                }
+              </div>}
+            </div>;
+          })()}
 
           {/* FLUXO DE CAIXA */}
           {finTab==="fluxo"&&<>
