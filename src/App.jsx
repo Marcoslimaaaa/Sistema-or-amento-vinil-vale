@@ -365,60 +365,57 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
       // Route pipe from device to a ground-level exit point
       let route;
       if(p.floor){
-        // Floor device → go along floor to right wall, then up to pipe run height
+        // Dreno de fundo → segue pelo chão até a parede, depois sobe até pZ fora da piscina
         route=[[ix,iy,0],[L,iy,0],[L+laneOff,iy,0],[L+laneOff,iy,pZ]];
         exitPts.push([L+laneOff,iy,pZ]);
       } else if(p.x<0.12){
-        // Left short wall (retorno, hidro)
-        route=[[0,iy,iz],[0,iy,pZ],[-laneOff,iy,pZ]];
-        exitPts.push([-laneOff,iy,pZ]);
+        // Parede curta esquerda (retorno, hidro) → sai horizontal no mesmo nível iz
+        route=[[0,iy,iz],[-laneOff,iy,iz]];
+        exitPts.push([-laneOff,iy,iz]);
       } else if(p.x>0.88){
-        // Right short wall (skimmer, nivelador)
-        route=[[L,iy,iz],[L,iy,pZ],[L+laneOff,iy,pZ]];
-        exitPts.push([L+laneOff,iy,pZ]);
+        // Parede curta direita (skimmer, nivelador) → sai horizontal no mesmo nível iz
+        route=[[L,iy,iz],[L+laneOff,iy,iz]];
+        exitPts.push([L+laneOff,iy,iz]);
       } else if(p.y<0.08){
-        // Front long wall (refletor front)
-        route=[[ix,0,iz],[ix,0,pZ],[ix,-laneOff,pZ]];
-        exitPts.push([ix,-laneOff,pZ]);
+        // Parede longa frontal (refletor) → sai horizontal no mesmo nível iz
+        route=[[ix,0,iz],[ix,-laneOff,iz]];
+        exitPts.push([ix,-laneOff,iz]);
       } else if(p.y>0.88){
-        // Back long wall (aspiracao y=0.95, refletor back)
-        route=[[ix,W,iz],[ix,W,pZ],[ix,W+laneOff,pZ]];
-        exitPts.push([ix,W+laneOff,pZ]);
+        // Parede longa traseira (aspiracao, refletor) → sai horizontal no mesmo nível iz
+        route=[[ix,W,iz],[ix,W+laneOff,iz]];
+        exitPts.push([ix,W+laneOff,iz]);
       } else {
-        route=[[ix,iy,iz],[L,iy,iz],[L,iy,pZ],[L+laneOff,iy,pZ]];
-        exitPts.push([L+laneOff,iy,pZ]);
+        // Meio da parede → vai até parede mais próxima e sai no nível iz
+        route=[[ix,iy,iz],[L,iy,iz],[L+laneOff,iy,iz]];
+        exitPts.push([L+laneOff,iy,iz]);
       }
       els.push(pip(`${key}-pipe`,route,col));
     });
-    // Collector pipe: connect all exits → to CM
+    // Collector pipe: connect all exits → to CM no mesmo nível (eZ)
     if(exitPts.length===0)return;
-    // Determine routing strategy based on exit type
+    const eZ=exitPts[0][2]; // todos dispositivos do mesmo tipo têm mesmo iz
     const isLeftExit=exitPts[0][0]<0;
     const isFrontExit=exitPts[0][1]<0;
     const isBackExit=exitPts[0][1]>W;
     if(isLeftExit){
-      // Left exits: collect along x=-laneOff at pZ, route to CM
-      if(exitPts.length>1){const ys=exitPts.map(p=>p[1]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[-laneOff,ys[0],pZ],[-laneOff,ys[ys.length-1],pZ]],col,3));}
+      if(exitPts.length>1){const ys=exitPts.map(p=>p[1]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[-laneOff,ys[0],eZ],[-laneOff,ys[ys.length-1],eZ]],col,3));}
       const midY=exitPts.reduce((s,p)=>s+p[1],0)/exitPts.length;
-      els.push(pip(`${sysType}-tocm`,[[-laneOff,midY,pZ],[-laneOff,W+laneOff,pZ],[cmX0,W+laneOff,pZ],[cmX0,cmEY,pZ]],col,3));
+      els.push(pip(`${sysType}-tocm`,[[-laneOff,midY,eZ],[-laneOff,W+laneOff,eZ],[cmX0,W+laneOff,eZ],[cmX0,cmEY,eZ]],col,3));
     } else if(isFrontExit){
-      // Front exits: collect along y=-laneOff at pZ, route to CM
-      if(exitPts.length>1){const xs=exitPts.map(p=>p[0]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[xs[0],-laneOff,pZ],[xs[xs.length-1],-laneOff,pZ]],col,3));}
+      if(exitPts.length>1){const xs=exitPts.map(p=>p[0]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[xs[0],-laneOff,eZ],[xs[xs.length-1],-laneOff,eZ]],col,3));}
       const midX=exitPts.reduce((s,p)=>s+p[0],0)/exitPts.length;
-      els.push(pip(`${sysType}-tocm`,[[midX,-laneOff,pZ],[cmX0,-laneOff,pZ],[cmX0,cmEY,pZ]],col,3));
+      els.push(pip(`${sysType}-tocm`,[[midX,-laneOff,eZ],[cmX0,-laneOff,eZ],[cmX0,cmEY,eZ]],col,3));
     } else if(isBackExit){
-      // Back exits: collect along y=W+laneOff at pZ, route to CM
-      if(exitPts.length>1){const xs=exitPts.map(p=>p[0]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[xs[0],W+laneOff,pZ],[xs[xs.length-1],W+laneOff,pZ]],col,3));}
+      if(exitPts.length>1){const xs=exitPts.map(p=>p[0]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[xs[0],W+laneOff,eZ],[xs[xs.length-1],W+laneOff,eZ]],col,3));}
       const midX=exitPts.reduce((s,p)=>s+p[0],0)/exitPts.length;
-      els.push(pip(`${sysType}-tocm`,[[midX,W+laneOff,pZ],[cmX0,W+laneOff,pZ],[cmX0,cmEY,pZ]],col,3));
+      els.push(pip(`${sysType}-tocm`,[[midX,W+laneOff,eZ],[cmX0,W+laneOff,eZ],[cmX0,cmEY,eZ]],col,3));
     } else {
-      // Right-side exits: collect along x=L+laneOff at pZ, then to CM
-      if(exitPts.length>1){const ys=exitPts.map(p=>p[1]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[L+laneOff,ys[0],pZ],[L+laneOff,ys[ys.length-1],pZ]],col,3));}
+      if(exitPts.length>1){const ys=exitPts.map(p=>p[1]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[L+laneOff,ys[0],eZ],[L+laneOff,ys[ys.length-1],eZ]],col,3));}
       const midY=exitPts.reduce((s,p)=>s+p[1],0)/exitPts.length;
-      els.push(pip(`${sysType}-tocm`,[[L+laneOff,midY,pZ],[cmX0,midY,pZ],[cmX0,cmEY,pZ]],col,3));
+      els.push(pip(`${sysType}-tocm`,[[L+laneOff,midY,eZ],[cmX0,midY,eZ],[cmX0,cmEY,eZ]],col,3));
     }
     // Diameter label mid-route
-    if(exitPts.length>0){const ep=exitPts[0];const mp=iso(ep[0]+(cmX0-ep[0])*0.4,ep[1],pZ);els.push(<text key={`${sysType}-diam`} x={mp.x} y={mp.y-5} textAnchor="middle" fontSize="6" fontWeight="700" fill={col} opacity="0.9">Ø50</text>);}
+    if(exitPts.length>0){const ep=exitPts[0];const mp=iso(ep[0]+(cmX0-ep[0])*0.4,ep[1],eZ);els.push(<text key={`${sysType}-diam`} x={mp.x} y={mp.y-5} textAnchor="middle" fontSize="6" fontWeight="700" fill={col} opacity="0.9">Ø50</text>);}
   });
   // CASA DE MÁQUINAS (posicionada na altura pZ das tubulações)
   els.push(<polygon key="cmt" points={pts([[cmX0,cmBY0,pZ],[cmX0+cmWw,cmBY0,pZ],[cmX0+cmWw,cmBY0+cmWd,pZ],[cmX0,cmBY0+cmWd,pZ]])} fill={dk?"#334155":"#e2e8f0"} stroke="#475569" strokeWidth="1.5"/>);
