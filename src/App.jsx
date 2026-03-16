@@ -2,14 +2,14 @@ import React, { useState, useEffect, useRef, Suspense, lazy } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 const Pool3DView = lazy(() => import('./Pool3DView'));
 
-// Firebase config
+// Firebase config (client-side keys são públicas por design — segurança via Firestore Rules)
 const FB_CFG = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCER8yKsRuFLh2GDUE3yLscq-pFGZNlrG0",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "sistema-vinil-vale.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "sistema-vinil-vale",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "sistema-vinil-vale.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "847282557064",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:847282557064:web:76502a1a6e5c2711650f3d",
 };
 
 // Firebase lazy loader — works on Vercel (npm), falls back to local on artifact
