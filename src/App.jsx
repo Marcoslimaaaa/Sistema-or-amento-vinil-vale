@@ -881,6 +881,8 @@ export default function App(){
       setFBR(ok);
       if(ok&&fb.auth){
         fbFns.onAuthStateChanged(fb.auth,(u)=>{setUser(u);setAL(false)});
+        // Captura resultado do redirect (login Google em mobile)
+        fbFns.getRedirectResult(fb.auth).catch(()=>{});
       } else {
         setAL(false);
       }
@@ -922,7 +924,8 @@ export default function App(){
   // Auth handlers
   const doLogin=async()=>{if(!fbReady||!fb.auth){setLErr("⚠️ Sem conexão com o servidor. Verifique sua internet e tente novamente.");return;}setLErr("");try{await fbFns.signInWithEmailAndPassword(fb.auth,loginEmail,loginPass)}catch(e){setLErr(e.code==="auth/invalid-credential"?"Email ou senha incorretos":e.code==="auth/user-not-found"?"Usuário não encontrado":"Erro: "+e.message)}};
   const doRegister=async()=>{if(!fbReady||!fb.auth)return;setLErr("");try{await fbFns.createUserWithEmailAndPassword(fb.auth,loginEmail,loginPass)}catch(e){setLErr(e.code==="auth/email-already-in-use"?"Email já cadastrado":e.code==="auth/weak-password"?"Senha fraca (mín. 6 caracteres)":"Erro: "+e.message)}};
-  const doGoogle=async()=>{if(!fbReady||!fb.auth||!fb.GoogleProvider){setLErr("⚠️ Sem conexão com o servidor. Verifique sua internet e tente novamente.");return;}setLErr("");try{const provider=new fb.GoogleProvider();await fbFns.signInWithPopup(fb.auth,provider)}catch(e){if(e.code!=="auth/popup-closed-by-user")setLErr("Erro Google: "+e.message)}};
+  const isMobile=()=>/Android|iPhone|iPad|iPod|Opera Mini|IEMobile/i.test(navigator.userAgent);
+  const doGoogle=async()=>{if(!fbReady||!fb.auth||!fb.GoogleProvider){setLErr("⚠️ Sem conexão com o servidor. Verifique sua internet e tente novamente.");return;}setLErr("");try{const provider=new fb.GoogleProvider();if(isMobile()){await fbFns.signInWithRedirect(fb.auth,provider)}else{await fbFns.signInWithPopup(fb.auth,provider)}}catch(e){if(e.code!=="auth/popup-closed-by-user")setLErr("Erro Google: "+e.message)}};
   const doLogout=()=>{if(fbReady&&fb.auth)fbFns.signOut(fb.auth);else setUser(null)};
   const [fbMsg,setFbMsg]=useState("");
   // ═══ ESTOQUE ═══
