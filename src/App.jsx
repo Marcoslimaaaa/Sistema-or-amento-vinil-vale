@@ -1312,11 +1312,18 @@ export default function App(){
     setFieldErrors({});
     const d=gData();const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setFbMsg("Salvo!");setTimeout(()=>setFbMsg(""),2000);
   };
-  const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);autoStockOut(item)}setFbMsg("✅ Cliente fechado!");setTimeout(()=>setFbMsg(""),2000)};
+  // Sincroniza automaticamente obra fechada em Contas a Receber
+  const autoSyncReceber=(item)=>{
+    const existing=contasReceber.map(c=>c.origemId).filter(Boolean);
+    if(existing.includes(item.id))return;
+    const nova={id:"rcb_"+item.id,origemId:item.id,desc:"Obra: "+(item.cN||"Cliente"),valor:parseFloat(item.tot)||0,venc:"",status:"pendente",obs:"Sincronizado automaticamente ao fechar"};
+    saveReceber([nova,...contasReceber]);
+  };
+  const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);autoStockOut(item);autoSyncReceber(item);}setFbMsg("✅ Cliente fechado e lançado no financeiro!");setTimeout(()=>setFbMsg(""),3000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
   const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setWM(d.wMode||"regular");setWalls(d.walls||[]);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
-  const movePipe=(id,stage)=>{const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
+  const movePipe=(id,stage)=>{const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);if(["fechou","execucao","concluido"].includes(stage))autoSyncReceber(item);}setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
   const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const url=`https://wa.me/55${num}${msg?`?text=${encodeURIComponent(msg)}`:""}`;window.open(url,"_blank")};
   const sendOrcWA=(q)=>{
     const d=q.data;const c=d?.client||{};const inc=(d?.items||[]).filter(i=>i.on);
