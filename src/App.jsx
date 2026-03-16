@@ -62,6 +62,8 @@ const PFMT=["Retangular","Retangular irregular","Formato L","Oval","Feijão","Co
 const VOPTS=[{t:"0,7mm",w:3},{t:"0,8mm",w:4}];
 const STAMPS=[{c:"Marmo Carrara",i:["Marmo Carrara Azul","Marmo Carrara Verde","Marmo Carrara Cinza"]},{c:"Travertino",i:["Travertino","Travertino Gris","Travertino Verde","Travertino Azul"]},{c:"Bali",i:["Bali Hijau","Bali Blue"]},{c:"Malibu",i:["Malibu Azul","Malibu Verde"]},{c:"Porto Vecchio",i:["Porto Vecchio Azul","Porto Vecchio Verde"]},{c:"Batu",i:["Batu Blue","Batu Vert"]},{c:"Sukabumi",i:["Sukabumi Azul","Sukabumi Verde"]},{c:"Petra Natural",i:["Petra Natural Azul","Petra Natural Verde"]},{c:"Montblanc",i:["Montblanc","Montblanc Block"]},{c:"Liso",i:["Mid Blue Liso"]},{c:"Aquática",i:["Aquática Azul"]},{c:"Santorini",i:["Santorini"]},{c:"Punta Cana",i:["Punta Cana"]}];
 const ALLST=STAMPS.flatMap(s=>s.i);
+const SWATCH_SLUG={"Marmo Carrara Azul":"marmo-carrara-azul","Marmo Carrara Verde":"marmo-carrara-verde","Marmo Carrara Cinza":"marmo-carrara-cinza","Travertino":"travertino","Travertino Gris":"travertino-gris","Travertino Verde":"travertino-verde","Travertino Azul":"travertino-azul","Bali Hijau":"bali-hijau","Bali Blue":"bali-blue","Santorini":"santorini","Malibu Azul":"malibu-azul","Malibu Verde":"malibu-verde","Punta Cana":"punta-cana","Porto Vecchio Azul":"porto-vecchio-azul","Porto Vecchio Verde":"porto-vecchio-verde","Batu Blue":"batu-blue","Batu Vert":"batu-vert","Sukabumi Azul":"sukabumi-azul","Sukabumi Verde":"sukabumi-verde","Petra Natural Azul":"petra-natural-azul","Petra Natural Verde":"petra-natural-verde","Montblanc":"montblanc","Montblanc Block":"montblanc-block","Mid Blue Liso":"mid-blue-liso","Aquática Azul":"aquatica-azul"};
+const SWATCH_SOON=new Set(["Travertino Verde","Travertino Azul"]);
 const CAT=[
   {id:"m06",c:"Mantas",n:"Manta Acrílica 0,6mm",s:"R$4,65/m² (só chão)",p:4.65,un:"chao"},{id:"m04",c:"Mantas",n:"Manta Acrílica 0,4mm",s:"R$3,50/m² (só chão)",p:3.50,un:"chao"},{id:"eva",c:"Mantas",n:"Bobina EVA 0,30mm",s:"R$11,88/m² (só chão)",p:11.88,un:"chao"},
   {id:"pR",c:"Perfis",n:"Perfil Rígido",s:"R$379/60m = R$6,32/m",p:6.32,un:"ml"},{id:"pF",c:"Perfis",n:"Perfil Flangeamento",s:"R$119/3m = R$39,67/m",p:39.67,un:"ml"},
@@ -542,6 +544,40 @@ const Tab=({a,onClick,children,icon,badge,t:th})=>{const t=th||themes.light;retu
 const Inp=({label,value,onChange,placeholder,style:sx,t:th,error})=>{const t=th||themes.light;return <div style={{display:"flex",flexDirection:"column",gap:"2px",...sx}}>{label&&<label style={{fontSize:"9px",fontWeight:"600",color:error?"#dc2626":t.textSec,textTransform:"uppercase",letterSpacing:".4px"}}>{label}{error&&<span style={{marginLeft:"4px",fontWeight:"700"}}>⚠</span>}</label>}<input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{padding:"8px 10px",border:`1.5px solid ${error?"#dc2626":t.inputBorder}`,borderRadius:"6px",fontSize:"12px",color:t.text,background:error?"#fef2f2":t.inputBg,outline:"none",width:"100%"}} onFocus={e=>e.target.style.borderColor=error?"#dc2626":blue} onBlur={e=>e.target.style.borderColor=error?"#dc2626":t.inputBorder}/>{error&&<span style={{fontSize:"8px",color:"#dc2626",fontWeight:"600"}}>{error}</span>}</div>};
 const Sel=({label,value,onChange,options,style:sx,t:th})=>{const t=th||themes.light;return <div style={{display:"flex",flexDirection:"column",gap:"2px",...sx}}>{label&&<label style={{fontSize:"9px",fontWeight:"600",color:t.textSec,textTransform:"uppercase",letterSpacing:".4px"}}>{label}</label>}<select value={value} onChange={e=>onChange(e.target.value)} style={{padding:"8px 10px",border:`1.5px solid ${t.inputBorder}`,borderRadius:"6px",fontSize:"12px",color:t.text,background:t.inputBg}}>{options.map(o=><option key={typeof o==="string"?o:o.value} value={typeof o==="string"?o:o.value}>{typeof o==="string"?o:o.label}</option>)}</select></div>};
 const Card=({children,t:th})=>{const t=th||themes.light;return <div style={{background:t.card,borderRadius:"10px",padding:"20px",boxShadow:t.shadow,border:`1px solid ${t.cardBorder}`}}>{children}</div>};
+const CatalogoPicker=({value,onChange,t,dark})=>{
+  const [open,setOpen]=React.useState(false);
+  const slug=SWATCH_SLUG[value];
+  return <div>
+    <label style={{fontSize:"9px",fontWeight:"600",color:t.textSec,textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:"4px"}}>Estampa Vinil</label>
+    <div style={{display:"flex",gap:"8px",alignItems:"center"}}>
+      {slug&&<img src={`/swatches/${slug}.png`} alt={value} style={{width:"44px",height:"44px",borderRadius:"8px",objectFit:"cover",border:"2.5px solid #3b82f6",flexShrink:0}}/>}
+      <button onClick={()=>setOpen(o=>!o)} style={{flex:1,padding:"8px 12px",border:`1.5px solid ${open?"#3b82f6":t.inputBorder}`,borderRadius:"6px",background:t.inputBg,color:value?t.text:t.textSec,fontSize:"11px",textAlign:"left",cursor:"pointer",fontWeight:value?"600":"400",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <span>{value||"🎨 Escolher estampa..."}</span>
+        <span style={{fontSize:"9px",opacity:.6}}>{open?"▲":"▼"}</span>
+      </button>
+      {value&&<button onClick={()=>{onChange("");setOpen(false);}} style={{padding:"6px 10px",border:"none",background:"#ef4444",color:"#fff",borderRadius:"6px",fontSize:"11px",cursor:"pointer",flexShrink:0}}>✕</button>}
+    </div>
+    {open&&<div style={{marginTop:"8px",background:dark?"#0f172a":"#f0f7ff",border:`1.5px solid #3b82f6`,borderRadius:"10px",padding:"12px",maxHeight:"380px",overflowY:"auto"}}>
+      <div style={{fontSize:"9px",fontWeight:"700",color:"#2563eb",marginBottom:"10px"}}>CATÁLOGO ACQUALINER — Clique para selecionar</div>
+      {STAMPS.map(grp=><div key={grp.c} style={{marginBottom:"14px"}}>
+        <div style={{fontSize:"8px",fontWeight:"800",color:dark?"#94a3b8":"#475569",textTransform:"uppercase",letterSpacing:".8px",marginBottom:"6px",borderBottom:`1px solid ${dark?"#334155":"#e2e8f0"}`,paddingBottom:"3px"}}>{grp.c}</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(68px,1fr))",gap:"6px"}}>
+          {grp.i.map(nm=>{
+            const sl=SWATCH_SLUG[nm];const isSoon=SWATCH_SOON.has(nm);const isSel=nm===value;
+            return <div key={nm} onClick={()=>{if(!isSoon){onChange(nm);setOpen(false);}}} title={nm+(isSoon?" (Em Breve)":"")} style={{cursor:isSoon?"not-allowed":"pointer",opacity:isSoon?.5:1,position:"relative",userSelect:"none"}}>
+              <div style={{width:"100%",aspectRatio:"1/1",borderRadius:"8px",overflow:"hidden",border:`2.5px solid ${isSel?"#3b82f6":"transparent"}`,outline:isSel?"3px solid #93c5fd":"none",outlineOffset:"1px"}}>
+                <img src={`/swatches/${sl}.png`} alt={nm} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}} loading="lazy"/>
+              </div>
+              <div style={{fontSize:"7.5px",textAlign:"center",marginTop:"3px",fontWeight:isSel?"700":"500",color:isSel?"#2563eb":t.text,lineHeight:"1.2",wordBreak:"break-word"}}>{nm}</div>
+              {isSoon&&<div style={{position:"absolute",top:"3px",right:"3px",background:"#f59e0b",color:"#fff",fontSize:"6px",fontWeight:"700",padding:"1px 3px",borderRadius:"3px"}}>BREVE</div>}
+              {isSel&&<div style={{position:"absolute",top:"3px",left:"3px",background:"#2563eb",color:"#fff",fontSize:"9px",width:"16px",height:"16px",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:"700"}}>✓</div>}
+            </div>;
+          })}
+        </div>
+      </div>)}
+    </div>}
+  </div>;
+};
 const ST=({icon,children})=><h3 style={{fontSize:"14px",fontWeight:"700",color:blue,marginBottom:"14px",display:"flex",alignItems:"center",gap:"6px"}}><span>{icon}</span>{children}</h3>;
 const Btn=({children,onClick,style:sx})=><button onClick={onClick} style={{padding:"6px 12px",background:"#f1f5f9",color:"#475569",border:"1.5px solid #e2e8f0",borderRadius:"6px",fontWeight:"600",fontSize:"11px",cursor:"pointer",display:"flex",alignItems:"center",gap:"4px",...sx}}>{children}</button>;
 const DarkToggle=({dark,onToggle})=><button onClick={onToggle} style={{width:"38px",height:"22px",borderRadius:"11px",border:"none",background:dark?"#475569":"#cbd5e1",cursor:"pointer",position:"relative",transition:"background .3s"}}><div style={{width:"18px",height:"18px",borderRadius:"50%",background:dark?"#0f172a":"#fff",position:"absolute",top:"2px",left:dark?"18px":"2px",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px"}}>{dark?"🌙":"☀️"}</div></button>;
@@ -1258,7 +1294,8 @@ export default function App(){
         {tab==="piscina"&&<Card t={t}><ST icon="🏊">Piscina</ST>
           <div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Comp. (m) *" value={pool.length} onChange={up("length")} t={t} error={fieldErrors.length}/><Inp label="Larg. (m) *" value={pool.width} onChange={up("width")} t={t} error={fieldErrors.width}/><Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Formato" value={poolFmt} onChange={setPF} options={PFMT} t={t}/></div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={setVT} options={VOPTS.map(v=>({value:v.t,label:`${v.t} (${v.w}a)`}))} t={t}/><Sel label="Estampa" value={stamp} onChange={setSt} options={[{value:"",label:"— Escolha —"},...ALLST.map(s=>({value:s,label:s}))]} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={setVT} options={VOPTS.map(v=>({value:v.t,label:`${v.t} (${v.w}a)`}))} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
+          <div style={{marginTop:"10px"}}><CatalogoPicker value={stamp} onChange={setSt} t={t} dark={dark}/></div>
 
           {/* MODO PAREDES */}
           <div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"8px",padding:"12px",border:`1px solid ${t.cardBorder}`}}>
