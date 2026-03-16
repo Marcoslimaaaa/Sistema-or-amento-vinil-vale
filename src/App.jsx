@@ -583,7 +583,7 @@ const Btn=({children,onClick,style:sx})=><button onClick={onClick} style={{paddi
 const DarkToggle=({dark,onToggle})=><button onClick={onToggle} style={{width:"38px",height:"22px",borderRadius:"11px",border:"none",background:dark?"#475569":"#cbd5e1",cursor:"pointer",position:"relative",transition:"background .3s"}}><div style={{width:"18px",height:"18px",borderRadius:"50%",background:dark?"#0f172a":"#fff",position:"absolute",top:"2px",left:dark?"18px":"2px",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px"}}>{dark?"🌙":"☀️"}</div></button>;
 
 // ═══ PDF PREVIEW ═══
-const QP=({d,onBack,onSave})=>{
+const QP=({d,onBack,onSave,autoPositions})=>{
   const inc=(d.items||[]).filter(i=>i.on);
   const pool=d.pool||{length:"0",width:"0",depth:"0"};
   const spa=d.spa||{on:false,length:"0",width:"0",depth:"0"};
@@ -708,6 +708,12 @@ const QP=({d,onBack,onSave})=>{
           </div></Sec>
         </div>
 
+        {d.includePlanta&&autoPositions&&<div style={{padding:"14px 28px",borderTop:"2px solid #e2e8f0"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"10px"}}><div style={{width:"3px",height:"14px",background:gold,borderRadius:"2px"}}/><div style={{fontSize:"11px",fontWeight:"700",color:navy,textTransform:"uppercase",letterSpacing:".5px"}}>Planta Hidráulica</div></div>
+          {d.isoView
+            ?<IsometricView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} dark={false} t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc"}} poolFmt={d.poolFmt||"Retangular"} clientName={d.client?.name||""} autoPositions={autoPositions} customPos={d.customPos||{}} invertSide={d.invertSide||false}/>
+            :<PlantaView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} customPos={d.customPos||{}} setCustomPos={()=>{}} dragging={null} setDragging={()=>{}} dark={false} poolFmt={d.poolFmt||"Retangular"} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc",stampBg:"#e2e8f0"}} invertSide={d.invertSide||false} wMode={d.wMode||"regular"} walls={d.walls||[]}/>}
+        </div>}
         <div style={{background:navy,padding:"12px 28px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap"}}><div><div style={{fontSize:"8.5px",fontWeight:"700",color:gold}}>Válido por 15 dias</div><div style={{fontSize:"7px",color:"rgba(255,255,255,.5)"}}>{CO.name}</div></div><div style={{textAlign:"right",fontSize:"7.5px",color:"rgba(255,255,255,.6)"}}><div>{CO.ph1} / {CO.ph2}</div><div>{CO.email} | {CO.insta}</div></div></div>
       </div>
     </div>
@@ -1224,7 +1230,7 @@ export default function App(){
   const addM=()=>setItems(p=>[...p,{id:Date.now(),n:"Novo item",q:1,c:0,m:gM,nt:"",on:true,un:"un"}]);
   const apM=()=>{setItems(p=>p.map(i=>({...i,m:gM})));setFbMsg("Margem aplicada!");setTimeout(()=>setFbMsg(""),1500)};
 
-  const gData=()=>({client,pool,items,guar,ci,pay,totOv:String(total),vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,wMode,walls});
+  const gData=()=>({client,pool,items,guar,ci,pay,totOv:String(total),vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,wMode,walls,includePlanta,disps,customPos,isoView,invertSide});
   const save=()=>{
     const errs={};
     if(!client.name||client.name.trim()==="")errs.clientName="Nome obrigatório";
@@ -1295,7 +1301,7 @@ export default function App(){
 
 
 
-  if(view==="quote")return <QP d={gData()} onBack={()=>setView("editor")} onSave={()=>{const d=gData();const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item)}}/>;
+  if(view==="quote")return <QP d={gData()} autoPositions={autoPositions} onBack={()=>setView("editor")} onSave={()=>{const d=gData();const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item)}}/>;
 
   const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};// use className="vv-g2" for responsive
 
