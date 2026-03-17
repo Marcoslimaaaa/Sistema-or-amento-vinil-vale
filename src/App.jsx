@@ -23,7 +23,8 @@ const initFB = async () => {
     const fs = await import("firebase/firestore");
     const au = await import("firebase/auth");
     const st = await import("firebase/storage");
-    const fbApp = app.initializeApp(FB_CFG);
+    // Reutiliza app existente se já inicializado (evita erro duplicate-app)
+    const fbApp = app.getApps().length ? app.getApp() : app.initializeApp(FB_CFG);
     // App Check com reCAPTCHA v3 — isolado para não derrubar o Firebase se falhar
     try {
       const ac = await import("firebase/app-check");
@@ -38,7 +39,7 @@ const initFB = async () => {
     fb = { ready: true, db: fs.getFirestore(fbApp), auth: au.getAuth(fbApp), storage: st.getStorage(fbApp), GoogleProvider: au.GoogleAuthProvider };
     fbFns = { ...fs, ...au, ...st };
     return true;
-  } catch (e) { console.log("Firebase não disponível, usando modo local"); return false; }
+  } catch (e) { console.error("Firebase init erro:", e); return false; }
 };
 
 const VER="v4.5";
