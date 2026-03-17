@@ -958,6 +958,34 @@ export default function App(){
     ["vv_hist","vv_receber","vv_pagar","vv_fixas","vv_stk","vv_stklog","vv_fornec","vv_interacoes","vv_crmmeta"].forEach(k=>localStorage.removeItem(k));
     if(fbReady&&fb.auth)fbFns.signOut(fb.auth);else setUser(null);
   };
+
+  const exportarDados=()=>{
+    const dados={hist,contasReceber,contasPagar,despesasFixas,fornecedores,interacoes,crmNextContact,crmTags,stk,stkLog,exportadoEm:new Date().toISOString(),exportadoDe:user?.email};
+    const blob=new Blob([JSON.stringify(dados,null,2)],{type:"application/json"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+    a.download=`vinil-vale-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();
+  };
+
+  const importarDados=async(e)=>{
+    const file=e.target.files?.[0];if(!file)return;
+    try{
+      const txt=await file.text();
+      const d=JSON.parse(txt);
+      if(d.hist?.length){
+        setHist(d.hist);saveLS(d.hist);
+        if(fbReady&&fb.db&&user&&user.uid!=="local")d.hist.forEach(o=>saveFS(o));
+      }
+      if(d.contasReceber?.length)saveReceber(d.contasReceber);
+      if(d.contasPagar?.length)savePagar(d.contasPagar);
+      if(d.despesasFixas?.length)saveFixas(d.despesasFixas);
+      if(d.fornecedores?.length)saveFornec(d.fornecedores);
+      if(d.interacoes&&Object.keys(d.interacoes).length)saveInteracoes(d.interacoes);
+      if(d.crmNextContact||d.crmTags)saveCrmMeta(d.crmNextContact||{},d.crmTags||{});
+      if(d.stk)saveStk(d.stk,d.stkLog||[]);
+      alert("✅ Dados importados com sucesso!");
+    }catch(err){alert("Erro ao importar: "+err.message);}
+    e.target.value="";
+  };
   const [fbMsg,setFbMsg]=useState("");
   // ═══ ESTOQUE ═══
   const [stk,setStk]=useState(()=>{
@@ -1440,7 +1468,10 @@ export default function App(){
     <div style={{fontFamily:"'Segoe UI',sans-serif",maxWidth:"920px",margin:"0 auto",background:t.bg,minHeight:"100vh",color:t.text,transition:"background .3s,color .3s"}}>
       <div style={{background:`linear-gradient(135deg,#001d3d,${blue} 60%,#0077cc)`,padding:"14px 18px",color:"#fff"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"6px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:"10px"}}><div><div style={{fontSize:"17px",fontWeight:"800"}}>💧 VINIL VALE</div><div style={{fontSize:"9px",opacity:.7}}>{user?.email?.split("@")[0]} · {VER}</div></div><DarkToggle dark={dark} onToggle={()=>setDark(p=>!p)}/><button onClick={doLogout} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:"6px",padding:"4px 8px",color:"#fff",fontSize:"9px",cursor:"pointer",fontWeight:"600"}}>Sair</button></div>
+          <div style={{display:"flex",alignItems:"center",gap:"6px"}}><div><div style={{fontSize:"17px",fontWeight:"800"}}>💧 VINIL VALE</div><div style={{fontSize:"9px",opacity:.7}}>{user?.email?.split("@")[0]} · {VER}</div></div><DarkToggle dark={dark} onToggle={()=>setDark(p=>!p)}/>
+          <button onClick={exportarDados} title="Exportar todos os dados como JSON" style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:"6px",padding:"4px 7px",color:"#fff",fontSize:"9px",cursor:"pointer",fontWeight:"600"}}>⬇️ Exportar</button>
+          <label title="Importar dados de um backup JSON" style={{background:"rgba(255,255,255,.15)",borderRadius:"6px",padding:"4px 7px",color:"#fff",fontSize:"9px",cursor:"pointer",fontWeight:"600",display:"inline-block"}}>⬆️ Importar<input type="file" accept=".json" onChange={importarDados} style={{display:"none"}}/></label>
+          <button onClick={doLogout} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:"6px",padding:"4px 7px",color:"#fff",fontSize:"9px",cursor:"pointer",fontWeight:"600"}}>Sair</button></div>
           <div style={{display:"flex",gap:"5px",alignItems:"center",flexWrap:"wrap"}}>
             {fbMsg&&<span style={{background:"rgba(255,255,255,.2)",padding:"4px 8px",borderRadius:"5px",fontSize:"10px",fontWeight:"600"}}>✅ {fbMsg}</span>}
             <Btn onClick={save} style={{background:"rgba(255,255,255,.12)",color:"#fff",border:"1px solid rgba(255,255,255,.25)"}}>💾 Salvar</Btn>
