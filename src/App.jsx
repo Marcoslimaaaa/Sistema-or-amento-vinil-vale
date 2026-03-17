@@ -1033,6 +1033,36 @@ export default function App(){
     }
   };
 
+  // Sync receber/pagar/fixas do Firestore ao logar
+  useEffect(()=>{
+    if(!user||!fbReady||!fb.db||user.uid==="local")return;
+    const rRef=fbFns.doc(fb.db,"users",user.uid,"config","receber");
+    const unsubR=fbFns.onSnapshot(rRef,(snap)=>{
+      if(snap.exists()&&snap.data().data){
+        const d=snap.data().data;
+        setContasReceber(d);
+        try{localStorage.setItem("vv_receber",JSON.stringify(d))}catch{}
+      }
+    });
+    const pRef=fbFns.doc(fb.db,"users",user.uid,"config","pagar");
+    const unsubP=fbFns.onSnapshot(pRef,(snap)=>{
+      if(snap.exists()&&snap.data().data){
+        const d=snap.data().data;
+        setContasPagar(d);
+        try{localStorage.setItem("vv_pagar",JSON.stringify(d))}catch{}
+      }
+    });
+    const fRef=fbFns.doc(fb.db,"users",user.uid,"config","fixas");
+    const unsubF=fbFns.onSnapshot(fRef,(snap)=>{
+      if(snap.exists()&&snap.data().data){
+        const d=snap.data().data;
+        setDespesasFixas(d);
+        try{localStorage.setItem("vv_fixas",JSON.stringify(d))}catch{}
+      }
+    });
+    return ()=>{unsubR();unsubP();unsubF();}
+  },[user,fbReady]);
+
   const saveReceber=(data)=>{
     setContasReceber(data);
     try{localStorage.setItem("vv_receber",JSON.stringify(data))}catch{}
