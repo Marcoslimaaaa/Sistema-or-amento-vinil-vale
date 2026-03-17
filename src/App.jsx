@@ -23,16 +23,18 @@ const initFB = async () => {
     const fs = await import("firebase/firestore");
     const au = await import("firebase/auth");
     const st = await import("firebase/storage");
-    const ac = await import("firebase/app-check");
     const fbApp = app.initializeApp(FB_CFG);
-    // App Check com reCAPTCHA v3 — protege contra uso não autorizado das APIs Firebase
-    const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
-    if (siteKey) {
-      ac.initializeAppCheck(fbApp, {
-        provider: new ac.ReCaptchaV3Provider(siteKey),
-        isTokenAutoRefreshEnabled: true,
-      });
-    }
+    // App Check com reCAPTCHA v3 — isolado para não derrubar o Firebase se falhar
+    try {
+      const ac = await import("firebase/app-check");
+      const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+      if (siteKey) {
+        ac.initializeAppCheck(fbApp, {
+          provider: new ac.ReCaptchaV3Provider(siteKey),
+          isTokenAutoRefreshEnabled: true,
+        });
+      }
+    } catch (acErr) { console.warn("App Check não inicializado:", acErr); }
     fb = { ready: true, db: fs.getFirestore(fbApp), auth: au.getAuth(fbApp), storage: st.getStorage(fbApp), GoogleProvider: au.GoogleAuthProvider };
     fbFns = { ...fs, ...au, ...st };
     return true;
