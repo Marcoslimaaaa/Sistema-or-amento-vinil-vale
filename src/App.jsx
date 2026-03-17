@@ -1469,8 +1469,6 @@ export default function App(){
       <div style={{background:`linear-gradient(135deg,#001d3d,${blue} 60%,#0077cc)`,padding:"14px 18px",color:"#fff"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"6px"}}>
           <div style={{display:"flex",alignItems:"center",gap:"6px"}}><div><div style={{fontSize:"17px",fontWeight:"800"}}>💧 VINIL VALE</div><div style={{fontSize:"9px",opacity:.7}}>{user?.email?.split("@")[0]} · {VER}</div></div><DarkToggle dark={dark} onToggle={()=>setDark(p=>!p)}/>
-          <button onClick={exportarDados} title="Exportar todos os dados como JSON" style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:"6px",padding:"4px 7px",color:"#fff",fontSize:"9px",cursor:"pointer",fontWeight:"600"}}>⬇️ Exportar</button>
-          <label title="Importar dados de um backup JSON" style={{background:"rgba(255,255,255,.15)",borderRadius:"6px",padding:"4px 7px",color:"#fff",fontSize:"9px",cursor:"pointer",fontWeight:"600",display:"inline-block"}}>⬆️ Importar<input type="file" accept=".json" onChange={importarDados} style={{display:"none"}}/></label>
           <button onClick={doLogout} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:"6px",padding:"4px 7px",color:"#fff",fontSize:"9px",cursor:"pointer",fontWeight:"600"}}>Sair</button></div>
           <div style={{display:"flex",gap:"5px",alignItems:"center",flexWrap:"wrap"}}>
             {fbMsg&&<span style={{background:"rgba(255,255,255,.2)",padding:"4px 8px",borderRadius:"5px",fontSize:"10px",fontWeight:"600"}}>✅ {fbMsg}</span>}
@@ -1624,7 +1622,7 @@ export default function App(){
         </Card>}
 
         {/* HISTÓRICO - LEADS vs CLIENTES */}
-        {tab==="historico"&&<Card t={t}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}><ST icon="📋">Orçamentos</ST><div style={{display:"flex",gap:"6px"}}><Btn onClick={()=>setShowManualOrc(true)} style={{fontSize:"9px",padding:"4px 10px",background:"#7c3aed",color:"#fff",border:"none"}}>+ Registrar Manual</Btn>{hist.length>0&&<Btn onClick={exportCSV} style={{fontSize:"9px",padding:"4px 10px",background:"#16a34a",color:"#fff",border:"none"}}>📊 Exportar CSV</Btn>}</div></div>
+        {tab==="historico"&&<Card t={t}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}><ST icon="📋">Orçamentos</ST><div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}><Btn onClick={()=>setShowManualOrc(true)} style={{fontSize:"9px",padding:"4px 10px",background:"#7c3aed",color:"#fff",border:"none"}}>+ Registrar Manual</Btn>{hist.length>0&&<Btn onClick={exportCSV} style={{fontSize:"9px",padding:"4px 10px",background:"#16a34a",color:"#fff",border:"none"}}>📊 Exportar CSV</Btn>}<Btn onClick={exportarDados} style={{fontSize:"9px",padding:"4px 10px",background:"#0369a1",color:"#fff",border:"none"}}>⬇️ Backup</Btn><label style={{fontSize:"9px",padding:"4px 10px",background:"#b45309",color:"#fff",borderRadius:"6px",cursor:"pointer",fontWeight:"600"}}>⬆️ Restaurar<input type="file" accept=".json" onChange={importarDados} style={{display:"none"}}/></label></div></div>
           {hist.length===0?<div style={{textAlign:"center",padding:"24px",color:t.textMuted}}><div style={{fontSize:"28px"}}>📭</div><div style={{fontSize:"11px"}}>Nenhum salvo.</div></div>:<>
           {/* LEADS */}
           <div style={{marginBottom:"16px"}}>
