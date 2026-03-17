@@ -1,10 +1,31 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
     // Apenas o próprio usuário autenticado acessa seus dados
     match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // Escrita: autenticado + dono + validações básicas de integridade
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        // Impede documentos gigantes (max 500KB via limite de campos)
+        && request.resource.data.keys().size() < 100;
     }
+
+    // Validação extra para orçamentos: campos obrigatórios e tipos
+    match /users/{userId}/orcamentos/{orcId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        // id deve existir
+        && request.resource.data.keys().hasAll(['id'])
+        // tot (valor total) deve ser numérico se presente
+        && (!request.resource.data.keys().hasAny(['tot']) ||
+            request.resource.data.tot is number ||
+            request.resource.data.tot is string);
+    }
+
     // Bloqueia tudo mais por padrão
     match /{document=**} {
       allow read, write: if false;

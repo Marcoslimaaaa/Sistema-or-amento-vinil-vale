@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef, Suspense, lazy } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { MessageCircleIcon, FileTextIcon, CheckIcon, DownloadIcon, SendIcon } from "./AnimatedIcons.jsx";
 const Pool3DView = lazy(() => import('./Pool3DView'));
 
-// Firebase config (client-side keys são públicas por design — segurança via Firestore Rules)
+// Firebase config — chaves carregadas exclusivamente via variáveis de ambiente (.env / Vercel dashboard)
 const FB_CFG = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCER8yKsRuFLh2GDUE3yLscq-pFGZNlrG0",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "sistema-vinil-vale.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "sistema-vinil-vale",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "sistema-vinil-vale.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "847282557064",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:847282557064:web:76502a1a6e5c2711650f3d",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 // Firebase lazy loader — works on Vercel (npm), falls back to local on artifact
@@ -30,6 +31,8 @@ const initFB = async () => {
 };
 
 const VER="v4.5";
+// Escapa caracteres HTML para prevenir XSS em templates de documentos
+const escHtml=(s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;');
 if(typeof document!=="undefined"&&!document.getElementById("vv-styles")){const s=document.createElement("style");s.id="vv-styles";s.textContent=`
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 @media(max-width:600px){
@@ -203,7 +206,6 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
           
           pipes.push(<rect key={"cm_"+sysType} x={cmX-1} y={arriveY-3} width="6" height="6" rx="1" fill={col} opacity="0.9"/>);
         });
-        window._sysData=sysData;
         return pipes;
       })()}
       {Object.entries(positions).filter(([k,p])=>!p.special&&autoPositions(L,W,disps,invertSide,poolFmt)[k]).map(([key,p])=>{const cx2=ox+p.x*pw,cy2=oy+p.y*ph,col=tubeColors[p.type]||"#666";return <g key={key} onMouseDown={e=>onDown(key,e)} onTouchStart={e=>{e.preventDefault();setDragging(key)}} style={{cursor:"grab"}}>{p.floor?<><circle cx={cx2} cy={cy2} r="6" fill="none" stroke={col} strokeWidth="1.5"/><line x1={cx2-3} y1={cy2-3} x2={cx2+3} y2={cy2+3} stroke={col} strokeWidth="1"/><line x1={cx2+3} y1={cy2-3} x2={cx2-3} y2={cy2+3} stroke={col} strokeWidth="1"/></>:p.type==="skimmer"?<rect x={cx2-3} y={cy2-6} width="6" height="12" rx="1" fill="none" stroke={col} strokeWidth="1.5"/>:(p.type==="retorno"||p.type==="hidro")?<rect x={cx2-3} y={cy2-5} width="6" height="10" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:p.type==="aspiracao"?<rect x={cx2-5} y={cy2-3} width="10" height="6" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:<circle cx={cx2} cy={cy2} r="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>}<text x={cx2} y={cy2+(p.floor?12:p.type==="skimmer"?10:12)} textAnchor="middle" fontSize="5" fontWeight="700" fill={col}>{p.label}</text></g>})}
@@ -663,7 +665,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
         <Btn onClick={onBack}>← Voltar</Btn>
         <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
           {pdfStatus&&<span style={{fontSize:"11px",fontWeight:"600",color:pdfStatus.includes("Erro")?"#ef4444":"#16a34a",background:pdfStatus.includes("Erro")?"#fef2f2":"#f0fdf4",padding:"4px 10px",borderRadius:"6px"}}>{pdfStatus}</span>}
-          <Btn onClick={gerarPDF} style={{background:`linear-gradient(135deg,#16a34a,#15803d)`,color:"#fff",border:"none",padding:"10px 24px",fontSize:"13px",fontWeight:"700",boxShadow:"0 2px 8px rgba(22,163,74,.3)"}}>📥 Baixar PDF</Btn>
+          <Btn onClick={gerarPDF} style={{background:`linear-gradient(135deg,#16a34a,#15803d)`,color:"#fff",border:"none",padding:"10px 24px",fontSize:"13px",fontWeight:"700",boxShadow:"0 2px 8px rgba(22,163,74,.3)",display:"flex",alignItems:"center",gap:"6px"}}><DownloadIcon size={16} color="#fff"/>Baixar PDF</Btn>
         </div>
       </div>
       <div style={{textAlign:"center",fontSize:"9.5px",color:"#64748b",marginBottom:"10px",background:"#fff",padding:"8px 14px",borderRadius:"8px",border:"1px solid #e2e8f0"}}>💡 <b>Celular:</b> toca em "Baixar PDF" → compartilha ou salva → abre no navegador → salva como PDF</div>
@@ -923,7 +925,7 @@ export default function App(){
   const saveLS=(h)=>{try{localStorage.setItem("vv_hist",JSON.stringify(h))}catch{}};
 
   // Auth handlers
-  const doLogin=async()=>{if(!fbReady||!fb.auth){setLErr("⚠️ Sem conexão com o servidor. Verifique sua internet e tente novamente.");return;}setLErr("");try{await fbFns.signInWithEmailAndPassword(fb.auth,loginEmail,loginPass)}catch(e){setLErr(e.code==="auth/invalid-credential"?"Email ou senha incorretos":e.code==="auth/user-not-found"?"Usuário não encontrado":"Erro: "+e.message)}};
+  const doLogin=async()=>{if(!fbReady||!fb.auth){setLErr("⚠️ Sem conexão com o servidor. Verifique sua internet e tente novamente.");return;}setLErr("");try{await fbFns.signInWithEmailAndPassword(fb.auth,loginEmail,loginPass)}catch(e){setLErr(["auth/invalid-credential","auth/user-not-found","auth/wrong-password"].includes(e.code)?"Email ou senha incorretos":"Erro ao entrar. Tente novamente.")}};
   const doRegister=async()=>{if(!fbReady||!fb.auth)return;setLErr("");try{await fbFns.createUserWithEmailAndPassword(fb.auth,loginEmail,loginPass)}catch(e){setLErr(e.code==="auth/email-already-in-use"?"Email já cadastrado":e.code==="auth/weak-password"?"Senha fraca (mín. 6 caracteres)":"Erro: "+e.message)}};
   const doGoogle=async()=>{
     if(!fbReady||!fb.auth||!fb.GoogleProvider){setLErr("⚠️ Sem conexão com o servidor. Verifique sua internet e tente novamente.");return;}
@@ -940,7 +942,10 @@ export default function App(){
       }
     }
   };
-  const doLogout=()=>{if(fbReady&&fb.auth)fbFns.signOut(fb.auth);else setUser(null)};
+  const doLogout=()=>{
+    ["vv_hist","vv_receber","vv_pagar","vv_fixas","vv_stk","vv_stklog","vv_fornec","vv_interacoes","vv_crmmeta"].forEach(k=>localStorage.removeItem(k));
+    if(fbReady&&fb.auth)fbFns.signOut(fb.auth);else setUser(null);
+  };
   const [fbMsg,setFbMsg]=useState("");
   // ═══ ESTOQUE ═══
   const [stk,setStk]=useState(()=>{
@@ -955,6 +960,8 @@ export default function App(){
   const [fornecedores,setFornec]=useState([]);
   const [interacoes,setInteracoes]=useState({});
   const [crmDetail,setCrmDetail]=useState(null);
+  const [showManualOrc,setShowManualOrc]=useState(false);
+  const [manualForm,setManualForm]=useState({nome:"",cidade:"",tel:"",tipo:"vinil",ps:"",valor:"",data:new Date().toLocaleDateString("pt-BR"),status:"lead"});
   const [newNote,setNewNote]=useState("");
   const [crmView,setCrmView]=useState("pipeline");
   const [crmSearch,setCrmSearch]=useState("");
@@ -1091,7 +1098,7 @@ export default function App(){
   };
 
   const needsFollowUp=(qId,status)=>{
-    if(["concluido","perdido"].includes(status))return false;
+    if(!["lead","negociacao"].includes(status||"lead"))return false;
     return getDaysSince(qId)>=5;
   };
 
@@ -1331,16 +1338,16 @@ export default function App(){
     const tot=parseFloat(q.tot)||0;
     const clientName=(c.name||"Cliente").replace(/\s+/g,"_").replace(/[^\w\-]/g,"");
     const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;box-sizing:border-box;-webkit-print-color-adjust:exact!important}body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;padding:16mm;font-size:13px;line-height:1.7;color:#111}@page{size:A4;margin:10mm}.hdr{background:#0a1f44;color:#fff;padding:16px 24px;border-radius:8px;text-align:center;margin-bottom:16px}.hdr h1{font-size:22px;color:#e8b100;margin:0}.info{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:12px;font-size:13px}.tbl{width:100%;border-collapse:collapse;margin:12px 0}.tbl th{background:#0055a4;color:#fff;padding:6px 10px;text-align:left;font-size:11px}.tbl td{padding:5px 10px;border-bottom:1px solid #e2e8f0;font-size:12px}.tot{background:linear-gradient(135deg,#0055a4,#003d7a);color:#fff;border-radius:8px;padding:16px;text-align:center;font-size:26px;font-weight:800;margin:16px 0}.ft{text-align:center;font-size:10px;color:#888;margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px}</style></head><body>
-<div class="hdr"><h1>VINIL VALE</h1><div style="font-size:11px;margin-top:4px">Revestimentos e Capas para Piscinas</div><div style="font-size:10px;opacity:.7;margin-top:2px">CNPJ: ${CO.cnpj} · ${CO.ph1} / ${CO.ph2}</div></div>
-<div style="font-size:11px;text-align:right;color:#666;margin-bottom:8px">Proposta nº ${d?.propNum||"—"} · Válido por 15 dias</div>
-<div class="info"><b>Cliente:</b> ${c.name||"—"}<br><b>Tel:</b> ${c.phone||"—"} · <b>Email:</b> ${c.email||"—"}<br><b>End:</b> ${c.address||"—"} – ${c.city||"—"}</div>
-<div class="info"><b>Piscina:</b> ${p.length||0}×${p.width||0}×${p.depth||0}m · ${d?.poolFmt||""}<br><b>Vinil:</b> ACQUALINER ${d?.vinilT||""} · Resist. até 32°C${d?.stamp?` · <b>Estampa:</b> ${d.stamp}`:""}</div>
+<div class="hdr"><h1>VINIL VALE</h1><div style="font-size:11px;margin-top:4px">Revestimentos e Capas para Piscinas</div><div style="font-size:10px;opacity:.7;margin-top:2px">CNPJ: ${escHtml(CO.cnpj)} · ${escHtml(CO.ph1)} / ${escHtml(CO.ph2)}</div></div>
+<div style="font-size:11px;text-align:right;color:#666;margin-bottom:8px">Proposta nº ${escHtml(d?.propNum||"—")} · Válido por 15 dias</div>
+<div class="info"><b>Cliente:</b> ${escHtml(c.name||"—")}<br><b>Tel:</b> ${escHtml(c.phone||"—")} · <b>Email:</b> ${escHtml(c.email||"—")}<br><b>End:</b> ${escHtml(c.address||"—")} – ${escHtml(c.city||"—")}</div>
+<div class="info"><b>Piscina:</b> ${escHtml(p.length||0)}×${escHtml(p.width||0)}×${escHtml(p.depth||0)}m · ${escHtml(d?.poolFmt||"")}<br><b>Vinil:</b> ACQUALINER ${escHtml(d?.vinilT||"")} · Resist. até 32°C${d?.stamp?` · <b>Estampa:</b> ${escHtml(d.stamp)}`:""}</div>
 <div style="font-size:14px;font-weight:700;margin:14px 0 8px">Serviços Inclusos</div>
-<table class="tbl"><tr><th>Item</th><th>Obs</th><th>Qtd</th></tr>${inc.map(i=>`<tr><td><b>${i.n}</b></td><td style="color:#666;font-style:italic">${i.nt||""}</td><td>${i.q>1?i.q+"x":"1"}</td></tr>`).join("")}</table>
+<table class="tbl"><tr><th>Item</th><th>Obs</th><th>Qtd</th></tr>${inc.map(i=>`<tr><td><b>${escHtml(i.n)}</b></td><td style="color:#666;font-style:italic">${escHtml(i.nt||"")}</td><td>${i.q>1?i.q+"x":"1"}</td></tr>`).join("")}</table>
 <div class="tot">${fmt(tot)}</div>
 <div class="info" style="font-size:12px"><b>Formas de Pagamento:</b><br>💚 Pix/Dinheiro: ${pay2.pixD}% desc. = <b>${fmt(tot*(1-pay2.pixD/100))}</b><br>💳 Cartão: até ${pay2.noFee}x s/juros<br>📋 Parcelado: ${pay2.entPct}% + ${pay2.balPct}%<br>₿ Bitcoin: ${pay2.btcD}% desc. = <b>${fmt(tot*(1-pay2.btcD/100))}</b></div>
-<div style="margin-top:12px;font-size:12px"><b>Prazo de execução:</b> ${d?.execDays||"20"} dias úteis</div>
-<div class="ft">${CO.name}<br>${CO.addr} · ${CO.ph1} / ${CO.ph2}<br>${CO.email} · ${CO.insta}</div>
+<div style="margin-top:12px;font-size:12px"><b>Prazo de execução:</b> ${escHtml(d?.execDays||"20")} dias úteis</div>
+<div class="ft">${escHtml(CO.name)}<br>${escHtml(CO.addr)} · ${escHtml(CO.ph1)} / ${escHtml(CO.ph2)}<br>${escHtml(CO.email)} · ${escHtml(CO.insta)}</div>
 <script>window.onload=function(){setTimeout(function(){window.print()},800)}<\/script></body></html>`;
     const blob=new Blob([html],{type:"text/html;charset=utf-8"});
     const url=URL.createObjectURL(blob);
@@ -1540,7 +1547,7 @@ export default function App(){
         </Card>}
 
         {/* HISTÓRICO - LEADS vs CLIENTES */}
-        {tab==="historico"&&<Card t={t}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}><ST icon="📋">Orçamentos</ST>{hist.length>0&&<Btn onClick={exportCSV} style={{fontSize:"9px",padding:"4px 10px",background:"#16a34a",color:"#fff",border:"none"}}>📊 Exportar CSV</Btn>}</div>
+        {tab==="historico"&&<Card t={t}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}><ST icon="📋">Orçamentos</ST><div style={{display:"flex",gap:"6px"}}><Btn onClick={()=>setShowManualOrc(true)} style={{fontSize:"9px",padding:"4px 10px",background:"#7c3aed",color:"#fff",border:"none"}}>+ Registrar Manual</Btn>{hist.length>0&&<Btn onClick={exportCSV} style={{fontSize:"9px",padding:"4px 10px",background:"#16a34a",color:"#fff",border:"none"}}>📊 Exportar CSV</Btn>}</div></div>
           {hist.length===0?<div style={{textAlign:"center",padding:"24px",color:t.textMuted}}><div style={{fontSize:"28px"}}>📭</div><div style={{fontSize:"11px"}}>Nenhum salvo.</div></div>:<>
           {/* LEADS */}
           <div style={{marginBottom:"16px"}}>
@@ -1550,9 +1557,9 @@ export default function App(){
               <div key={q.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:t.sectionBg,borderRadius:"7px",border:`1.5px solid ${t.cardBorder}`,borderLeft:"3px solid #f59e0b"}}>
                 <div onClick={()=>load(q)} style={{flex:1,cursor:"pointer"}}><div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{q.cN||"Sem nome"} {q.stamp?`· ${q.stamp}`:""}</div><div style={{fontSize:"8.5px",color:t.textMuted}}>{q.date} · {SVC.find(s=>s.id===q.type)?.label} · {q.ps}m · {q.cC}</div></div>
                 <div style={{display:"flex",alignItems:"center",gap:"5px"}}><div style={{fontSize:"13px",fontWeight:"800",color:blue}}>{fmt(parseFloat(q.tot)||0)}</div>
-                  <Btn onClick={()=>sendOrcWA(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#128c7e",color:"#fff",border:"none"}}>📨 PDF</Btn>
-                  <Btn onClick={()=>msgWA(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#25d366",color:"#fff",border:"none"}}>📱 Zap</Btn>
-                  <Btn onClick={()=>toClient(q.id)} style={{fontSize:"8px",padding:"3px 7px",background:"#16a34a",color:"#fff",border:"none"}}>✅ Fechou</Btn>
+                  <Btn onClick={()=>sendOrcWA(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#128c7e",color:"#fff",border:"none",display:"flex",alignItems:"center",gap:"3px"}}><FileTextIcon size={12} color="#fff"/>PDF</Btn>
+                  <Btn onClick={()=>msgWA(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#25d366",color:"#fff",border:"none",display:"flex",alignItems:"center",gap:"3px"}}><MessageCircleIcon size={12} color="#fff"/>Zap</Btn>
+                  <Btn onClick={()=>toClient(q.id)} style={{fontSize:"8px",padding:"3px 7px",background:"#16a34a",color:"#fff",border:"none",display:"flex",alignItems:"center",gap:"3px"}}><CheckIcon size={12} color="#fff"/>Fechou</Btn>
                   <Btn onClick={()=>load(q)} style={{fontSize:"8px",padding:"3px 5px",background:blue,color:"#fff",border:"none"}}>Abrir</Btn>
                   <button onClick={e=>{e.stopPropagation();delQ(q.id)}} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>🗑</button>
                 </div>
@@ -1638,9 +1645,34 @@ export default function App(){
               {SVC.map(sv=>{const items=fechados.filter(q=>q.type===sv.id);const val=items.reduce((s,q)=>s+(parseFloat(q.tot)||0),0);const pct=receita>0?Math.round((val/receita)*100):0;return <div key={sv.id} style={{marginBottom:"6px"}}><div style={{display:"flex",justifyContent:"space-between",fontSize:"9px",marginBottom:"2px"}}><span style={{fontWeight:"600",color:t.text}}>{sv.icon} {sv.label}</span><span style={{color:t.textSec}}>{items.length}x · {fmt(val)} ({pct}%)</span></div><div style={{height:"8px",background:t.cardBorder,borderRadius:"4px",overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:blue,borderRadius:"4px"}}/></div></div>})}
             </div>
             {/* Top cidades */}
-            <div style={{background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`}}>
+            <div style={{background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`,marginBottom:"14px"}}>
               <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Top Cidades</div>
               {(()=>{const cc={};hist.forEach(q=>{const c=q.data?.client?.city||q.cC||"Não informada";cc[c]=(cc[c]||0)+1});return Object.entries(cc).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([c,n])=><div key={c} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${t.cardBorder}`}}><span style={{fontSize:"10px",fontWeight:"600",color:t.text}}>📍 {c}</span><span style={{fontSize:"10px",fontWeight:"800",color:blue,background:blue+"15",padding:"1px 7px",borderRadius:"9px"}}>{n}</span></div>)})()}
+            </div>
+            {/* Clientes por ano */}
+            <div style={{background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`}}>
+              <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>📅 Clientes por Ano</div>
+              {(()=>{
+                const byYear={};
+                hist.forEach(q=>{const y=q.id?new Date(parseInt(q.id)).getFullYear():new Date().getFullYear();byYear[y]=(byYear[y]||0)+1});
+                const entries=Object.entries(byYear).sort((a,b)=>b[0]-a[0]);
+                const maxV=Math.max(...entries.map(e=>e[1]),1);
+                return entries.map(([y,n])=>{
+                  const receitaAno=hist.filter(q=>{const yr=q.id?new Date(parseInt(q.id)).getFullYear():new Date().getFullYear();return yr==y&&["fechou","execucao","concluido"].includes(q.status);}).reduce((s,q)=>s+(parseFloat(q.tot)||0),0);
+                  return <div key={y} style={{marginBottom:"8px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"9px",marginBottom:"3px"}}>
+                      <span style={{fontWeight:"700",color:t.text}}>📅 {y}</span>
+                      <div style={{display:"flex",gap:"8px",alignItems:"center"}}>
+                        <span style={{color:t.textSec}}>{n} lead{n!==1?"s":""}</span>
+                        {receitaAno>0&&<span style={{color:"#16a34a",fontWeight:"700"}}>{fmt(receitaAno)}</span>}
+                      </div>
+                    </div>
+                    <div style={{height:"10px",background:t.cardBorder,borderRadius:"5px",overflow:"hidden"}}>
+                      <div style={{height:"100%",width:Math.round((n/maxV)*100)+"%",background:blue,borderRadius:"5px",transition:"width .5s"}}/>
+                    </div>
+                  </div>;
+                });
+              })()}
             </div>
           </>}
 
@@ -1680,38 +1712,31 @@ export default function App(){
                       const overdue=isNextContactOverdue(q.id);
                       const tags=crmTags[q.id]||[];
                       const days=getDaysSince(q.id);
-                      return <div key={q.id} style={{background:t.card,borderRadius:"8px",padding:"9px",border:`1px solid ${overdue?"#fca5a5":t.cardBorder}`,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
-                        {/* Header do card */}
+                      return <div key={q.id} style={{background:t.card,borderRadius:"8px",padding:"8px",border:`1px solid ${overdue?"#fca5a5":t.cardBorder}`,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"3px"}}>
-                          <div style={{fontSize:"11px",fontWeight:"700",color:t.text,lineHeight:"1.2"}}>{q.cN||"Sem nome"}</div>
-                          <div style={{display:"flex",gap:"3px",alignItems:"center"}}>
-                            {temp&&<span title={temp.label} style={{fontSize:"12px"}}>{temp.icon}</span>}
-                            {needsFollowUp(q.id,q.status)&&<span style={{fontSize:"7px",background:"#fef2f2",color:"#dc2626",padding:"1px 4px",borderRadius:"3px",fontWeight:"700",animation:"pulse 2s infinite"}}>UP!</span>}
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,lineHeight:"1.2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.cN||"Sem nome"}</div>
+                            <div style={{fontSize:"8px",color:t.textMuted,marginTop:"2px"}}>{[q.data?.client?.city,q.ps&&q.ps+"m",days<999&&(days+"d")].filter(Boolean).join(" · ")}</div>
+                          </div>
+                          <div style={{textAlign:"right",flexShrink:0,marginLeft:"6px"}}>
+                            <div style={{fontSize:"12px",fontWeight:"800",color:stage.color}}>{fmt(parseFloat(q.tot)||0)}</div>
+                            <div style={{display:"flex",gap:"2px",justifyContent:"flex-end",marginTop:"1px"}}>
+                              {temp&&<span style={{fontSize:"10px"}}>{temp.icon}</span>}
+                              {needsFollowUp(q.id,q.status)&&<span style={{fontSize:"6px",background:"#fef2f2",color:"#dc2626",padding:"1px 3px",borderRadius:"3px",fontWeight:"700"}}>UP</span>}
+                              {overdue&&<span style={{fontSize:"6px",background:"#fef2f2",color:"#dc2626",padding:"1px 3px",borderRadius:"3px",fontWeight:"700"}}>⏰</span>}
+                            </div>
                           </div>
                         </div>
-                        {/* Infos */}
-                        <div style={{fontSize:"8px",color:t.textMuted,marginBottom:"3px"}}>
-                          {q.data?.client?.city&&<span>📍{q.data.client.city} · </span>}
-                          <span>{q.ps}m · </span>
-                          {days<999?<span style={{color:days<=5?"#16a34a":days<=10?"#f59e0b":"#dc2626"}}>{days}d atrás</span>:<span>Sem contato</span>}
-                        </div>
-                        {/* Valor */}
-                        <div style={{fontSize:"13px",fontWeight:"800",color:stage.color,marginBottom:"5px"}}>{fmt(parseFloat(q.tot)||0)}</div>
-                        {/* Tags */}
-                        {tags.length>0&&<div style={{display:"flex",gap:"2px",flexWrap:"wrap",marginBottom:"5px"}}>
-                          {tags.map(tg=><span key={tg} style={{fontSize:"6px",padding:"1px 5px",borderRadius:"9px",background:blue+"15",color:blue,fontWeight:"700"}}>{tg}</span>)}
-                        </div>}
-                        {/* Próximo contato */}
-                        {crmNextContact[q.id]&&<div style={{fontSize:"7px",marginBottom:"5px",color:overdue?"#dc2626":"#16a34a",fontWeight:"600"}}>📅 {overdue?"Atrasado:":"Próx:"} {new Date(crmNextContact[q.id]+"T12:00").toLocaleDateString("pt-BR")}</div>}
-                        {/* Ações */}
-                        <div style={{display:"flex",gap:"3px",flexWrap:"wrap"}}>
-                          <button title="Enviar mensagem WhatsApp" onClick={()=>{msgWA(q);addInteracao(q.id,"whatsapp","Mensagem enviada via WhatsApp")}} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📱 Zap</button>
-                          <button title="Enviar orçamento via WhatsApp" onClick={()=>{sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado via WhatsApp")}} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",fontWeight:"600"}}>📄 PDF</button>
-                          {!["concluido","perdido"].includes(stage.id)&&<select title="Mover para outra etapa" value="" onChange={e=>{if(e.target.value)movePipe(q.id,e.target.value);e.target.value=""}} style={{fontSize:"8px",padding:"2px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer",flex:1}}>
-                            <option value="">Mover →</option>
+                        {tags.length>0&&<div style={{display:"flex",gap:"2px",flexWrap:"wrap",marginBottom:"4px"}}>{tags.map(tg=><span key={tg} style={{fontSize:"6px",padding:"1px 4px",borderRadius:"8px",background:blue+"15",color:blue,fontWeight:"700"}}>{tg}</span>)}</div>}
+                        {crmNextContact[q.id]&&<div style={{fontSize:"7px",marginBottom:"4px",color:overdue?"#dc2626":"#16a34a",fontWeight:"600"}}>📅 {overdue?"Atrasado":"Próx"}: {new Date(crmNextContact[q.id]+"T12:00").toLocaleDateString("pt-BR")}</div>}
+                        <div style={{display:"flex",gap:"2px",marginTop:"4px"}}>
+                          <button title="WhatsApp" onClick={()=>{msgWA(q);addInteracao(q.id,"whatsapp","Mensagem enviada via WhatsApp")}} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><MessageCircleIcon size={13} color="#fff"/></button>
+                          <button title="PDF" onClick={()=>{sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado via WhatsApp")}} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><FileTextIcon size={13} color="#fff"/></button>
+                          {!["concluido","perdido"].includes(stage.id)&&<select title="Mover" value="" onChange={e=>{if(e.target.value)movePipe(q.id,e.target.value);e.target.value=""}} style={{flex:2,fontSize:"7px",padding:"2px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer"}}>
+                            <option value="">→ Mover</option>
                             {PIPE.filter(p=>p.id!==(q.status||"lead")).map(p=><option key={p.id} value={p.id}>{p.icon} {p.label}</option>)}
                           </select>}
-                          <button title="Abrir notas, tags e próximo contato" onClick={()=>setCrmDetail(crmDetail===q.id?null:q.id)} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:`1px solid ${crmDetail===q.id?blue:t.cardBorder}`,background:crmDetail===q.id?blue:"transparent",color:crmDetail===q.id?"#fff":t.text,cursor:"pointer",fontWeight:"600"}}>📋 Notas</button>
+                          <button title="Notas" onClick={()=>setCrmDetail(crmDetail===q.id?null:q.id)} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:`1px solid ${crmDetail===q.id?blue:t.cardBorder}`,background:crmDetail===q.id?blue:"transparent",color:crmDetail===q.id?"#fff":t.text,cursor:"pointer"}}>📋</button>
                         </div>
                         {crmDetail===q.id&&<NotePanel q={q} {...notePanelProps}/>}
                       </div>
@@ -1749,22 +1774,30 @@ export default function App(){
                 const temp=getTemp(q.id,q.status||"lead");
                 const days=getDaysSince(q.id);
                 const tags=crmTags[q.id]||[];
+                const overdue=isNextContactOverdue(q.id);
                 return <div key={q.id}>
-                  <div onClick={()=>setCrmDetail(crmDetail===q.id?null:q.id)} style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:"8px",alignItems:"center",padding:"8px 10px",background:t.card,borderRadius:"8px",border:`1px solid ${t.cardBorder}`,cursor:"pointer",transition:"background .15s"}}>
-                    <div>
-                      <div style={{display:"flex",alignItems:"center",gap:"5px"}}><span style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{q.cN||"Sem nome"}</span>{temp&&<span style={{fontSize:"11px"}}>{temp.icon}</span>}{needsFollowUp(q.id,q.status)&&<span style={{fontSize:"7px",background:"#fef2f2",color:"#dc2626",padding:"1px 4px",borderRadius:"3px",fontWeight:"700"}}>UP!</span>}</div>
-                      <div style={{fontSize:"8px",color:t.textMuted}}>{q.data?.client?.city||""} · {SVC.find(s=>s.id===q.type)?.label||""} · {q.ps}m</div>
-                      {tags.length>0&&<div style={{display:"flex",gap:"2px",marginTop:"2px"}}>{tags.map(tg=><span key={tg} style={{fontSize:"6px",padding:"1px 4px",borderRadius:"8px",background:blue+"15",color:blue,fontWeight:"700"}}>{tg}</span>)}</div>}
+                  <div onClick={()=>setCrmDetail(crmDetail===q.id?null:q.id)} style={{display:"flex",alignItems:"center",gap:"8px",padding:"8px 10px",background:t.card,borderRadius:crmDetail===q.id?"8px 8px 0 0":"8px",border:`1px solid ${overdue?"#fca5a5":t.cardBorder}`,cursor:"pointer"}}>
+                    <div style={{width:"8px",height:"8px",borderRadius:"50%",background:stage.color,flexShrink:0}}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:"4px"}}>
+                        <span style={{fontSize:"11px",fontWeight:"700",color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.cN||"Sem nome"}</span>
+                        {temp&&<span style={{fontSize:"10px"}}>{temp.icon}</span>}
+                        {needsFollowUp(q.id,q.status)&&<span style={{fontSize:"6px",background:"#fef2f2",color:"#dc2626",padding:"1px 3px",borderRadius:"3px",fontWeight:"700"}}>UP</span>}
+                      </div>
+                      <div style={{fontSize:"8px",color:t.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[q.data?.client?.city,SVC.find(s=>s.id===q.type)?.label,q.ps&&q.ps+"m"].filter(Boolean).join(" · ")}</div>
+                      {tags.length>0&&<div style={{display:"flex",gap:"2px",marginTop:"2px",flexWrap:"wrap"}}>{tags.map(tg=><span key={tg} style={{fontSize:"6px",padding:"1px 4px",borderRadius:"8px",background:blue+"15",color:blue,fontWeight:"700"}}>{tg}</span>)}</div>}
                     </div>
-                    <div style={{textAlign:"right"}}><div style={{fontSize:"12px",fontWeight:"800",color:stage.color}}>{fmt(parseFloat(q.tot)||0)}</div><div style={{fontSize:"8px",color:t.textMuted}}>{q.date||""}</div></div>
-                    <div style={{textAlign:"center"}}><span style={{fontSize:"9px",background:stage.color+"22",color:stage.color,padding:"2px 7px",borderRadius:"9px",fontWeight:"700",whiteSpace:"nowrap"}}>{stage.icon} {stage.label}</span></div>
-                    <div style={{fontSize:"9px",textAlign:"center",color:days<=5?"#16a34a":days<=10?"#f59e0b":"#dc2626",fontWeight:"700"}}>{days<999?days+"d":"—"}</div>
-                    <div style={{display:"flex",gap:"3px"}}>
-                      <button title="Enviar mensagem WhatsApp" onClick={e=>{e.stopPropagation();msgWA(q);addInteracao(q.id,"whatsapp","Mensagem enviada via WhatsApp")}} style={{fontSize:"9px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer"}}>📱</button>
-                      <button title="Enviar orçamento via WhatsApp" onClick={e=>{e.stopPropagation();sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado")}} style={{fontSize:"9px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer"}}>📄</button>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{fontSize:"12px",fontWeight:"800",color:stage.color}}>{fmt(parseFloat(q.tot)||0)}</div>
+                      <span style={{fontSize:"7px",background:stage.color+"22",color:stage.color,padding:"1px 5px",borderRadius:"8px",fontWeight:"700",display:"inline-block",whiteSpace:"nowrap"}}>{stage.icon} {stage.label}</span>
+                    </div>
+                    <div style={{fontSize:"10px",fontWeight:"700",color:days<=5?"#16a34a":days<=10?"#f59e0b":"#dc2626",flexShrink:0,minWidth:"26px",textAlign:"right"}}>{days<999?days+"d":"—"}</div>
+                    <div style={{display:"flex",gap:"3px",flexShrink:0}}>
+                      <button title="WhatsApp" onClick={e=>{e.stopPropagation();msgWA(q);addInteracao(q.id,"whatsapp","Mensagem enviada via WhatsApp")}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><MessageCircleIcon size={14} color="#fff"/></button>
+                      <button title="PDF" onClick={e=>{e.stopPropagation();sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado")}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><FileTextIcon size={14} color="#fff"/></button>
                     </div>
                   </div>
-                  {crmDetail===q.id&&<div style={{padding:"0 10px 8px",background:t.card,borderRadius:"0 0 8px 8px",borderLeft:`1px solid ${t.cardBorder}`,borderRight:`1px solid ${t.cardBorder}`,borderBottom:`1px solid ${t.cardBorder}`,marginTop:"-4px"}}><NotePanel q={q} {...notePanelProps}/></div>}
+                  {crmDetail===q.id&&<div style={{padding:"8px 10px",background:t.card,borderRadius:"0 0 8px 8px",border:`1px solid ${t.cardBorder}`,borderTop:`1px dashed ${t.cardBorder}`,marginTop:"-1px"}}><NotePanel q={q} {...notePanelProps}/></div>}
                 </div>
               })}
               {filteredHist.length===0&&<div style={{textAlign:"center",padding:"24px",color:t.textMuted,fontSize:"11px"}}>Nenhum lead encontrado</div>}
@@ -1958,33 +1991,82 @@ export default function App(){
             const cs={p:{fontSize:"14px",lineHeight:"1.9",textAlign:"justify",marginBottom:"12px",color:"#222"},h:{fontSize:"15px",fontWeight:"700",color:"#111",marginTop:"20px",marginBottom:"8px"},li:{fontSize:"14px",lineHeight:"1.8",marginBottom:"6px",paddingLeft:"8px",color:"#222"},sep:{borderTop:"1px solid #ccc",margin:"16px 0"},ed:{background:"#fffff0",border:"1px dashed #e8b100",borderRadius:"4px",padding:"2px 6px",outline:"none",fontSize:"14px"}};
 
             return <>
-              {clientes.length>1&&<div style={{display:"flex",gap:"4px",marginBottom:"12px",flexWrap:"wrap"}}>{clientes.map(c=><button key={c.id} onClick={()=>{setVC(c);setCeInit(null);setTimeout(()=>initCE(c),50)}} style={{padding:"4px 10px",borderRadius:"14px",border:`1.5px solid ${sel.id===c.id?blue:t.cardBorder}`,background:sel.id===c.id?blue:"transparent",color:sel.id===c.id?"#fff":t.text,fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>{c.cN||"Sem nome"}</button>)}</div>}
+              {/* SELETOR DE CLIENTE */}
+              {clientes.length>1&&<div style={{marginBottom:"14px"}}>
+                <div style={{fontSize:"10px",fontWeight:"700",color:t.textSec,marginBottom:"6px",textTransform:"uppercase",letterSpacing:".5px"}}>Selecionar Cliente</div>
+                <div style={{display:"flex",gap:"6px",overflowX:"auto",paddingBottom:"4px"}}>
+                  {clientes.map(c=>{
+                    const stg=PIPE.find(p=>p.id===c.status)||PIPE[0];
+                    const isSel=sel.id===c.id;
+                    return <button key={c.id} onClick={()=>{setVC(c);setCeInit(null);setTimeout(()=>initCE(c),50)}} style={{flexShrink:0,padding:"6px 12px",borderRadius:"8px",border:`1.5px solid ${isSel?blue:t.cardBorder}`,background:isSel?blue+"10":"transparent",cursor:"pointer",textAlign:"left",minWidth:"120px"}}>
+                      <div style={{fontSize:"11px",fontWeight:"700",color:isSel?blue:t.text,whiteSpace:"nowrap"}}>{c.cN||"Sem nome"}</div>
+                      <div style={{fontSize:"8px",color:stg.color,fontWeight:"600",marginTop:"1px"}}>{stg.icon} {stg.label}</div>
+                    </button>;
+                  })}
+                </div>
+              </div>}
 
-              {/* EDITOR DE SERVIÇOS */}
-              <div style={{background:t.sectionBg,borderRadius:"8px",padding:"12px",marginBottom:"12px",border:`1px solid ${t.cardBorder}`}}>
-                <div style={{fontSize:"11px",fontWeight:"700",color:blue,marginBottom:"8px"}}>✏️ Editar Serviços do Contrato</div>
-                <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
-                  {ce.servicos.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:"4px"}}>
-                    <span style={{fontSize:"12px",color:t.textMuted}}>•</span>
-                    <input value={s} onChange={e=>{const n=[...ce.servicos];n[i]=e.target.value;setCE(p=>({...p,servicos:n}))}} style={{flex:1,padding:"4px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"4px",fontSize:"12px",background:t.inputBg,color:t.text,outline:"none"}}/>
-                    <button onClick={()=>setCE(p=>({...p,servicos:p.servicos.filter((_,x)=>x!==i)}))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"14px"}}>✕</button>
-                  </div>)}
-                  <div style={{display:"flex",gap:"4px",marginTop:"4px"}}>
-                    <input value={ce.novoServico} onChange={e=>setCE(p=>({...p,novoServico:e.target.value}))} placeholder="Novo serviço..." style={{flex:1,padding:"4px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"4px",fontSize:"12px",background:t.inputBg,color:t.text,outline:"none"}}/>
-                    <Btn onClick={()=>{if(ce.novoServico.trim()){setCE(p=>({...p,servicos:[...p.servicos,p.novoServico.trim()],novoServico:""}))}}} style={{fontSize:"10px",padding:"3px 8px",background:blue,color:"#fff",border:"none"}}>+ Adicionar</Btn>
+              {/* INFO DO CLIENTE SELECIONADO */}
+              <div style={{background:`linear-gradient(135deg,${blue}12,${blue}06)`,border:`1.5px solid ${blue}30`,borderRadius:"10px",padding:"12px 14px",marginBottom:"12px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"8px"}}>
+                <div>
+                  <div style={{fontSize:"14px",fontWeight:"800",color:t.text}}>{d.client.name||"Cliente"}</div>
+                  <div style={{fontSize:"10px",color:t.textSec,marginTop:"2px"}}>
+                    {[d.client.city,d.client.phone,SVC.find(s=>s.id===d.svcType)?.label].filter(Boolean).join(" · ")}
                   </div>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px",marginTop:"10px"}}>
-                  <div><label style={{fontSize:"9px",fontWeight:"600",color:t.textSec}}>VALOR</label><input value={ce.valor} onChange={uce("valor")} style={{width:"100%",padding:"4px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"4px",fontSize:"12px",background:t.inputBg,color:t.text,outline:"none",fontWeight:"700"}}/></div>
-                  <div><label style={{fontSize:"9px",fontWeight:"600",color:t.textSec}}>PRAZO (DIAS)</label><input value={ce.prazo} onChange={uce("prazo")} style={{width:"100%",padding:"4px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"4px",fontSize:"12px",background:t.inputBg,color:t.text,outline:"none"}}/></div>
-                  <div><label style={{fontSize:"9px",fontWeight:"600",color:t.textSec}}>DATA</label><input value={ce.data} onChange={uce("data")} style={{width:"100%",padding:"4px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"4px",fontSize:"12px",background:t.inputBg,color:t.text,outline:"none"}}/></div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:"18px",fontWeight:"800",color:blue}}>{ce.valor}</div>
+                  <div style={{fontSize:"9px",color:t.textSec}}>Valor do contrato</div>
                 </div>
-                <div style={{marginTop:"8px"}}><label style={{fontSize:"9px",fontWeight:"600",color:t.textSec}}>OBS (POR CONTA DO CLIENTE)</label><input value={ce.obs} onChange={uce("obs")} style={{width:"100%",padding:"4px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"4px",fontSize:"12px",background:t.inputBg,color:t.text,outline:"none"}}/></div>
-                <div style={{marginTop:"8px"}}><label style={{fontSize:"9px",fontWeight:"600",color:t.textSec}}>GARANTIAS</label><input value={ce.garantias} onChange={uce("garantias")} style={{width:"100%",padding:"4px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"4px",fontSize:"12px",background:t.inputBg,color:t.text,outline:"none"}}/></div>
               </div>
 
-              <div style={{display:"flex",justifyContent:"flex-end",gap:"6px",marginBottom:"10px"}}>
-                <Btn onClick={dlContract} style={{background:"linear-gradient(135deg,#16a34a,#15803d)",color:"#fff",border:"none",padding:"8px 16px",fontSize:"12px",fontWeight:"700"}}>📥 Baixar Contrato</Btn>
+              {/* EDITOR */}
+              <div style={{background:t.sectionBg,borderRadius:"10px",padding:"14px",marginBottom:"12px",border:`1px solid ${t.cardBorder}`}}>
+                <div style={{fontSize:"11px",fontWeight:"700",color:blue,marginBottom:"12px"}}>✏️ Configurar Contrato</div>
+
+                {/* Linha 1: Valor / Prazo / Data */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px",marginBottom:"10px"}}>
+                  {[["VALOR TOTAL",ce.valor,"valor","fontWeight:700"],["PRAZO (DIAS)",ce.prazo,"prazo",""],["DATA DO CONTRATO",ce.data,"data",""]].map(([lb,val,key])=>(
+                    <div key={key}>
+                      <label style={{fontSize:"8px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"3px"}}>{lb}</label>
+                      <input value={val} onChange={uce(key)} style={{width:"100%",padding:"6px 8px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text,outline:"none",fontWeight:key==="valor"?"700":"400"}}/>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Linha 2: Obs / Garantias */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"12px"}}>
+                  <div>
+                    <label style={{fontSize:"8px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"3px"}}>OBS (POR CONTA DO CLIENTE)</label>
+                    <input value={ce.obs} onChange={uce("obs")} style={{width:"100%",padding:"6px 8px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text,outline:"none"}}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:"8px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"3px"}}>GARANTIAS</label>
+                    <input value={ce.garantias} onChange={uce("garantias")} style={{width:"100%",padding:"6px 8px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text,outline:"none"}}/>
+                  </div>
+                </div>
+
+                {/* Serviços */}
+                <div>
+                  <label style={{fontSize:"8px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"6px"}}>SERVIÇOS INCLUSOS ({ce.servicos.length})</label>
+                  <div style={{display:"flex",flexDirection:"column",gap:"4px",marginBottom:"6px"}}>
+                    {ce.servicos.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:"6px",background:t.inputBg,borderRadius:"6px",padding:"4px 8px",border:`1px solid ${t.cardBorder}`}}>
+                      <span style={{fontSize:"10px",color:blue}}>•</span>
+                      <input value={s} onChange={e=>{const n=[...ce.servicos];n[i]=e.target.value;setCE(p=>({...p,servicos:n}))}} style={{flex:1,border:"none",background:"transparent",fontSize:"11px",color:t.text,outline:"none"}}/>
+                      <button onClick={()=>setCE(p=>({...p,servicos:p.servicos.filter((_,x)=>x!==i)}))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px",lineHeight:1,flexShrink:0}}>✕</button>
+                    </div>)}
+                  </div>
+                  <div style={{display:"flex",gap:"6px"}}>
+                    <input value={ce.novoServico} onChange={e=>setCE(p=>({...p,novoServico:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter"&&ce.novoServico.trim()){setCE(p=>({...p,servicos:[...p.servicos,p.novoServico.trim()],novoServico:""}));e.preventDefault()}}} placeholder="+ Novo serviço (Enter para adicionar)..." style={{flex:1,padding:"6px 10px",border:`1.5px solid ${blue}40`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text,outline:"none"}}/>
+                    <Btn onClick={()=>{if(ce.novoServico.trim()){setCE(p=>({...p,servicos:[...p.servicos,p.novoServico.trim()],novoServico:""}));}}} style={{fontSize:"10px",padding:"6px 12px",background:blue,color:"#fff",border:"none",flexShrink:0}}>Adicionar</Btn>
+                  </div>
+                </div>
+              </div>
+
+              {/* AÇÕES */}
+              <div style={{display:"flex",gap:"8px",marginBottom:"14px"}}>
+                <Btn onClick={dlContract} style={{flex:1,background:"linear-gradient(135deg,#16a34a,#15803d)",color:"#fff",border:"none",padding:"10px",fontSize:"12px",fontWeight:"700",borderRadius:"8px",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}}><DownloadIcon size={15} color="#fff"/>Baixar Contrato (PDF)</Btn>
+                <Btn onClick={()=>sendOrcWA(sel)} style={{flex:1,background:"linear-gradient(135deg,#25d366,#128c7e)",color:"#fff",border:"none",padding:"10px",fontSize:"12px",fontWeight:"700",borderRadius:"8px",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}}><SendIcon size={15} color="#fff"/>Enviar via WhatsApp</Btn>
               </div>
 
               {/* PREVIEW DO CONTRATO */}
@@ -2751,7 +2833,7 @@ ${pendPag.length===0?"<p style='color:#888;font-size:12px'>Nenhuma</p>":`<table 
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:"6px"}}>
                     <div>
                       <div style={{fontSize:"12px",fontWeight:"700",color:t.text}}>{o.cN||"Cliente"}</div>
-                      <div style={{fontSize:"9px",color:t.textMuted}}>{PIPE.find(p=>p.id===o.status)?.label||o.status} · {o.data||""}</div>
+                      <div style={{fontSize:"9px",color:t.textMuted}}>{PIPE.find(p=>p.id===o.status)?.label||o.status} · {o.date||""}</div>
                     </div>
                     <span style={{fontSize:"10px",fontWeight:"700",padding:"2px 8px",borderRadius:"4px",background:lucro?"#f0fdf4":"#fef2f2",color:lucro?"#16a34a":"#dc2626"}}>{lucro?"✅ Lucro":"🔴 Prejuízo"}</span>
                   </div>
@@ -2812,6 +2894,81 @@ ${pendPag.length===0?"<p style='color:#888;font-size:12px'>Nenhuma</p>":`<table 
               setTimeout(()=>setFbMsg(""),3000);
               setStkReview(null);
             }} style={{flex:2,background:"#16a34a",color:"#fff",border:"none",fontWeight:"700"}}>Confirmar Baixa</Btn>
+          </div>
+        </div>
+      </div>}
+
+      {/* MODAL REGISTRO MANUAL */}
+      {showManualOrc&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
+        <div style={{background:t.card,borderRadius:"14px",padding:"20px",width:"100%",maxWidth:"420px",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+          <div style={{fontSize:"15px",fontWeight:"800",color:t.text,marginBottom:"4px"}}>📋 Registrar Orçamento Manualmente</div>
+          <div style={{fontSize:"11px",color:t.textSec,marginBottom:"16px"}}>Para orçamentos feitos fora do sistema (papel, PDF, etc.)</div>
+          <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}}>
+              <div>
+                <label style={{fontSize:"9px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"3px"}}>NOME DO CLIENTE *</label>
+                <input value={manualForm.nome} onChange={e=>setManualForm(p=>({...p,nome:e.target.value}))} placeholder="Nome completo" style={{width:"100%",padding:"7px 10px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"7px",fontSize:"12px",background:t.inputBg,color:t.text,outline:"none"}}/>
+              </div>
+              <div>
+                <label style={{fontSize:"9px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"3px"}}>CIDADE</label>
+                <input value={manualForm.cidade} onChange={e=>setManualForm(p=>({...p,cidade:e.target.value}))} placeholder="Cidade" style={{width:"100%",padding:"7px 10px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"7px",fontSize:"12px",background:t.inputBg,color:t.text,outline:"none"}}/>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}}>
+              <div>
+                <label style={{fontSize:"9px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"3px"}}>TELEFONE</label>
+                <input value={manualForm.tel} onChange={e=>setManualForm(p=>({...p,tel:e.target.value}))} placeholder="(xx) xxxxx-xxxx" style={{width:"100%",padding:"7px 10px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"7px",fontSize:"12px",background:t.inputBg,color:t.text,outline:"none"}}/>
+              </div>
+              <div>
+                <label style={{fontSize:"9px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"3px"}}>TIPO DE SERVIÇO</label>
+                <select value={manualForm.tipo} onChange={e=>setManualForm(p=>({...p,tipo:e.target.value}))} style={{width:"100%",padding:"7px 10px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"7px",fontSize:"12px",background:t.inputBg,color:t.text,outline:"none"}}>
+                  {SVC.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px"}}>
+              <div>
+                <label style={{fontSize:"9px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"3px"}}>TAMANHO (m²)</label>
+                <input value={manualForm.ps} onChange={e=>setManualForm(p=>({...p,ps:e.target.value}))} placeholder="Ex: 36" type="number" style={{width:"100%",padding:"7px 10px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"7px",fontSize:"12px",background:t.inputBg,color:t.text,outline:"none"}}/>
+              </div>
+              <div>
+                <label style={{fontSize:"9px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"3px"}}>VALOR TOTAL *</label>
+                <input value={manualForm.valor} onChange={e=>setManualForm(p=>({...p,valor:e.target.value}))} placeholder="Ex: 12500" type="number" style={{width:"100%",padding:"7px 10px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"7px",fontSize:"12px",background:t.inputBg,color:t.text,outline:"none"}}/>
+              </div>
+              <div>
+                <label style={{fontSize:"9px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"3px"}}>DATA</label>
+                <input value={manualForm.data} onChange={e=>setManualForm(p=>({...p,data:e.target.value}))} placeholder="dd/mm/aaaa" style={{width:"100%",padding:"7px 10px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"7px",fontSize:"12px",background:t.inputBg,color:t.text,outline:"none"}}/>
+              </div>
+            </div>
+            <div>
+              <label style={{fontSize:"9px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"6px"}}>STATUS INICIAL</label>
+              <div style={{display:"flex",gap:"6px"}}>
+                {[["lead","📋 Lead"],["negociacao","💬 Negociação"],["fechou","✅ Fechado"]].map(([k,lb])=>(
+                  <button key={k} onClick={()=>setManualForm(p=>({...p,status:k}))} style={{flex:1,padding:"7px",borderRadius:"7px",border:`1.5px solid ${manualForm.status===k?blue:t.cardBorder}`,background:manualForm.status===k?blue:"transparent",color:manualForm.status===k?"#fff":t.text,fontSize:"10px",fontWeight:"700",cursor:"pointer"}}>{lb}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:"8px",marginTop:"18px"}}>
+            <Btn onClick={()=>{setShowManualOrc(false);setManualForm({nome:"",cidade:"",tel:"",tipo:"vinil",ps:"",valor:"",data:new Date().toLocaleDateString("pt-BR"),status:"lead"})}} style={{flex:1,background:"transparent",border:`1.5px solid ${t.cardBorder}`,color:t.textSec}}>Cancelar</Btn>
+            <Btn onClick={()=>{
+              if(!manualForm.nome.trim()){setFbMsg("Informe o nome do cliente");setTimeout(()=>setFbMsg(""),2000);return;}
+              if(!manualForm.valor){setFbMsg("Informe o valor");setTimeout(()=>setFbMsg(""),2000);return;}
+              const id=Date.now();
+              const item={
+                id,cN:manualForm.nome.trim(),cC:manualForm.cidade.trim(),
+                ps:manualForm.ps||"0",tot:manualForm.valor,date:manualForm.data,
+                type:manualForm.tipo,status:manualForm.status,manual:true,
+                closedDate:manualForm.status==="fechou"?manualForm.data:undefined,
+                data:{client:{name:manualForm.nome.trim(),city:manualForm.cidade.trim(),phone:manualForm.tel.trim(),address:"",cpf:"",rg:"",email:""},pool:{length:0,width:0,depth:0},items:[],svcType:manualForm.tipo,propNum:""},
+              };
+              const nh=[item,...hist];
+              setHist(nh);saveLS(nh);saveFS(item);
+              if(manualForm.status==="fechou")autoSyncReceber(item);
+              setShowManualOrc(false);
+              setManualForm({nome:"",cidade:"",tel:"",tipo:"vinil",ps:"",valor:"",data:new Date().toLocaleDateString("pt-BR"),status:"lead"});
+              setFbMsg("Orçamento registrado!");setTimeout(()=>setFbMsg(""),2500);
+            }} style={{flex:2,background:blue,color:"#fff",border:"none",fontWeight:"700"}}>Registrar Orçamento</Btn>
           </div>
         </div>
       </div>}
