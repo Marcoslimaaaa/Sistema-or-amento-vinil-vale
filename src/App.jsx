@@ -1036,6 +1036,8 @@ export default function App(){
   const [manualForm,setManualForm]=useState({nome:"",cidade:"",tel:"",tipo:"vinil",ps:"",valor:"",data:new Date().toLocaleDateString("pt-BR"),status:"lead"});
   const [newNote,setNewNote]=useState("");
   const [crmView,setCrmView]=useState("pipeline");
+  const [syncingContacts,setSyncingContacts]=useState(false);
+  const [syncMsg,setSyncMsg]=useState("");
   const [crmSearch,setCrmSearch]=useState("");
   const [crmSvcF,setCrmSvcF]=useState("todos");
   const [crmShowLost,setCrmShowLost]=useState(false);
@@ -1201,6 +1203,69 @@ export default function App(){
     const d=new Date(parts[2],parts[1]-1,parts[0]);
     const diff=Math.floor((Date.now()-d.getTime())/(1000*60*60*24));
     return diff;
+  };
+
+  // Sincroniza contatos do Google com Firestore
+  const GOOGLE_CLIENT_ID="847282557064-3dc89b0o68ij4jp7dje7eeqggqpr079o.apps.googleusercontent.com";
+  const syncGoogleContacts=()=>{
+    if(!window.google?.accounts?.oauth2){setSyncMsg("Erro: Google Identity Services não carregou");return;}
+    setSyncingContacts(true);setSyncMsg("Conectando ao Google...");
+    const tokenClient=window.google.accounts.oauth2.initTokenClient({
+      client_id:GOOGLE_CLIENT_ID,
+      scope:"https://www.googleapis.com/auth/contacts.readonly",
+      callback:async(tokenResponse)=>{
+        if(tokenResponse.error){setSyncMsg("Erro na autorização: "+tokenResponse.error);setSyncingContacts(false);return;}
+        try{
+          setSyncMsg("Buscando contatos...");
+          let allContacts=[];let nextPageToken="";
+          // Busca todos os contatos paginando
+          do{
+            const url=`https://people.googleapis.com/v1/people/me/connections?personFields=names,phoneNumbers,emailAddresses,birthdays&pageSize=1000${nextPageToken?`&pageToken=${nextPageToken}`:""}`;
+            const resp=await fetch(url,{headers:{Authorization:`Bearer ${tokenResponse.access_token}`}});
+            const data=await resp.json();
+            if(data.connections)allContacts.push(...data.connections);
+            nextPageToken=data.nextPageToken||"";
+          }while(nextPageToken);
+
+          setSyncMsg(`Salvando ${allContacts.length} contatos...`);
+          // Salva no Firestore
+          const batch=fbFns.writeBatch(fb.db);
+          const colRef=fbFns.collection(fb.db,"google_contacts");
+          // Limpa coleção antiga
+          const oldSnap=await fbFns.getDocs(colRef);
+          oldSnap.forEach(d=>batch.delete(d.ref));
+          await batch.commit();
+
+          // Salva em batches de 500
+          let batchCount=0;let currentBatch=fbFns.writeBatch(fb.db);
+          for(const contact of allContacts){
+            const name=contact.names?.[0]?.displayName||"";
+            const phone=contact.phoneNumbers?.[0]?.value||"";
+            const email=contact.emailAddresses?.[0]?.value||"";
+            const birthday=contact.birthdays?.[0]?.date;
+            const birthdayStr=birthday?`${String(birthday.day).padStart(2,"0")}/${String(birthday.month).padStart(2,"0")}${birthday.year?`/${birthday.year}`:""}`:""
+            if(!name&&!phone)continue;
+            // Formata telefone pra chave
+            const cleanPhone=phone.replace(/\D/g,"");
+            const docId=cleanPhone||`contact_${batchCount}`;
+            currentBatch.set(fbFns.doc(fb.db,"google_contacts",docId),{
+              name,phone,cleanPhone,email,birthday:birthdayStr,
+              syncedAt:new Date().toISOString()
+            });
+            batchCount++;
+            if(batchCount%500===0){await currentBatch.commit();currentBatch=fbFns.writeBatch(fb.db);}
+          }
+          if(batchCount%500!==0)await currentBatch.commit();
+          setSyncMsg(`${batchCount} contatos sincronizados!`);
+          setSyncingContacts(false);
+        }catch(err){
+          console.error("Sync error:",err);
+          setSyncMsg("Erro: "+err.message);
+          setSyncingContacts(false);
+        }
+      }
+    });
+    tokenClient.requestAccessToken();
   };
 
   const needsFollowUp=(qId,status)=>{
@@ -1760,7 +1825,9 @@ export default function App(){
           {/* HEADER */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px",flexWrap:"wrap",gap:"8px"}}>
             <div style={{fontSize:"14px",fontWeight:"800",color:blue}}>📈 CRM — Pipeline de Vendas</div>
-            <div style={{display:"flex",gap:"4px"}}>
+            <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
+              <button onClick={syncGoogleContacts} disabled={syncingContacts} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${t.cardBorder}`,background:"transparent",color:t.textSec,fontSize:"9px",fontWeight:"700",cursor:syncingContacts?"wait":"pointer",opacity:syncingContacts?0.6:1}}>{syncingContacts?"⏳ Sincronizando...":"🔄 Contatos Google"}</button>
+              {syncMsg&&<span style={{fontSize:"9px",color:syncMsg.includes("Erro")?"#e74c3c":"#27ae60"}}>{syncMsg}</span>}
               {[["pipeline","🗂️","Pipeline"],["lista","☰","Lista"],["dashboard","📊","Analytics"]].map(([k,ic,lb])=><button key={k} onClick={()=>setCrmView(k)} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${crmView===k?blue:t.cardBorder}`,background:crmView===k?blue:"transparent",color:crmView===k?"#fff":t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>{ic} {lb}</button>)}
             </div>
           </div>
