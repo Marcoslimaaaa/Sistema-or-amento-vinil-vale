@@ -1060,9 +1060,38 @@ export default function App(){
   const [waUnread,setWaUnread]=useState(()=>{try{return JSON.parse(localStorage.getItem("vv_wa_unread")||"[]")}catch{return[]}});
   const [waStarred,setWaStarred]=useState(()=>{try{return JSON.parse(localStorage.getItem("vv_wa_starred")||"{}");} catch{return{}}});
   const [waNotifSound]=useState(()=>{try{return new Audio("data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA/+M4wAAAAAAAAAAAAEluZm8AAAAPAAAAAwAAAbAAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dX/////////////////////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/jOMAAAb4AUBSAAACYQAoCtAAAATDAFBt////MADQAAAANIAAAAAQMAAAABAAAAAAAAAAAAAAAAAAAA");} catch{return null}});
+  const [waDragOver,setWaDragOver]=useState(false);
+  const [waFilePreview,setWaFilePreview]=useState(null);
+  const [waFileCaption,setWaFileCaption]=useState("");
+  const [waSendingFile,setWaSendingFile]=useState(false);
   const waChatRef=useRef(null);
   const waMsgAreaRef=useRef(null);
+  const waFileInputRef=useRef(null);
   const BOT_URL="https://vinil-vale-whatsapp-bot-production.up.railway.app";
+
+  // Processa arquivo para envio (drag-drop ou input)
+  const waProcessFile=(file)=>{
+    if(!file||file.size>16*1024*1024){alert("Arquivo muito grande! Máximo 16MB.");return}
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      const base64=e.target.result.split(",")[1];
+      const isImage=file.type.startsWith("image/");
+      setWaFilePreview({name:file.name,type:file.type,size:file.size,base64,previewUrl:isImage?e.target.result:null});
+      setWaFileCaption("");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Envia arquivo via API do bot
+  const waSendFile=async()=>{
+    if(!waFilePreview||!waChat||waSendingFile)return;
+    setWaSendingFile(true);
+    try{
+      await fetch(`${BOT_URL}/api/send-media`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:waChat,media:waFilePreview.base64,mimetype:waFilePreview.type,fileName:waFilePreview.name,caption:waFileCaption})});
+      setWaFilePreview(null);setWaFileCaption("");
+    }catch(e){alert("Erro ao enviar arquivo: "+e.message)}
+    setWaSendingFile(false);
+  };
 
   // Salva pinned/archived/unread/starred no localStorage
   useEffect(()=>{localStorage.setItem("vv_wa_pinned",JSON.stringify(waPinned))},[waPinned]);
@@ -2227,7 +2256,49 @@ export default function App(){
                 </div>
               </div>
             :
-            waChatData&&<div ref={waChatRef} id="wa-full-area" style={{flex:1,display:"flex",flexDirection:"column",background:"#efeae2",position:"relative"}}>
+            waChatData&&<div ref={waChatRef} id="wa-full-area" style={{flex:1,display:"flex",flexDirection:"column",background:"#efeae2",position:"relative"}} onDragOver={e=>{e.preventDefault();setWaDragOver(true)}} onDragLeave={e=>{e.preventDefault();setWaDragOver(false)}} onDrop={e=>{e.preventDefault();setWaDragOver(false);const file=e.dataTransfer.files?.[0];if(file)waProcessFile(file)}}>
+              {/* Drag overlay */}
+              {waDragOver&&<div style={{position:"absolute",inset:0,background:"rgba(0,128,105,0.85)",zIndex:200,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",borderRadius:"4px",pointerEvents:"none"}}>
+                <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <div style={{color:"#fff",fontSize:"20px",fontWeight:"500",marginTop:"16px"}}>Solte o arquivo aqui</div>
+                <div style={{color:"rgba(255,255,255,0.7)",fontSize:"14px",marginTop:"6px"}}>Imagens, documentos, vídeos ou áudios</div>
+              </div>}
+
+              {/* Modal preview de arquivo */}
+              {waFilePreview&&<div style={{position:"absolute",inset:0,background:"#e9edef",zIndex:200,display:"flex",flexDirection:"column"}}>
+                {/* Header do preview */}
+                <div style={{padding:"10px 16px",background:"#008069",display:"flex",alignItems:"center",gap:"12px"}}>
+                  <button onClick={()=>{setWaFilePreview(null);setWaFileCaption("")}} style={{background:"none",border:"none",cursor:"pointer",padding:"4px",display:"flex"}}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#aebac1" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                  <span style={{color:"#fff",fontSize:"15px",fontWeight:"600"}}>{waFilePreview.name}</span>
+                  <span style={{color:"#aebac1",fontSize:"12px",marginLeft:"auto"}}>{(waFilePreview.size/1024).toFixed(0)} KB</span>
+                </div>
+                {/* Preview area */}
+                <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}}>
+                  {waFilePreview.previewUrl?
+                    <img src={waFilePreview.previewUrl} alt="Preview" style={{maxWidth:"100%",maxHeight:"100%",borderRadius:"8px",boxShadow:"0 2px 12px rgba(0,0,0,0.15)"}}/>
+                  :
+                    <div style={{textAlign:"center"}}>
+                      <div style={{width:"100px",height:"100px",borderRadius:"16px",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",boxShadow:"0 2px 8px rgba(0,0,0,0.1)"}}>
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#8696a0" strokeWidth="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                      </div>
+                      <div style={{fontSize:"16px",color:"#111b21",fontWeight:"500"}}>{waFilePreview.name}</div>
+                      <div style={{fontSize:"13px",color:"#8696a0",marginTop:"4px"}}>{waFilePreview.type} · {(waFilePreview.size/1024).toFixed(0)} KB</div>
+                    </div>
+                  }
+                </div>
+                {/* Caption + enviar */}
+                <div style={{padding:"10px 16px",background:"#f0f2f5",display:"flex",gap:"8px",alignItems:"center"}}>
+                  <div style={{flex:1,background:"#fff",borderRadius:"8px",display:"flex",alignItems:"center",padding:"0 12px",minHeight:"42px"}}>
+                    <input value={waFileCaption} onChange={e=>setWaFileCaption(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")waSendFile()}} placeholder="Adicionar legenda..." style={{flex:1,border:"none",outline:"none",fontSize:"14px",color:"#111b21",background:"transparent",padding:"10px 0"}}/>
+                  </div>
+                  <button onClick={waSendFile} disabled={waSendingFile} style={{width:"48px",height:"48px",borderRadius:"50%",background:"#008069",border:"none",cursor:waSendingFile?"wait":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:waSendingFile?0.6:1}}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                  </button>
+                </div>
+              </div>}
+
               {/* Header do chat */}
               <div style={{padding:"10px 16px",background:"#008069",display:"flex",justifyContent:"space-between",alignItems:"center",minHeight:"56px"}}>
                 <div style={{display:"flex",alignItems:"center",gap:"12px",cursor:"pointer"}} onClick={()=>setWaInfoPanel(!waInfoPanel)}>
@@ -2345,7 +2416,8 @@ export default function App(){
                 <button onClick={()=>setWaShowEmoji(!waShowEmoji)} style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={waShowEmoji?"#008069":"#54656f"} strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
                 </button>
-                <button title="Anexar" style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
+                <input ref={waFileInputRef} type="file" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)waProcessFile(f);e.target.value=""}}/>
+                <button title="Anexar arquivo" onClick={()=>waFileInputRef.current?.click()} style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#54656f" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
                 </button>
                 <div style={{flex:1,background:"#fff",borderRadius:"8px",display:"flex",alignItems:"center",padding:"0 12px",minHeight:"42px"}}>
