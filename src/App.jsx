@@ -1034,6 +1034,7 @@ export default function App(){
   const [fornecedores,setFornec]=useState([]);
   const [interacoes,setInteracoes]=useState({});
   const [crmDetail,setCrmDetail]=useState(null);
+  const [crmChatPhone,setCrmChatPhone]=useState(null);
   const [showManualOrc,setShowManualOrc]=useState(false);
   const [manualForm,setManualForm]=useState({nome:"",cidade:"",tel:"",tipo:"vinil",ps:"",valor:"",data:new Date().toLocaleDateString("pt-BR"),status:"lead"});
   const [newNote,setNewNote]=useState("");
@@ -1937,7 +1938,7 @@ export default function App(){
             <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
               <button onClick={syncGoogleContacts} disabled={syncingContacts} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${t.cardBorder}`,background:"transparent",color:t.textSec,fontSize:"9px",fontWeight:"700",cursor:syncingContacts?"wait":"pointer",opacity:syncingContacts?0.6:1}}>{syncingContacts?"⏳ Sincronizando...":"🔄 Contatos Google"}</button>
               {syncMsg&&<span style={{fontSize:"9px",color:syncMsg.includes("Erro")?"#e74c3c":"#27ae60"}}>{syncMsg}</span>}
-              {[["pipeline","🗂️","Pipeline"],["lista","☰","Lista"],["dashboard","📊","Analytics"]].map(([k,ic,lb])=><button key={k} onClick={()=>setCrmView(k)} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${crmView===k?blue:t.cardBorder}`,background:crmView===k?blue:"transparent",color:crmView===k?"#fff":t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>{ic} {lb}</button>)}
+              {[["pipeline","🗂️","Pipeline"],["funil","🔻","Funil"],["lista","☰","Lista"],["dashboard","📊","Analytics"]].map(([k,ic,lb])=><button key={k} onClick={()=>setCrmView(k)} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${crmView===k?blue:t.cardBorder}`,background:crmView===k?blue:"transparent",color:crmView===k?"#fff":t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>{ic} {lb}</button>)}
             </div>
           </div>
 
@@ -2057,7 +2058,7 @@ export default function App(){
                         {tags.length>0&&<div style={{display:"flex",gap:"2px",flexWrap:"wrap",marginBottom:"4px"}}>{tags.map(tg=><span key={tg} style={{fontSize:"6px",padding:"1px 4px",borderRadius:"8px",background:blue+"15",color:blue,fontWeight:"700"}}>{tg}</span>)}</div>}
                         {crmNextContact[q.id]&&<div style={{fontSize:"7px",marginBottom:"4px",color:overdue?"#dc2626":"#16a34a",fontWeight:"600"}}>📅 {overdue?"Atrasado":"Próx"}: {new Date(crmNextContact[q.id]+"T12:00").toLocaleDateString("pt-BR")}</div>}
                         <div style={{display:"flex",gap:"2px",marginTop:"4px"}}>
-                          <button title="WhatsApp" onClick={()=>{msgWA(q);addInteracao(q.id,"whatsapp","Mensagem enviada via WhatsApp")}} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><MessageCircleIcon size={13} color="#fff"/></button>
+                          <button title="Abrir Chat WhatsApp" onClick={()=>{const ph=(q.data?.client?.phone||"").replace(/\D/g,"");const fullPh=ph.startsWith("55")?ph:`55${ph}`;const conv=waConvs.find(c=>c.phone===fullPh||c.phone===ph);if(conv){setCrmChatPhone(conv.phone)}else{msgWA(q)}addInteracao(q.id,"whatsapp","Chat WhatsApp aberto")}} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><MessageCircleIcon size={13} color="#fff"/></button>
                           <button title="PDF" onClick={()=>{sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado via WhatsApp")}} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><FileTextIcon size={13} color="#fff"/></button>
                           {!["concluido","perdido"].includes(stage.id)&&<select title="Mover" value="" onChange={e=>{if(e.target.value)movePipe(q.id,e.target.value);e.target.value=""}} style={{flex:2,fontSize:"7px",padding:"2px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer"}}>
                             <option value="">→ Mover</option>
@@ -2072,6 +2073,60 @@ export default function App(){
                 </div>
               })}
             </div>
+          </>}
+
+          {/* ── FUNIL VISUAL ── */}
+          {crmView==="funil"&&<>
+            <div style={{background:t.sectionBg,borderRadius:"12px",padding:"20px",border:`1px solid ${t.cardBorder}`,marginBottom:"14px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px"}}>
+                <div style={{fontSize:"14px",fontWeight:"700",color:t.text}}>Funil de Vendas</div>
+                <div style={{fontSize:"10px",color:t.textMuted}}>{hist.length} leads no total</div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"0"}}>
+                {activePipe.filter(p=>p.id!=="perdido").map((stage,idx,arr)=>{
+                  const cnt=hist.filter(q=>(q.status||"lead")===stage.id).length;
+                  const pct=hist.length>0?Math.round((cnt/hist.length)*100):0;
+                  const val=hist.filter(q=>(q.status||"lead")===stage.id).reduce((s,q)=>s+(parseFloat(q.tot)||0),0);
+                  const widthPct=100-((idx/(arr.length-1||1))*55);
+                  const colors=["#f7dc6f","#f0b27a","#e67e22","#e74c3c","#5dade2","#2ecc71"];
+                  const bgColor=colors[idx%colors.length];
+                  return <div key={stage.id} style={{width:"100%",display:"flex",alignItems:"center",gap:"12px"}}>
+                    <div style={{flex:1,display:"flex",justifyContent:"center"}}>
+                      <div onClick={()=>{setCrmView("pipeline");setCrmSearch("");setCrmSvcF("todos")}} style={{width:widthPct+"%",minWidth:"120px",height:"52px",background:bgColor,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all 0.3s",clipPath:idx===0?"polygon(0 0, 100% 0, 97% 100%, 3% 100%)":idx===arr.length-1?"polygon(3% 0, 97% 0, 50% 100%, 50% 100%)":"polygon(3% 0, 97% 0, 94% 100%, 6% 100%)",position:"relative"}} onMouseEnter={e=>e.currentTarget.style.opacity="0.85"} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
+                        <span style={{fontSize:"13px",fontWeight:"700",color:"#fff",textShadow:"0 1px 2px rgba(0,0,0,0.3)"}}>{stage.icon} {stage.label} ({pct}%)</span>
+                      </div>
+                    </div>
+                    <div style={{width:"180px",textAlign:"right",flexShrink:0}}>
+                      <div style={{fontSize:"13px",fontWeight:"700",color:t.text}}>{cnt} lead{cnt!==1?"s":""}</div>
+                      <div style={{fontSize:"11px",color:t.textSec}}>{fmt(val)}</div>
+                    </div>
+                  </div>;
+                })}
+              </div>
+              {/* Conversão entre etapas */}
+              <div style={{marginTop:"20px",padding:"12px",background:t.card,borderRadius:"8px",border:`1px solid ${t.cardBorder}`}}>
+                <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"8px"}}>Taxa de Conversão por Etapa</div>
+                <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
+                  {activePipe.filter(p=>p.id!=="perdido").map((stage,idx,arr)=>{
+                    if(idx===0)return null;
+                    const prev=arr[idx-1];
+                    const prevCnt=hist.filter(q=>(q.status||"lead")===prev.id).length;
+                    const currCnt=hist.filter(q=>(q.status||"lead")===stage.id).length;
+                    const convRate=prevCnt>0?Math.round((currCnt/prevCnt)*100):0;
+                    return <div key={stage.id} style={{flex:1,minWidth:"100px",background:t.sectionBg,borderRadius:"8px",padding:"8px",textAlign:"center",border:`1px solid ${t.cardBorder}`}}>
+                      <div style={{fontSize:"8px",color:t.textMuted}}>{prev.icon} → {stage.icon}</div>
+                      <div style={{fontSize:"18px",fontWeight:"800",color:convRate>=50?"#16a34a":convRate>=25?"#f59e0b":"#dc2626"}}>{convRate}%</div>
+                      <div style={{fontSize:"8px",color:t.textMuted}}>{prev.label} → {stage.label}</div>
+                    </div>;
+                  })}
+                </div>
+              </div>
+            </div>
+            {/* Perdidos separado */}
+            {(()=>{const cnt=hist.filter(q=>q.status==="perdido").length;const val=hist.filter(q=>q.status==="perdido").reduce((s,q)=>s+(parseFloat(q.tot)||0),0);return cnt>0?<div style={{background:"#fef2f2",borderRadius:"10px",padding:"12px",border:"1px solid #fecaca",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"8px"}}><span style={{fontSize:"16px"}}>❌</span><div><div style={{fontSize:"12px",fontWeight:"700",color:"#dc2626"}}>Perdidos</div><div style={{fontSize:"10px",color:"#991b1b"}}>{cnt} leads · {fmt(val)}</div></div></div>
+              <div style={{fontSize:"20px",fontWeight:"800",color:"#dc2626"}}>{hist.length>0?Math.round((cnt/hist.length)*100):0}%</div>
+            </div>:null})()}
           </>}
 
           {/* ── LISTA ── */}
@@ -2120,7 +2175,7 @@ export default function App(){
                     </div>
                     <div style={{fontSize:"10px",fontWeight:"700",color:days<=5?"#16a34a":days<=10?"#f59e0b":"#dc2626",flexShrink:0,minWidth:"26px",textAlign:"right"}}>{days<999?days+"d":"—"}</div>
                     <div style={{display:"flex",gap:"3px",flexShrink:0}}>
-                      <button title="WhatsApp" onClick={e=>{e.stopPropagation();msgWA(q);addInteracao(q.id,"whatsapp","Mensagem enviada via WhatsApp")}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><MessageCircleIcon size={14} color="#fff"/></button>
+                      <button title="Abrir Chat WhatsApp" onClick={e=>{e.stopPropagation();const ph=(q.data?.client?.phone||"").replace(/\D/g,"");const fullPh=ph.startsWith("55")?ph:`55${ph}`;const conv=waConvs.find(c=>c.phone===fullPh||c.phone===ph);if(conv){setCrmChatPhone(conv.phone)}else{msgWA(q)}addInteracao(q.id,"whatsapp","Chat WhatsApp aberto")}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><MessageCircleIcon size={14} color="#fff"/></button>
                       <button title="PDF" onClick={e=>{e.stopPropagation();sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado")}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><FileTextIcon size={14} color="#fff"/></button>
                     </div>
                   </div>
@@ -2132,6 +2187,68 @@ export default function App(){
           </>}
 
           </>}
+
+          {/* ── CHAT WHATSAPP INLINE NO CRM ── */}
+          {crmChatPhone&&(()=>{
+            const conv=waConvs.find(c=>c.phone===crmChatPhone);
+            if(!conv)return <div style={{marginTop:"12px",padding:"12px",background:"#fef2f2",borderRadius:"8px",border:"1px solid #fecaca",fontSize:"12px",color:"#dc2626",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span>Conversa não encontrada no WhatsApp</span>
+              <button onClick={()=>setCrmChatPhone(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"14px",color:"#dc2626"}}>✕</button>
+            </div>;
+            const chatData=crmChatPhone===waChat?waChatData:conv;
+            const nome=conv.leadData?.nome||waFmtPhone(conv.phone);
+            return <div style={{marginTop:"12px",borderRadius:"8px",overflow:"hidden",border:"1px solid #e2ddd1",height:"450px",display:"flex",flexDirection:"column"}}>
+              {/* Header */}
+              <div style={{padding:"8px 14px",background:"#008069",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+                  <div style={{width:"36px",height:"36px",borderRadius:"50%",background:"rgba(255,255,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <svg width="20" height="20" viewBox="0 0 212 212" fill="#cfd6da"><path d="M106 0C47.5 0 0 47.5 0 106s47.5 106 106 106 106-47.5 106-106S164.5 0 106 0zm0 40.2c18.2 0 33 14.8 33 33s-14.8 33-33 33-33-14.8-33-33 14.8-33 33-33zm0 150.4c-26.6 0-50.1-13.6-63.8-34.2 .3-21.2 42.6-32.8 63.8-32.8s63.5 11.6 63.8 32.8c-13.7 20.6-37.2 34.2-63.8 34.2z"/></svg>
+                  </div>
+                  <div>
+                    <div style={{fontWeight:"600",fontSize:"13px",color:"#fff"}}>{nome}</div>
+                    <div style={{fontSize:"11px",color:"#aebac1"}}>{waFmtPhone(crmChatPhone)} · {conv.status||"coletando"}</div>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
+                  <button onClick={()=>{fetch(`${BOT_URL}/api/bot-on/${crmChatPhone}`,{method:"POST"})}} style={{padding:"4px 8px",borderRadius:"4px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#25d366",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>🤖 Bot ON</button>
+                  <button onClick={()=>{fetch(`${BOT_URL}/api/handoff/${crmChatPhone}`,{method:"POST"})}} style={{padding:"4px 8px",borderRadius:"4px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#ffc107",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>✋ Assumir</button>
+                  <button onClick={()=>{setTab("whatsapp");setWaChat(crmChatPhone);setCrmChatPhone(null)}} style={{padding:"4px 8px",borderRadius:"4px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#aebac1",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>↗️ Expandir</button>
+                  <button onClick={()=>setCrmChatPhone(null)} style={{background:"none",border:"none",cursor:"pointer",padding:"4px",display:"flex"}}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#aebac1" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+              </div>
+              {/* Mensagens */}
+              <div style={{flex:1,overflowY:"auto",padding:"12px 40px",display:"flex",flexDirection:"column",gap:"2px",background:"#efeae2",backgroundImage:"url('data:image/svg+xml,%3Csvg width=\"400\" height=\"400\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cdefs%3E%3Cpattern id=\"p\" width=\"40\" height=\"40\" patternUnits=\"userSpaceOnUse\"%3E%3Ccircle cx=\"20\" cy=\"20\" r=\"1.5\" fill=\"%23d1cfc3\" opacity=\"0.3\"/%3E%3C/pattern%3E%3C/defs%3E%3Crect width=\"400\" height=\"400\" fill=\"%23efeae2\"/%3E%3Crect width=\"400\" height=\"400\" fill=\"url(%23p)\"/%3E%3C/svg%3E')",backgroundSize:"400px 400px"}} ref={el=>{if(el)el.scrollTop=el.scrollHeight}}>
+                {(chatData?.history||conv.history||[]).map((msg,i)=>{
+                  const isOut=msg.role==="assistant";
+                  const isManual=isOut&&msg.content?.startsWith("[Marcos]");
+                  const content=isManual?msg.content.replace("[Marcos] ",""):msg.content;
+                  const time=msg.timestamp?new Date(msg.timestamp).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}):"";
+                  return <div key={i} style={{alignSelf:isOut?"flex-end":"flex-start",maxWidth:"70%",marginBottom:"2px"}}>
+                    <div style={{padding:"5px 7px 6px 8px",borderRadius:isOut?"7.5px 7.5px 0 7.5px":"7.5px 7.5px 7.5px 0",background:isOut?"#d9fdd3":"#fff",boxShadow:"0 1px 0.5px rgba(0,0,0,0.13)"}}>
+                      <span style={{fontSize:"13px",color:"#111b21",lineHeight:"1.4",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{content}</span>
+                      <span style={{float:"right",marginLeft:"10px",marginTop:"3px",display:"inline-flex",alignItems:"center",gap:"2px"}}>
+                        <span style={{fontSize:"10px",color:"#667781"}}>{time}</span>
+                        {isOut&&<svg width="14" height="9" viewBox="0 0 16 11" fill="none"><path d="M11.07 0L9.95 1.12 3.82 7.25 1.54 4.97.42 6.09l3.4 3.4 7.25-7.25z" fill={isManual?"#53bdeb":"#8696a0"}/><path d="M15.07 0L13.95 1.12 7.82 7.25 7.25 6.68 6.13 7.8l1.69 1.69 7.25-7.25z" fill={isManual?"#53bdeb":"#8696a0"}/></svg>}
+                      </span>
+                    </div>
+                    {isOut&&!isManual&&<div style={{fontSize:"9px",color:"#8696a0",textAlign:"right",marginTop:"1px"}}>🤖 Bot</div>}
+                  </div>;
+                })}
+              </div>
+              {/* Input */}
+              <div style={{padding:"6px 12px",background:"#f0f2f5",display:"flex",gap:"6px",alignItems:"center"}}>
+                <div style={{flex:1,background:"#fff",borderRadius:"8px",display:"flex",alignItems:"center",padding:"0 10px",minHeight:"38px"}}>
+                  <input value={waMsg} onChange={e=>setWaMsg(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!waMsg.trim())return;const origChat=waChat;setWaChat(crmChatPhone);setTimeout(()=>{waSendMessage();if(!origChat||origChat!==crmChatPhone)setWaChat(origChat)},100)}}} placeholder="Digite uma mensagem..." style={{flex:1,border:"none",outline:"none",fontSize:"13px",color:"#111b21",background:"transparent",padding:"8px 0"}}/>
+                </div>
+                <button onClick={()=>{if(!waMsg.trim())return;const origChat=waChat;setWaChat(crmChatPhone);setTimeout(()=>{waSendMessage();if(!origChat||origChat!==crmChatPhone)setWaChat(origChat)},100)}} disabled={waSending||!waMsg.trim()} style={{width:"38px",height:"38px",borderRadius:"50%",background:"#008069",border:"none",cursor:waSending?"wait":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:waSending||!waMsg.trim()?0.5:1}}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+              </div>
+            </div>;
+          })()}
+
           </>;
         })()}</Card>}
 
