@@ -48,6 +48,7 @@ const VER="v4.5";
 const escHtml=(s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;');
 if(typeof document!=="undefined"&&!document.getElementById("vv-styles")){const s=document.createElement("style");s.id="vv-styles";s.textContent=`
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+div:hover>.wa-msg-hover{opacity:1!important}
 @media(max-width:600px){
   .vv-g2{grid-template-columns:1fr!important}
   .vv-g3{grid-template-columns:1fr 1fr!important}
@@ -1046,8 +1047,36 @@ export default function App(){
   const [waSending,setWaSending]=useState(false);
   const [waSearch,setWaSearch]=useState("");
   const [waFilter,setWaFilter]=useState("all");
+  const [waShowEmoji,setWaShowEmoji]=useState(false);
+  const [waReply,setWaReply]=useState(null);
+  const [waInfoPanel,setWaInfoPanel]=useState(false);
+  const [waChatSearch,setWaChatSearch]=useState("");
+  const [waChatSearchOpen,setWaChatSearchOpen]=useState(false);
+  const [waCtxMenu,setWaCtxMenu]=useState(null);
+  const [waConvCtx,setWaConvCtx]=useState(null);
+  const [waPinned,setWaPinned]=useState(()=>{try{return JSON.parse(localStorage.getItem("vv_wa_pinned")||"[]")}catch{return[]}});
+  const [waArchived,setWaArchived]=useState(()=>{try{return JSON.parse(localStorage.getItem("vv_wa_archived")||"[]")}catch{return[]}});
+  const [waShowArchived,setWaShowArchived]=useState(false);
+  const [waUnread,setWaUnread]=useState(()=>{try{return JSON.parse(localStorage.getItem("vv_wa_unread")||"[]")}catch{return[]}});
+  const [waStarred,setWaStarred]=useState(()=>{try{return JSON.parse(localStorage.getItem("vv_wa_starred")||"{}");} catch{return{}}});
+  const [waNotifSound]=useState(()=>{try{return new Audio("data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA/+M4wAAAAAAAAAAAAEluZm8AAAAPAAAAAwAAAbAAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dX/////////////////////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/jOMAAAb4AUBSAAACYQAoCtAAAATDAFBt////MADQAAAANIAAAAAQMAAAABAAAAAAAAAAAAAAAAAAAA");} catch{return null}});
   const waChatRef=useRef(null);
+  const waMsgAreaRef=useRef(null);
   const BOT_URL="https://vinil-vale-whatsapp-bot-production.up.railway.app";
+
+  // Salva pinned/archived/unread/starred no localStorage
+  useEffect(()=>{localStorage.setItem("vv_wa_pinned",JSON.stringify(waPinned))},[waPinned]);
+  useEffect(()=>{localStorage.setItem("vv_wa_archived",JSON.stringify(waArchived))},[waArchived]);
+  useEffect(()=>{localStorage.setItem("vv_wa_unread",JSON.stringify(waUnread))},[waUnread]);
+  useEffect(()=>{localStorage.setItem("vv_wa_starred",JSON.stringify(waStarred))},[waStarred]);
+
+  // Notificação sonora de nova mensagem
+  const waLastCountRef=useRef(0);
+  useEffect(()=>{
+    const total=waConvs.reduce((a,c)=>(c.history?.length||0)+a,0);
+    if(waLastCountRef.current>0&&total>waLastCountRef.current&&waNotifSound){try{waNotifSound.play().catch(()=>{})}catch{}}
+    waLastCountRef.current=total;
+  },[waConvs]);
   const [crmSearch,setCrmSearch]=useState("");
   const [crmSvcF,setCrmSvcF]=useState("todos");
   const [crmShowLost,setCrmShowLost]=useState(false);
@@ -1587,7 +1616,7 @@ export default function App(){
   const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setWM(d.wMode||"regular");setWalls(d.walls||[]);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
   const movePipe=(id,stage)=>{const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);if(["fechou","execucao","concluido"].includes(stage))autoSyncReceber(item);}setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
-  const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const url=`https://wa.me/55${num}${msg?`?text=${encodeURIComponent(msg)}`:""}`;window.open(url,"_blank")};
+  const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const fullNum=num.startsWith("55")?num:`55${num}`;const conv=waConvs.find(c=>c.phone===fullNum||c.phone===num);if(conv){setTab("whatsapp");setWaChat(conv.phone);if(msg)setWaMsg(msg)}else{setTab("whatsapp");setFbMsg("📱 Conversa não encontrada no sistema. Inicie pelo WhatsApp.");setTimeout(()=>setFbMsg(""),3000)}};
   const sendOrcWA=(q)=>{
     const d=q.data;const c=d?.client||{};const inc=(d?.items||[]).filter(i=>i.on);
     const p=d?.pool||{};const pay2=d?.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
@@ -2079,22 +2108,27 @@ export default function App(){
 
         {/* ESTOQUE */}
         {tab==="whatsapp"&&<Card t={t}><ST icon="💬">WhatsApp</ST>
-          <div style={{display:"flex",height:"calc(100vh - 220px)",gap:"0",borderRadius:"4px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}>
+          <div style={{display:"flex",height:"calc(100vh - 220px)",gap:"0",borderRadius:"4px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}} onClick={()=>{setWaCtxMenu(null);setWaConvCtx(null)}}>
             {/* === PAINEL ESQUERDO - Lista de Conversas === */}
             <div style={{width:waChat?"35%":"100%",minWidth:"300px",maxWidth:waChat?"420px":"100%",display:"flex",flexDirection:"column",borderRight:"1px solid #e2ddd1",background:"#fff"}}>
               {/* Header verde escuro */}
-              <div style={{padding:"10px 16px",background:"#008069",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{padding:"10px 16px",background:"#008069",display:"flex",justifyContent:"space-between",alignItems:"center",minHeight:"56px"}}>
                 <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
-                  <div style={{width:"36px",height:"36px",borderRadius:"50%",background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <span style={{fontSize:"16px"}}>👤</span>
+                  <div style={{width:"40px",height:"40px",borderRadius:"50%",background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <svg width="22" height="22" viewBox="0 0 212 212" fill="#aebac1"><path d="M106 0C47.5 0 0 47.5 0 106s47.5 106 106 106 106-47.5 106-106S164.5 0 106 0zm0 40.2c18.2 0 33 14.8 33 33s-14.8 33-33 33-33-14.8-33-33 14.8-33 33-33zm0 150.4c-26.6 0-50.1-13.6-63.8-34.2 .3-21.2 42.6-32.8 63.8-32.8s63.5 11.6 63.8 32.8c-13.7 20.6-37.2 34.2-63.8 34.2z"/></svg>
                   </div>
+                  <span style={{color:"#e9edef",fontSize:"15px",fontWeight:"600"}}>Vinil Vale</span>
                 </div>
-                <div style={{display:"flex",gap:"16px",alignItems:"center"}}>
-                  <button onClick={async()=>{if(!waChatRef.current)return;const canvas=await html2canvas(waChatRef.current,{backgroundColor:null,scale:2});const link=document.createElement("a");link.download=`whatsapp-${waChat||"conversas"}-${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.png`;link.href=canvas.toDataURL("image/png");link.click()}} title="Capturar PNG" style={{background:"none",border:"none",cursor:"pointer",opacity:0.85,padding:"4px"}}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#aebac1" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <div style={{display:"flex",gap:"12px",alignItems:"center"}}>
+                  <button onClick={async()=>{const el=document.getElementById("wa-full-area");if(!el)return;const canvas=await html2canvas(el,{backgroundColor:null,scale:2});const link=document.createElement("a");link.download=`whatsapp-${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.png`;link.href=canvas.toDataURL("image/png");link.click()}} title="Capturar PNG" style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
+                    <DownloadIcon size={20} color="#aebac1"/>
                   </button>
-                  <span style={{color:"#aebac1",fontSize:"18px",cursor:"pointer"}}>💬</span>
-                  <span style={{color:"#aebac1",fontSize:"18px",cursor:"pointer"}}>⋮</span>
+                  <button title="Nova conversa" style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#aebac1" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                  </button>
+                  <button title="Menu" style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#aebac1"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+                  </button>
                 </div>
               </div>
 
@@ -2103,58 +2137,89 @@ export default function App(){
                 <div style={{display:"flex",alignItems:"center",background:"#fff",borderRadius:"8px",padding:"0 12px",height:"35px"}}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#54656f" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                   <input value={waSearch} onChange={e=>setWaSearch(e.target.value)} placeholder="Pesquisar ou começar uma nova conversa" style={{flex:1,border:"none",outline:"none",padding:"0 10px",fontSize:"13px",color:"#111b21",background:"transparent"}}/>
+                  {waSearch&&<button onClick={()=>setWaSearch("")} style={{background:"none",border:"none",cursor:"pointer",padding:"2px"}}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8696a0" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>}
                 </div>
               </div>
 
               {/* Filtros */}
-              <div style={{padding:"6px 12px",background:"#f0f2f5",display:"flex",gap:"6px",borderBottom:"1px solid #e2ddd1"}}>
-                {[["all","Tudo"],["unread","Não lidas"],["handed_off","Assumidos"],["qualified","Qualificados"]].map(([k,lb])=>
-                  <button key={k} onClick={()=>setWaFilter(k)} style={{padding:"4px 12px",borderRadius:"16px",border:"none",background:waFilter===k?"#008069":"#e9edef",color:waFilter===k?"#fff":"#54656f",fontSize:"12px",fontWeight:"500",cursor:"pointer"}}>{lb}</button>
+              <div style={{padding:"6px 12px",background:"#f0f2f5",display:"flex",gap:"6px",flexWrap:"wrap",borderBottom:"1px solid #e2ddd1"}}>
+                {[["all","Tudo"],["unread","Não lidas"],["handed_off","Assumidos"],["qualified","Qualificados"],["starred","Favoritas"],["archived","Arquivadas"]].map(([k,lb])=>
+                  <button key={k} onClick={()=>{if(k==="archived"){setWaShowArchived(!waShowArchived);setWaFilter("all")}else{setWaFilter(k);setWaShowArchived(false)}}} style={{padding:"4px 12px",borderRadius:"16px",border:"none",background:(waFilter===k||(k==="archived"&&waShowArchived))?"#008069":"#e9edef",color:(waFilter===k||(k==="archived"&&waShowArchived))?"#fff":"#54656f",fontSize:"12px",fontWeight:"500",cursor:"pointer"}}>{lb}</button>
                 )}
               </div>
 
               {/* Lista de conversas */}
               <div style={{flex:1,overflowY:"auto"}}>
                 {waConvs.length===0?<div style={{padding:"40px 20px",textAlign:"center",color:"#8696a0",fontSize:"13px"}}>Nenhuma conversa ainda</div>:
-                waConvs.filter(c=>{
-                  const nome=(c.leadData?.nome||waFmtPhone(c.phone)).toLowerCase();
-                  if(waSearch&&!nome.includes(waSearch.toLowerCase()))return false;
-                  if(waFilter==="all")return true;
-                  if(waFilter==="unread")return c.unread;
-                  return c.status===waFilter;
-                }).map(c=>{
-                  const lastMsg=c.history?.[c.history.length-1];
-                  const nome=c.leadData?.nome||waFmtPhone(c.phone);
-                  const isActive=waChat===c.phone;
-                  const statusColor=c.status==="handed_off"?"#e67e22":c.status==="qualified"?"#25d366":c.status==="closed"?"#8696a0":"#53bdeb";
-                  const timeDiff=c.lastActivity?Math.round((Date.now()-(typeof c.lastActivity==="number"?c.lastActivity:new Date(c.lastActivity).getTime()))/(1000*60)):0;
-                  const timeStr=timeDiff<60?`${timeDiff}min`:timeDiff<1440?`${Math.round(timeDiff/60)}h`:`${Math.round(timeDiff/1440)}d`;
-                  const lastMsgText=lastMsg?.content?.slice(0,55)||"";
-                  const isFromBot=lastMsg?.role==="assistant";
-                  return <div key={c.phone} onClick={()=>setWaChat(c.phone)} style={{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid #f0f2f5",background:isActive?"#f0f2f5":"#fff",display:"flex",gap:"12px",alignItems:"center",transition:"background 0.15s"}}>
-                    <div style={{width:"48px",height:"48px",borderRadius:"50%",background:"#dfe5e7",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative"}}>
-                      <svg width="26" height="26" viewBox="0 0 212 212" fill="#fff"><path d="M106 0C47.5 0 0 47.5 0 106s47.5 106 106 106 106-47.5 106-106S164.5 0 106 0zm0 40.2c18.2 0 33 14.8 33 33s-14.8 33-33 33-33-14.8-33-33 14.8-33 33-33zm0 150.4c-26.6 0-50.1-13.6-63.8-34.2 .3-21.2 42.6-32.8 63.8-32.8s63.5 11.6 63.8 32.8c-13.7 20.6-37.2 34.2-63.8 34.2z"/></svg>
-                      <div style={{position:"absolute",bottom:"0",right:"0",width:"13px",height:"13px",borderRadius:"50%",background:statusColor,border:"2px solid #fff"}}></div>
-                    </div>
-                    <div style={{flex:1,overflow:"hidden"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
-                        <div style={{fontWeight:"500",fontSize:"15px",color:"#111b21",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"70%"}}>{nome}</div>
-                        <div style={{fontSize:"11px",color:c.unread?"#25d366":"#8696a0",flexShrink:0}}>{timeStr}</div>
+                (()=>{
+                  const filtered=waConvs.filter(c=>{
+                    const nome=(c.leadData?.nome||waFmtPhone(c.phone)).toLowerCase();
+                    const searchTxt=waSearch.toLowerCase();
+                    if(waSearch&&!nome.includes(searchTxt)&&!(c.history||[]).some(m=>m.content?.toLowerCase().includes(searchTxt)))return false;
+                    const isArch=waArchived.includes(c.phone);
+                    if(waShowArchived)return isArch;
+                    if(isArch)return false;
+                    if(waFilter==="all")return true;
+                    if(waFilter==="unread")return waUnread.includes(c.phone);
+                    if(waFilter==="starred")return waPinned.includes(c.phone);
+                    return c.status===waFilter;
+                  });
+                  const pinned=filtered.filter(c=>waPinned.includes(c.phone));
+                  const unpinned=filtered.filter(c=>!waPinned.includes(c.phone));
+                  const renderConv=(c,isPinned)=>{
+                    const lastMsg=c.history?.[c.history.length-1];
+                    const nome=c.leadData?.nome||waFmtPhone(c.phone);
+                    const isActive=waChat===c.phone;
+                    const statusColor=c.status==="handed_off"?"#e67e22":c.status==="qualified"?"#25d366":c.status==="closed"?"#8696a0":"#53bdeb";
+                    const timeDiff=c.lastActivity?Math.round((Date.now()-(typeof c.lastActivity==="number"?c.lastActivity:new Date(c.lastActivity).getTime()))/(1000*60)):0;
+                    const timeStr=timeDiff<60?`${timeDiff}min`:timeDiff<1440?`${Math.round(timeDiff/60)}h`:`${Math.round(timeDiff/1440)}d`;
+                    const lastMsgText=lastMsg?.content?.slice(0,55)||"";
+                    const isFromBot=lastMsg?.role==="assistant";
+                    const isUnread=waUnread.includes(c.phone);
+                    return <div key={c.phone} onClick={()=>{setWaChat(c.phone);setWaUnread(p=>p.filter(x=>x!==c.phone))}} onContextMenu={e=>{e.preventDefault();setWaConvCtx({phone:c.phone,x:e.clientX,y:e.clientY})}} style={{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid #f0f2f5",background:isActive?"#f0f2f5":"#fff",display:"flex",gap:"12px",alignItems:"center",transition:"background 0.15s",position:"relative"}}>
+                      <div style={{width:"48px",height:"48px",borderRadius:"50%",background:"#dfe5e7",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative"}}>
+                        <svg width="26" height="26" viewBox="0 0 212 212" fill="#fff"><path d="M106 0C47.5 0 0 47.5 0 106s47.5 106 106 106 106-47.5 106-106S164.5 0 106 0zm0 40.2c18.2 0 33 14.8 33 33s-14.8 33-33 33-33-14.8-33-33 14.8-33 33-33zm0 150.4c-26.6 0-50.1-13.6-63.8-34.2 .3-21.2 42.6-32.8 63.8-32.8s63.5 11.6 63.8 32.8c-13.7 20.6-37.2 34.2-63.8 34.2z"/></svg>
+                        <div style={{position:"absolute",bottom:"0",right:"0",width:"13px",height:"13px",borderRadius:"50%",background:statusColor,border:"2px solid #fff"}}></div>
                       </div>
-                      <div style={{display:"flex",alignItems:"center",gap:"3px",marginTop:"2px"}}>
-                        {isFromBot&&<svg width="16" height="11" viewBox="0 0 16 11" fill="none"><path d="M11.07 0L9.95 1.12 3.82 7.25 1.54 4.97.42 6.09l3.4 3.4 7.25-7.25z" fill="#53bdeb"/></svg>}
-                        <div style={{fontSize:"13px",color:"#8696a0",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{lastMsgText||"..."}</div>
+                      <div style={{flex:1,overflow:"hidden"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+                          <div style={{fontWeight:isUnread?"600":"400",fontSize:"15px",color:"#111b21",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"65%"}}>{nome}</div>
+                          <div style={{display:"flex",alignItems:"center",gap:"4px",flexShrink:0}}>
+                            {isPinned&&<svg width="14" height="14" viewBox="0 0 24 24" fill="#8696a0"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5v6h2v-6h5v-2z"/></svg>}
+                            <span style={{fontSize:"11px",color:isUnread?"#25d366":"#8696a0"}}>{timeStr}</span>
+                          </div>
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:"3px",marginTop:"2px",justifyContent:"space-between"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:"3px",overflow:"hidden",flex:1}}>
+                            {isFromBot&&<svg width="16" height="11" viewBox="0 0 16 11" fill="none" style={{flexShrink:0}}><path d="M11.07 0L9.95 1.12 3.82 7.25 1.54 4.97.42 6.09l3.4 3.4 7.25-7.25z" fill="#53bdeb"/></svg>}
+                            <div style={{fontSize:"13px",color:isUnread?"#111b21":"#8696a0",fontWeight:isUnread?"500":"400",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{lastMsgText||"..."}</div>
+                          </div>
+                          {isUnread&&<div style={{width:"18px",height:"18px",borderRadius:"50%",background:"#25d366",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:"10px",color:"#fff",fontWeight:"700"}}>1</span></div>}
+                        </div>
                       </div>
-                    </div>
-                  </div>;
-                })}
+                    </div>;
+                  };
+                  return <>
+                    {pinned.length>0&&<>{pinned.map(c=>renderConv(c,true))}<div style={{height:"1px",background:"#e2ddd1",margin:"0 14px"}}></div></>}
+                    {unpinned.map(c=>renderConv(c,false))}
+                  </>;
+                })()}
               </div>
             </div>
 
-            {/* === PAINEL DIREITO - Chat === */}
+            {/* Menu de contexto da conversa */}
+            {waConvCtx&&<div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:waConvCtx.x,top:waConvCtx.y,background:"#fff",borderRadius:"4px",boxShadow:"0 2px 8px rgba(0,0,0,0.2)",zIndex:9999,minWidth:"200px",padding:"8px 0"}}>
+              {[
+                [waPinned.includes(waConvCtx.phone)?"Desafixar conversa":"Fixar conversa",()=>setWaPinned(p=>p.includes(waConvCtx.phone)?p.filter(x=>x!==waConvCtx.phone):[...p,waConvCtx.phone])],
+                [waArchived.includes(waConvCtx.phone)?"Desarquivar":"Arquivar conversa",()=>setWaArchived(p=>p.includes(waConvCtx.phone)?p.filter(x=>x!==waConvCtx.phone):[...p,waConvCtx.phone])],
+                [waUnread.includes(waConvCtx.phone)?"Marcar como lida":"Marcar como não lida",()=>setWaUnread(p=>p.includes(waConvCtx.phone)?p.filter(x=>x!==waConvCtx.phone):[...p,waConvCtx.phone])],
+                ["Abrir conversa",()=>{setWaChat(waConvCtx.phone);setWaUnread(p=>p.filter(x=>x!==waConvCtx.phone))}],
+              ].map(([label,fn],i)=><div key={i} onClick={()=>{fn();setWaConvCtx(null)}} style={{padding:"10px 20px",cursor:"pointer",fontSize:"14px",color:"#111b21",transition:"background 0.1s"}} onMouseEnter={e=>e.target.style.background="#f0f2f5"} onMouseLeave={e=>e.target.style.background="transparent"}>{label}</div>)}
+            </div>}
+
+            {/* === PAINEL CENTRAL - Chat === */}
             {!waChat?
-              /* Tela vazia quando nenhum chat selecionado */
-              <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#f0f2f5",borderLeft:"none"}}>
+              <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#f0f2f5"}}>
                 <div style={{width:"320px",textAlign:"center"}}>
                   <div style={{fontSize:"60px",marginBottom:"20px",opacity:0.6}}>💬</div>
                   <div style={{fontSize:"28px",fontWeight:"300",color:"#41525d",marginBottom:"12px"}}>WhatsApp Vinil Vale</div>
@@ -2162,11 +2227,11 @@ export default function App(){
                 </div>
               </div>
             :
-            waChatData&&<div ref={waChatRef} style={{flex:1,display:"flex",flexDirection:"column",background:"#efeae2"}}>
-              {/* Header do chat - verde escuro */}
-              <div style={{padding:"10px 16px",background:"#008069",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
-                  <button onClick={()=>setWaChat(null)} style={{background:"none",border:"none",cursor:"pointer",padding:"4px",display:"flex"}}>
+            waChatData&&<div ref={waChatRef} id="wa-full-area" style={{flex:1,display:"flex",flexDirection:"column",background:"#efeae2",position:"relative"}}>
+              {/* Header do chat */}
+              <div style={{padding:"10px 16px",background:"#008069",display:"flex",justifyContent:"space-between",alignItems:"center",minHeight:"56px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:"12px",cursor:"pointer"}} onClick={()=>setWaInfoPanel(!waInfoPanel)}>
+                  <button onClick={e=>{e.stopPropagation();setWaChat(null);setWaInfoPanel(false);setWaChatSearchOpen(false)}} style={{background:"none",border:"none",cursor:"pointer",padding:"4px",display:"flex"}}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#aebac1" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
                   </button>
                   <div style={{width:"40px",height:"40px",borderRadius:"50%",background:"rgba(255,255,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -2174,33 +2239,58 @@ export default function App(){
                   </div>
                   <div>
                     <div style={{fontWeight:"600",fontSize:"15px",color:"#fff"}}>{waChatData.leadData?.nome||waFmtPhone(waChat)}</div>
-                    <div style={{fontSize:"12px",color:"#aebac1"}}>{waFmtPhone(waChat)}</div>
+                    <div style={{fontSize:"12px",color:"#aebac1"}}>{waFmtPhone(waChat)} · {waChatData.status||"coletando"}</div>
                   </div>
                 </div>
-                <div style={{display:"flex",gap:"8px",alignItems:"center"}}>
-                  {waChatData.leadData&&<div style={{display:"flex",gap:"6px",marginRight:"8px",fontSize:"11px",color:"#aebac1"}}>
-                    {waChatData.leadData.cidade&&<span>📍{waChatData.leadData.cidade}</span>}
-                    {waChatData.leadData.tipo_servico&&<span>🔧{waChatData.leadData.tipo_servico}</span>}
-                  </div>}
-                  <button onClick={()=>{fetch(`${BOT_URL}/api/bot-on/${waChat}`,{method:"POST"});}} style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#25d366",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>🤖 Bot ON</button>
-                  <button onClick={()=>{fetch(`${BOT_URL}/api/handoff/${waChat}`,{method:"POST"});}} style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#ffc107",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>✋ Assumir</button>
-                  <button onClick={async()=>{if(!waChatRef.current)return;const canvas=await html2canvas(waChatRef.current,{backgroundColor:null,scale:2});const link=document.createElement("a");link.download=`whatsapp-${waChatData.leadData?.nome||waChat}-${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.png`;link.href=canvas.toDataURL("image/png");link.click()}} title="Capturar conversa como PNG" style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#aebac1",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>📸 Print</button>
+                <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
+                  <button onClick={()=>{setWaChatSearchOpen(!waChatSearchOpen);setWaChatSearch("")}} title="Buscar na conversa" style={{background:"none",border:"none",cursor:"pointer",padding:"8px",display:"flex",borderRadius:"50%"}}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#aebac1" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  </button>
+                  <button onClick={()=>{fetch(`${BOT_URL}/api/bot-on/${waChat}`,{method:"POST"});}} title="Ativar Bot" style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#25d366",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>🤖 Bot ON</button>
+                  <button onClick={()=>{fetch(`${BOT_URL}/api/handoff/${waChat}`,{method:"POST"});}} title="Assumir conversa" style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#ffc107",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>✋ Assumir</button>
+                  <button onClick={async()=>{if(!waChatRef.current)return;const canvas=await html2canvas(waChatRef.current,{backgroundColor:null,scale:2});const link=document.createElement("a");link.download=`whatsapp-${waChatData.leadData?.nome||waChat}-${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.png`;link.href=canvas.toDataURL("image/png");link.click()}} title="Capturar PNG" style={{background:"none",border:"none",cursor:"pointer",padding:"8px",display:"flex",borderRadius:"50%"}}>
+                    <DownloadIcon size={18} color="#aebac1"/>
+                  </button>
                 </div>
               </div>
 
-              {/* Área de mensagens - fundo WhatsApp */}
-              <div style={{flex:1,overflowY:"auto",padding:"20px 60px",display:"flex",flexDirection:"column",gap:"4px",backgroundImage:"url('data:image/svg+xml,%3Csvg width=\"400\" height=\"400\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cdefs%3E%3Cpattern id=\"p\" width=\"40\" height=\"40\" patternUnits=\"userSpaceOnUse\"%3E%3Ccircle cx=\"20\" cy=\"20\" r=\"1.5\" fill=\"%23d1cfc3\" opacity=\"0.3\"/%3E%3C/pattern%3E%3C/defs%3E%3Crect width=\"400\" height=\"400\" fill=\"%23efeae2\"/%3E%3Crect width=\"400\" height=\"400\" fill=\"url(%23p)\"/%3E%3C/svg%3E')",backgroundSize:"400px 400px"}} ref={el=>{if(el)el.scrollTop=el.scrollHeight}}>
-                {/* Data separador */}
-                <div style={{alignSelf:"center",background:"#fff",borderRadius:"8px",padding:"4px 12px",marginBottom:"8px",boxShadow:"0 1px 0.5px rgba(0,0,0,0.13)"}}>
-                  <span style={{fontSize:"12px",color:"#54656f",fontWeight:"500"}}>{new Date().toLocaleDateString("pt-BR",{day:"numeric",month:"long",year:"numeric"})}</span>
+              {/* Busca dentro do chat */}
+              {waChatSearchOpen&&<div style={{padding:"8px 16px",background:"#f0f2f5",display:"flex",alignItems:"center",gap:"8px",borderBottom:"1px solid #e2ddd1"}}>
+                <div style={{flex:1,display:"flex",alignItems:"center",background:"#fff",borderRadius:"8px",padding:"0 12px",height:"35px"}}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#54656f" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input autoFocus value={waChatSearch} onChange={e=>setWaChatSearch(e.target.value)} placeholder="Pesquisar mensagens..." style={{flex:1,border:"none",outline:"none",padding:"0 8px",fontSize:"13px",color:"#111b21",background:"transparent"}}/>
+                  {waChatSearch&&<span style={{fontSize:"12px",color:"#8696a0"}}>{(waChatData.history||[]).filter(m=>m.content?.toLowerCase().includes(waChatSearch.toLowerCase())).length} encontradas</span>}
                 </div>
+                <button onClick={()=>{setWaChatSearchOpen(false);setWaChatSearch("")}} style={{background:"none",border:"none",cursor:"pointer",padding:"4px"}}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#54656f" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>}
+
+              {/* Área de mensagens */}
+              <div ref={waMsgAreaRef} style={{flex:1,overflowY:"auto",padding:"20px 60px",display:"flex",flexDirection:"column",gap:"2px",backgroundImage:"url('data:image/svg+xml,%3Csvg width=\"400\" height=\"400\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cdefs%3E%3Cpattern id=\"p\" width=\"40\" height=\"40\" patternUnits=\"userSpaceOnUse\"%3E%3Ccircle cx=\"20\" cy=\"20\" r=\"1.5\" fill=\"%23d1cfc3\" opacity=\"0.3\"/%3E%3C/pattern%3E%3C/defs%3E%3Crect width=\"400\" height=\"400\" fill=\"%23efeae2\"/%3E%3Crect width=\"400\" height=\"400\" fill=\"url(%23p)\"/%3E%3C/svg%3E')",backgroundSize:"400px 400px"}} ref={el=>{if(el&&!waChatSearch)el.scrollTop=el.scrollHeight}}>
+                {/* Separador de data */}
+                {(waChatData.history||[]).length>0&&<div style={{alignSelf:"center",background:"#fff",borderRadius:"8px",padding:"5px 12px",margin:"8px 0",boxShadow:"0 1px 0.5px rgba(0,0,0,0.13)"}}>
+                  <span style={{fontSize:"12px",color:"#54656f",fontWeight:"500"}}>{new Date().toLocaleDateString("pt-BR",{day:"numeric",month:"long",year:"numeric"})}</span>
+                </div>}
                 {(waChatData.history||[]).map((msg,i)=>{
                   const isOut=msg.role==="assistant";
                   const isManual=isOut&&msg.content?.startsWith("[Marcos]");
                   const content=isManual?msg.content.replace("[Marcos] ",""):msg.content;
                   const time=msg.timestamp?new Date(msg.timestamp).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}):"";
-                  return <div key={i} style={{alignSelf:isOut?"flex-end":"flex-start",maxWidth:"65%",marginBottom:"2px"}}>
-                    <div style={{padding:"6px 7px 8px 9px",borderRadius:isOut?"7.5px 7.5px 0 7.5px":"7.5px 7.5px 7.5px 0",background:isOut?"#d9fdd3":"#fff",boxShadow:"0 1px 0.5px rgba(0,0,0,0.13)",position:"relative"}}>
+                  const isHighlight=waChatSearch&&content?.toLowerCase().includes(waChatSearch.toLowerCase());
+                  const msgKey=`${waChat}-${i}`;
+                  const isStarred=waStarred[msgKey];
+                  return <div key={i} style={{alignSelf:isOut?"flex-end":"flex-start",maxWidth:"65%",marginBottom:"2px",position:"relative"}} onContextMenu={e=>{e.preventDefault();setWaCtxMenu({i,x:e.clientX,y:e.clientY,msg,isOut})}}>
+                    {/* Reply preview */}
+                    {msg.replyTo!=null&&<div style={{padding:"4px 8px",marginBottom:"2px",borderLeft:"4px solid #06cf9c",background:isOut?"#c8f7cd":"#f5f5f5",borderRadius:"4px",fontSize:"12px",color:"#667781",maxHeight:"40px",overflow:"hidden"}}>{(waChatData.history||[])[msg.replyTo]?.content?.slice(0,80)||"..."}</div>}
+                    <div style={{padding:"6px 7px 8px 9px",borderRadius:isOut?"7.5px 7.5px 0 7.5px":"7.5px 7.5px 7.5px 0",background:isHighlight?"#fef3c7":isOut?"#d9fdd3":"#fff",boxShadow:"0 1px 0.5px rgba(0,0,0,0.13)",position:"relative",border:isHighlight?"2px solid #f59e0b":"none"}}>
+                      {/* Hover menu */}
+                      <div className="wa-msg-hover" style={{position:"absolute",top:"4px",right:isOut?"auto":"4px",left:isOut?"4px":"auto",opacity:0,transition:"opacity 0.15s",display:"flex",gap:"2px",zIndex:2}} onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=0}>
+                        <button onClick={e=>{e.stopPropagation();setWaCtxMenu({i,x:e.clientX,y:e.clientY,msg,isOut})}} style={{background:"rgba(0,0,0,0.05)",border:"none",borderRadius:"50%",width:"22px",height:"22px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="#8696a0"><path d="M7 10l5 5 5-5z"/></svg>
+                        </button>
+                      </div>
+                      {isStarred&&<span style={{position:"absolute",top:"-6px",left:isOut?"auto":"-6px",right:isOut?"-6px":"auto",fontSize:"10px"}}>⭐</span>}
                       <span style={{fontSize:"14px",color:"#111b21",lineHeight:"1.4",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{content}</span>
                       <span style={{float:"right",marginLeft:"12px",marginTop:"4px",display:"inline-flex",alignItems:"center",gap:"3px"}}>
                         <span style={{fontSize:"11px",color:"#667781"}}>{time}</span>
@@ -2212,26 +2302,142 @@ export default function App(){
                 })}
               </div>
 
-              {/* Input de mensagem - barra inferior WhatsApp */}
-              <div style={{padding:"6px 16px",background:"#f0f2f5",display:"flex",gap:"8px",alignItems:"center"}}>
-                <button style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex"}}>
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#54656f" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+              {/* Menu de contexto de mensagem */}
+              {waCtxMenu&&<div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:waCtxMenu.x,top:waCtxMenu.y,background:"#fff",borderRadius:"4px",boxShadow:"0 2px 8px rgba(0,0,0,0.2)",zIndex:9999,minWidth:"200px",padding:"8px 0"}}>
+                {[
+                  ["Responder",()=>setWaReply(waCtxMenu.i)],
+                  [waStarred[`${waChat}-${waCtxMenu.i}`]?"Remover estrela":"Marcar com estrela",()=>setWaStarred(p=>{const k=`${waChat}-${waCtxMenu.i}`;const n={...p};if(n[k])delete n[k];else n[k]=true;return n})],
+                  ["Copiar mensagem",()=>{navigator.clipboard.writeText(waCtxMenu.msg.content||"").catch(()=>{})}],
+                  ["Encaminhar",()=>{const text=waCtxMenu.msg.content||"";setWaMsg(`[Encaminhada] ${text}`)}],
+                ].map(([label,fn],j)=><div key={j} onClick={()=>{fn();setWaCtxMenu(null)}} style={{padding:"10px 20px",cursor:"pointer",fontSize:"14px",color:"#111b21"}} onMouseEnter={e=>e.target.style.background="#f0f2f5"} onMouseLeave={e=>e.target.style.background="transparent"}>{label}</div>)}
+              </div>}
+
+              {/* Reply preview bar */}
+              {waReply!=null&&<div style={{padding:"8px 16px",background:"#f0f2f5",borderTop:"1px solid #e2ddd1",display:"flex",alignItems:"center",gap:"8px"}}>
+                <div style={{flex:1,borderLeft:"4px solid #06cf9c",paddingLeft:"8px",background:"#fff",borderRadius:"4px",padding:"8px 12px"}}>
+                  <div style={{fontSize:"12px",color:"#06cf9c",fontWeight:"600"}}>{(waChatData.history||[])[waReply]?.role==="assistant"?"Você":"Cliente"}</div>
+                  <div style={{fontSize:"13px",color:"#667781",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(waChatData.history||[])[waReply]?.content?.slice(0,80)||"..."}</div>
+                </div>
+                <button onClick={()=>setWaReply(null)} style={{background:"none",border:"none",cursor:"pointer",padding:"4px"}}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8696a0" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
-                <button style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex"}}>
+              </div>}
+
+              {/* Emoji picker */}
+              {waShowEmoji&&<div style={{position:"absolute",bottom:"60px",left:"16px",background:"#fff",borderRadius:"8px",boxShadow:"0 2px 12px rgba(0,0,0,0.15)",padding:"12px",zIndex:100,width:"320px",maxHeight:"280px",overflowY:"auto"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}}>
+                  <span style={{fontSize:"13px",fontWeight:"600",color:"#111b21"}}>Emojis</span>
+                  <button onClick={()=>setWaShowEmoji(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"16px",color:"#8696a0"}}>✕</button>
+                </div>
+                {[["Smileys","😀😃😄😁😆😅🤣😂🙂🙃😉😊😇🥰😍🤩😘😗😚😙🥲😋😛😜🤪😝🤑🤗🤭🤫🤔🫡"],
+                  ["Gestos","👍👎👊✊🤛🤜👏🙌👐🤲🤝🙏✌️🤟🤘👌🤌🤏👈👉👆👇☝️✋🤚🖐️🖖👋🤙💪"],
+                  ["Objetos","💼📱💻🖥️📸📹🎥📞☎️📧✉️📬📦🔑🗝️🔨🪓⛏️🔧🔩⚙️🗜️📎🖇️📐📏"],
+                  ["Natureza","🌞🌝🌛🌜🌚🌕🌖🌗🌘🌑🌒🌓🌔⭐🌟💫✨☀️🌤️⛅🌥️🌦️🌈🌊💧💦"],
+                  ["Corações","❤️🧡💛💚💙💜🖤🤍🤎💔❤️‍🔥❤️‍🩹💕💞💓💗💖💘💝"]
+                ].map(([cat,emojis])=><div key={cat}>
+                  <div style={{fontSize:"11px",color:"#8696a0",margin:"6px 0 4px",fontWeight:"600"}}>{cat}</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:"2px"}}>{[...emojis].filter((_,i,a)=>{const ch=a.slice(0,i+1).join("");return ch.length===i+1||true}).map((e,j)=><button key={j} onClick={()=>{setWaMsg(p=>p+e)}} style={{background:"none",border:"none",cursor:"pointer",fontSize:"22px",padding:"3px",borderRadius:"4px",lineHeight:1}} onMouseEnter={ev=>ev.target.style.background="#f0f2f5"} onMouseLeave={ev=>ev.target.style.background="transparent"}>{e}</button>)}</div>
+                </div>)}
+              </div>}
+
+              {/* Input de mensagem */}
+              <div style={{padding:"6px 16px",background:"#f0f2f5",display:"flex",gap:"8px",alignItems:"center"}}>
+                <button onClick={()=>setWaShowEmoji(!waShowEmoji)} style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={waShowEmoji?"#008069":"#54656f"} strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                </button>
+                <button title="Anexar" style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#54656f" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
                 </button>
                 <div style={{flex:1,background:"#fff",borderRadius:"8px",display:"flex",alignItems:"center",padding:"0 12px",minHeight:"42px"}}>
-                  <input value={waMsg} onChange={e=>setWaMsg(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey)waSendMessage()}} placeholder="Digite uma mensagem" style={{flex:1,border:"none",outline:"none",fontSize:"14px",color:"#111b21",background:"transparent",padding:"10px 0"}}/>
+                  <input value={waMsg} onChange={e=>setWaMsg(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();waSendMessage();setWaReply(null)}}} placeholder="Digite uma mensagem" style={{flex:1,border:"none",outline:"none",fontSize:"14px",color:"#111b21",background:"transparent",padding:"10px 0"}}/>
                 </div>
                 {waMsg.trim()?
-                  <button onClick={waSendMessage} disabled={waSending} style={{background:"none",border:"none",cursor:waSending?"wait":"pointer",padding:"6px",display:"flex"}}>
+                  <button onClick={()=>{waSendMessage();setWaReply(null)}} disabled={waSending} style={{background:"none",border:"none",cursor:waSending?"wait":"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#008069" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                   </button>
                 :
-                  <button style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex"}}>
+                  <button title="Mensagem de voz" style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#54656f" strokeWidth="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                   </button>
                 }
+              </div>
+            </div>}
+
+            {/* === PAINEL DIREITO - Info do Contato === */}
+            {waInfoPanel&&waChatData&&<div style={{width:"340px",background:"#fff",borderLeft:"1px solid #e2ddd1",display:"flex",flexDirection:"column",overflowY:"auto"}}>
+              {/* Header info */}
+              <div style={{padding:"16px",background:"#008069",display:"flex",alignItems:"center",gap:"12px",minHeight:"56px"}}>
+                <button onClick={()=>setWaInfoPanel(false)} style={{background:"none",border:"none",cursor:"pointer",padding:"4px",display:"flex"}}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#aebac1" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+                <span style={{color:"#fff",fontSize:"15px",fontWeight:"600"}}>Dados do contato</span>
+              </div>
+
+              {/* Avatar e nome */}
+              <div style={{padding:"28px 20px",textAlign:"center",borderBottom:"8px solid #f0f2f5"}}>
+                <div style={{width:"200px",height:"200px",borderRadius:"50%",background:"#dfe5e7",margin:"0 auto 16px",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <svg width="120" height="120" viewBox="0 0 212 212" fill="#fff"><path d="M106 0C47.5 0 0 47.5 0 106s47.5 106 106 106 106-47.5 106-106S164.5 0 106 0zm0 40.2c18.2 0 33 14.8 33 33s-14.8 33-33 33-33-14.8-33-33 14.8-33 33-33zm0 150.4c-26.6 0-50.1-13.6-63.8-34.2 .3-21.2 42.6-32.8 63.8-32.8s63.5 11.6 63.8 32.8c-13.7 20.6-37.2 34.2-63.8 34.2z"/></svg>
+                </div>
+                <div style={{fontSize:"22px",fontWeight:"500",color:"#111b21"}}>{waChatData.leadData?.nome||waFmtPhone(waChat)}</div>
+                <div style={{fontSize:"15px",color:"#8696a0",marginTop:"4px"}}>{waFmtPhone(waChat)}</div>
+                <div style={{marginTop:"8px"}}><span style={{padding:"3px 10px",borderRadius:"12px",fontSize:"12px",fontWeight:"600",background:waChatData.status==="handed_off"?"#fef3c7":waChatData.status==="qualified"?"#d1fae5":"#e0f2fe",color:waChatData.status==="handed_off"?"#92400e":waChatData.status==="qualified"?"#065f46":"#075985"}}>{waChatData.status||"coletando"}</span></div>
+              </div>
+
+              {/* Dados do lead */}
+              {waChatData.leadData&&<div style={{padding:"16px 20px",borderBottom:"8px solid #f0f2f5"}}>
+                <div style={{fontSize:"14px",color:"#008069",fontWeight:"500",marginBottom:"12px"}}>Informações do lead</div>
+                {[
+                  ["Nome",waChatData.leadData.nome],
+                  ["Cidade",waChatData.leadData.cidade],
+                  ["Tipo de Serviço",waChatData.leadData.tipo_servico],
+                  ["Formato Piscina",waChatData.leadData.formato_piscina],
+                  ["Medidas",waChatData.leadData.medidas],
+                  ["Extras",waChatData.leadData.extras],
+                  ["Estado Piscina",waChatData.leadData.estado_piscina],
+                  ["Nascimento",waChatData.leadData.nascimento],
+                  ["E-mail",waChatData.leadData.email],
+                ].filter(([,v])=>v).map(([k,v],i)=><div key={i} style={{marginBottom:"10px"}}>
+                  <div style={{fontSize:"12px",color:"#8696a0"}}>{k}</div>
+                  <div style={{fontSize:"14px",color:"#111b21",marginTop:"2px"}}>{v}</div>
+                </div>)}
+              </div>}
+
+              {/* Mensagens com estrela */}
+              <div style={{padding:"16px 20px",borderBottom:"8px solid #f0f2f5"}}>
+                <div style={{fontSize:"14px",color:"#008069",fontWeight:"500",marginBottom:"8px"}}>Mensagens com estrela</div>
+                {Object.keys(waStarred).filter(k=>k.startsWith(waChat+"-")).length===0?
+                  <div style={{fontSize:"13px",color:"#8696a0"}}>Nenhuma mensagem marcada</div>
+                :
+                  Object.keys(waStarred).filter(k=>k.startsWith(waChat+"-")).map(k=>{
+                    const idx=parseInt(k.split("-").pop());
+                    const msg=(waChatData.history||[])[idx];
+                    if(!msg)return null;
+                    return <div key={k} style={{padding:"8px",background:"#f0f2f5",borderRadius:"6px",marginBottom:"6px",fontSize:"13px",color:"#111b21"}}>{msg.content?.slice(0,100)}</div>;
+                  })
+                }
+              </div>
+
+              {/* Estatísticas */}
+              <div style={{padding:"16px 20px"}}>
+                <div style={{fontSize:"14px",color:"#008069",fontWeight:"500",marginBottom:"12px"}}>Estatísticas</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}}>
+                  <div style={{background:"#f0f2f5",borderRadius:"8px",padding:"12px",textAlign:"center"}}>
+                    <div style={{fontSize:"20px",fontWeight:"700",color:"#111b21"}}>{(waChatData.history||[]).length}</div>
+                    <div style={{fontSize:"11px",color:"#8696a0"}}>Total mensagens</div>
+                  </div>
+                  <div style={{background:"#f0f2f5",borderRadius:"8px",padding:"12px",textAlign:"center"}}>
+                    <div style={{fontSize:"20px",fontWeight:"700",color:"#111b21"}}>{(waChatData.history||[]).filter(m=>m.role==="user").length}</div>
+                    <div style={{fontSize:"11px",color:"#8696a0"}}>Do cliente</div>
+                  </div>
+                  <div style={{background:"#f0f2f5",borderRadius:"8px",padding:"12px",textAlign:"center"}}>
+                    <div style={{fontSize:"20px",fontWeight:"700",color:"#111b21"}}>{(waChatData.history||[]).filter(m=>m.role==="assistant"&&!m.content?.startsWith("[Marcos]")).length}</div>
+                    <div style={{fontSize:"11px",color:"#8696a0"}}>Do Bot</div>
+                  </div>
+                  <div style={{background:"#f0f2f5",borderRadius:"8px",padding:"12px",textAlign:"center"}}>
+                    <div style={{fontSize:"20px",fontWeight:"700",color:"#111b21"}}>{(waChatData.history||[]).filter(m=>m.content?.startsWith("[Marcos]")).length}</div>
+                    <div style={{fontSize:"11px",color:"#8696a0"}}>Do Marcos</div>
+                  </div>
+                </div>
               </div>
             </div>}
           </div>
