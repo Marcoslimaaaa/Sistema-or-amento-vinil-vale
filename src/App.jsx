@@ -1038,6 +1038,12 @@ export default function App(){
   const [crmView,setCrmView]=useState("pipeline");
   const [syncingContacts,setSyncingContacts]=useState(false);
   const [syncMsg,setSyncMsg]=useState("");
+  const [waConvs,setWaConvs]=useState([]);
+  const [waChat,setWaChat]=useState(null);
+  const [waChatData,setWaChatData]=useState(null);
+  const [waMsg,setWaMsg]=useState("");
+  const [waSending,setWaSending]=useState(false);
+  const BOT_URL="https://vinil-vale-whatsapp-bot-production.up.railway.app";
   const [crmSearch,setCrmSearch]=useState("");
   const [crmSvcF,setCrmSvcF]=useState("todos");
   const [crmShowLost,setCrmShowLost]=useState(false);
@@ -1203,6 +1209,47 @@ export default function App(){
     const d=new Date(parts[2],parts[1]-1,parts[0]);
     const diff=Math.floor((Date.now()-d.getTime())/(1000*60*60*24));
     return diff;
+  };
+
+  // WhatsApp: carrega conversas em tempo real
+  useEffect(()=>{
+    if(!fbReady||!fb.db)return;
+    const ref=fbFns.collection(fb.db,"whatsapp_conversations");
+    const q=fbFns.query(ref,fbFns.orderBy("lastActivity","desc"),fbFns.limit(50));
+    const unsub=fbFns.onSnapshot(q,(snap)=>{
+      const convs=[];
+      snap.forEach(doc=>{const d=doc.data();convs.push({phone:doc.id,...d});});
+      setWaConvs(convs);
+    });
+    return ()=>unsub();
+  },[fbReady]);
+
+  // WhatsApp: carrega chat individual em tempo real
+  useEffect(()=>{
+    if(!waChat||!fbReady||!fb.db)return;
+    const ref=fbFns.doc(fb.db,"whatsapp_conversations",waChat);
+    const unsub=fbFns.onSnapshot(ref,(snap)=>{
+      if(snap.exists())setWaChatData({phone:snap.id,...snap.data()});
+    });
+    return ()=>unsub();
+  },[waChat,fbReady]);
+
+  // WhatsApp: envia mensagem
+  const waSendMessage=async()=>{
+    if(!waMsg.trim()||!waChat||waSending)return;
+    setWaSending(true);
+    try{
+      await fetch(`${BOT_URL}/api/send-message`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:waChat,message:waMsg})});
+      setWaMsg("");
+    }catch(e){alert("Erro ao enviar: "+e.message);}
+    setWaSending(false);
+  };
+
+  // WhatsApp: formata telefone
+  const waFmtPhone=(p)=>{
+    if(!p)return"";const c=p.replace(/\D/g,"");
+    if(c.length===13&&c.startsWith("55"))return`(${c.slice(2,4)}) ${c.slice(4,9)}-${c.slice(9)}`;
+    return c;
   };
 
   // Sincroniza contatos do Google com Firestore
@@ -1611,7 +1658,7 @@ export default function App(){
       </div>
 
       <div className="vv-tab-bar" style={{display:"flex",padding:"0 14px",background:t.tabBg,borderBottom:`1px solid ${t.cardBorder}`,overflowX:"auto"}}>
-        {[["cliente","👤","Cliente",0],["piscina","🏊","Piscina",0],["itens","🛒","Custos",0],["garantias","🛡","Garantias",0],["pagamento","💰","Valor",0],["historico","📋","Salvos",0],["crm","📈","CRM",0],["estoque","📦","Estoque",lowStockCount],["planta","📐","Planta",0],["contratos","📝","Contratos",0],["financeiro","💵","Financeiro",alertasFinCount]].map(([k,ic,lb,badge])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} badge={badge} t={t}>{lb}</Tab>)}
+        {[["cliente","👤","Cliente",0],["piscina","🏊","Piscina",0],["itens","🛒","Custos",0],["garantias","🛡","Garantias",0],["pagamento","💰","Valor",0],["historico","📋","Salvos",0],["crm","📈","CRM",0],["whatsapp","💬","WhatsApp",0],["estoque","📦","Estoque",lowStockCount],["planta","📐","Planta",0],["contratos","📝","Contratos",0],["financeiro","💵","Financeiro",alertasFinCount]].map(([k,ic,lb,badge])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} badge={badge} t={t}>{lb}</Tab>)}
       </div>
 
       <div style={{padding:"14px"}}>
@@ -2027,6 +2074,80 @@ export default function App(){
         })()}</Card>}
 
         {/* ESTOQUE */}
+        {tab==="whatsapp"&&<Card t={t}><ST icon="💬">WhatsApp</ST>
+          <div style={{display:"flex",height:"calc(100vh - 220px)",gap:"0",border:`1px solid ${t.cardBorder}`,borderRadius:"8px",overflow:"hidden"}}>
+            {/* Lista de conversas */}
+            <div style={{width:waChat?"300px":"100%",minWidth:"280px",borderRight:`1px solid ${t.cardBorder}`,overflowY:"auto",background:t.bg}}>
+              {waConvs.length===0?<div style={{padding:"32px",textAlign:"center",color:t.textMuted}}>Nenhuma conversa ainda</div>:
+              waConvs.map(c=>{
+                const lastMsg=c.history?.[c.history.length-1];
+                const nome=c.leadData?.nome||waFmtPhone(c.phone);
+                const isActive=waChat===c.phone;
+                const statusColor=c.status==="handed_off"?"#e67e22":c.status==="qualified"?"#27ae60":c.status==="closed"?"#8e44ad":"#3498db";
+                const timeDiff=c.lastActivity?Math.round((Date.now()-(typeof c.lastActivity==="number"?c.lastActivity:new Date(c.lastActivity).getTime()))/(1000*60)):0;
+                const timeStr=timeDiff<60?`${timeDiff}min`:timeDiff<1440?`${Math.round(timeDiff/60)}h`:`${Math.round(timeDiff/1440)}d`;
+                return <div key={c.phone} onClick={()=>setWaChat(c.phone)} style={{padding:"12px 14px",cursor:"pointer",borderBottom:`1px solid ${t.cardBorder}`,background:isActive?t.cardBg:"transparent",display:"flex",gap:"10px",alignItems:"center"}}>
+                  <div style={{width:"40px",height:"40px",borderRadius:"50%",background:statusColor,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:"700",fontSize:"14px",flexShrink:0}}>{(nome[0]||"?").toUpperCase()}</div>
+                  <div style={{flex:1,overflow:"hidden"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div style={{fontWeight:"700",fontSize:"12px",color:t.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{nome}</div>
+                      <div style={{fontSize:"9px",color:t.textMuted,flexShrink:0}}>{timeStr}</div>
+                    </div>
+                    <div style={{fontSize:"10px",color:t.textSec,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:"2px"}}>{lastMsg?.content?.slice(0,50)||"..."}</div>
+                    <div style={{display:"flex",gap:"4px",marginTop:"3px"}}>
+                      <span style={{fontSize:"8px",padding:"1px 5px",borderRadius:"8px",background:statusColor+"22",color:statusColor,fontWeight:"600"}}>{c.status||"collecting"}</span>
+                      {c.leadData?.cidade&&<span style={{fontSize:"8px",color:t.textMuted}}>📍{c.leadData.cidade}</span>}
+                    </div>
+                  </div>
+                </div>;
+              })}
+            </div>
+
+            {/* Chat aberto */}
+            {waChat&&waChatData&&<div style={{flex:1,display:"flex",flexDirection:"column",background:t.bg}}>
+              {/* Header do chat */}
+              <div style={{padding:"12px 16px",borderBottom:`1px solid ${t.cardBorder}`,display:"flex",justifyContent:"space-between",alignItems:"center",background:t.cardBg}}>
+                <div>
+                  <div style={{fontWeight:"700",fontSize:"13px",color:t.text}}>{waChatData.leadData?.nome||waFmtPhone(waChat)}</div>
+                  <div style={{fontSize:"10px",color:t.textMuted}}>{waFmtPhone(waChat)} · {waChatData.status}</div>
+                </div>
+                <div style={{display:"flex",gap:"6px"}}>
+                  <button onClick={()=>{fetch(`${BOT_URL}/api/bot-on/${waChat}`,{method:"POST"});}} style={{padding:"4px 8px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:"transparent",color:"#27ae60",fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>🤖 Bot ON</button>
+                  <button onClick={()=>{fetch(`${BOT_URL}/api/handoff/${waChat}`,{method:"POST"});}} style={{padding:"4px 8px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:"transparent",color:"#e67e22",fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>✋ Assumir</button>
+                  <button onClick={()=>setWaChat(null)} style={{padding:"4px 8px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:"transparent",color:t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>✕</button>
+                </div>
+              </div>
+
+              {/* Lead data sidebar */}
+              {waChatData.leadData&&<div style={{padding:"8px 16px",borderBottom:`1px solid ${t.cardBorder}`,display:"flex",gap:"12px",flexWrap:"wrap",fontSize:"9px",color:t.textSec,background:t.cardBg+"88"}}>
+                {waChatData.leadData.cidade&&<span>📍 {waChatData.leadData.cidade}</span>}
+                {waChatData.leadData.tipo_servico&&<span>🔧 {waChatData.leadData.tipo_servico}</span>}
+                {waChatData.leadData.medidas&&<span>📏 {waChatData.leadData.medidas}</span>}
+                {waChatData.leadData.formato_piscina&&<span>🏊 {waChatData.leadData.formato_piscina}</span>}
+                {waChatData.leadData.extras&&<span>✨ {waChatData.leadData.extras}</span>}
+                {waChatData.leadData.estado_piscina&&<span>🏗️ {waChatData.leadData.estado_piscina}</span>}
+              </div>}
+
+              {/* Mensagens */}
+              <div style={{flex:1,overflowY:"auto",padding:"16px",display:"flex",flexDirection:"column",gap:"8px"}} ref={el=>{if(el)el.scrollTop=el.scrollHeight}}>
+                {(waChatData.history||[]).map((msg,i)=>{
+                  const isBot=msg.role==="assistant";
+                  return <div key={i} style={{alignSelf:isBot?"flex-end":"flex-start",maxWidth:"75%"}}>
+                    <div style={{padding:"8px 12px",borderRadius:isBot?"12px 12px 2px 12px":"12px 12px 12px 2px",background:isBot?"#25D366":"#e9ecef",color:isBot?"#fff":"#333",fontSize:"12px",lineHeight:"1.4"}}>{msg.content}</div>
+                    <div style={{fontSize:"8px",color:t.textMuted,marginTop:"2px",textAlign:isBot?"right":"left"}}>{isBot?(msg.content.startsWith("[Marcos]")?"Marcos":"Bot"):"Cliente"}</div>
+                  </div>;
+                })}
+              </div>
+
+              {/* Input de mensagem */}
+              <div style={{padding:"12px 16px",borderTop:`1px solid ${t.cardBorder}`,display:"flex",gap:"8px",background:t.cardBg}}>
+                <input value={waMsg} onChange={e=>setWaMsg(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey)waSendMessage()}} placeholder="Digite sua mensagem..." style={{flex:1,padding:"10px 14px",borderRadius:"20px",border:`1px solid ${t.cardBorder}`,background:t.bg,color:t.text,fontSize:"12px",outline:"none"}}/>
+                <button onClick={waSendMessage} disabled={waSending||!waMsg.trim()} style={{padding:"10px 16px",borderRadius:"20px",border:"none",background:"#25D366",color:"#fff",fontSize:"12px",fontWeight:"700",cursor:waSending?"wait":"pointer",opacity:waSending||!waMsg.trim()?0.5:1}}>Enviar</button>
+              </div>
+            </div>}
+          </div>
+        </Card>}
+
         {tab==="estoque"&&<Card t={t}><ST icon="📦">Estoque</ST>
           <div style={{display:"flex",gap:"5px",marginBottom:"12px"}}>
             {[["dashboard","📊","Dashboard"],["estoque","📦","Estoque"],["entrada","📥","Entrada"],["historico","📜","Movim."],["fornec","🏢","Fornecedores"]].map(([k,ic,lb])=><button key={k} onClick={()=>setStkTab(k)} style={{padding:"5px 10px",borderRadius:"8px",border:`1.5px solid ${stkTab===k?blue:"#e2e8f0"}`,background:stkTab===k?blue+"15":"transparent",color:stkTab===k?blue:t.textSec,fontSize:"10px",fontWeight:"700",cursor:"pointer"}}>{ic} {lb}</button>)}
