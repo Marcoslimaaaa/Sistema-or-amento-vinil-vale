@@ -80,6 +80,7 @@ const STAMPS=[{c:"Marmo Carrara",i:["Marmo Carrara Azul","Marmo Carrara Verde","
 const ALLST=STAMPS.flatMap(s=>s.i);
 const SWATCH_SLUG={"Marmo Carrara Azul":"marmo-carrara-azul","Marmo Carrara Verde":"marmo-carrara-verde","Marmo Carrara Cinza":"marmo-carrara-cinza","Travertino":"travertino","Travertino Gris":"travertino-gris","Travertino Verde":"travertino-verde","Travertino Azul":"travertino-azul","Bali Hijau":"bali-hijau","Bali Blue":"bali-blue","Santorini":"santorini","Malibu Azul":"malibu-azul","Malibu Verde":"malibu-verde","Punta Cana":"punta-cana","Porto Vecchio Azul":"porto-vecchio-azul","Porto Vecchio Verde":"porto-vecchio-verde","Batu Blue":"batu-blue","Batu Vert":"batu-vert","Sukabumi Azul":"sukabumi-azul","Sukabumi Verde":"sukabumi-verde","Petra Natural Azul":"petra-natural-azul","Petra Natural Verde":"petra-natural-verde","Montblanc":"montblanc","Montblanc Block":"montblanc-block","Mid Blue Liso":"mid-blue-liso","Aquática Azul":"aquatica-azul"};
 const SWATCH_SOON=new Set(["Travertino Verde","Travertino Azul"]);
+const STAMP_COLOR={"Marmo Carrara Azul":"#a8cce8","Marmo Carrara Verde":"#a8d4c0","Marmo Carrara Cinza":"#b0bcc8","Travertino":"#c8b89a","Travertino Gris":"#b0a898","Travertino Verde":"#98b4a0","Travertino Azul":"#8ab0c8","Bali Hijau":"#5aaa88","Bali Blue":"#5090c0","Santorini":"#6aaccc","Malibu Azul":"#4a98d8","Malibu Verde":"#4aac7a","Porto Vecchio Azul":"#3d8fc0","Porto Vecchio Verde":"#3da878","Batu Blue":"#4a90c0","Batu Vert":"#4aa880","Sukabumi Azul":"#3aa8d0","Sukabumi Verde":"#3ab080","Petra Natural Azul":"#6aa8c0","Petra Natural Verde":"#6ab090","Montblanc":"#7ab8e0","Montblanc Block":"#5aa0c8","Mid Blue Liso":"#3a96d0","Aquática Azul":"#3aacdc","Punta Cana":"#50c0b0"};
 const CAT=[
   {id:"m06",c:"Mantas",n:"Manta Acrílica 0,6mm",s:"R$4,65/m² (só chão)",p:4.65,un:"chao"},{id:"m04",c:"Mantas",n:"Manta Acrílica 0,4mm",s:"R$3,50/m² (só chão)",p:3.50,un:"chao"},{id:"eva",c:"Mantas",n:"Bobina EVA 0,30mm",s:"R$11,88/m² (só chão)",p:11.88,un:"chao"},
   {id:"pR",c:"Perfis",n:"Perfil Rígido",s:"R$379/60m = R$6,32/m",p:6.32,un:"ml"},{id:"pF",c:"Perfis",n:"Perfil Flangeamento",s:"R$119/3m = R$39,67/m",p:39.67,un:"ml"},
@@ -98,7 +99,7 @@ const CAT=[
 // un: "m²" = custo por m² (usa área total), "ml" = custo por metro linear (usa perímetro), "un" = custo unitário
 
 const SYSTEMS=["dreno","aspiracao","skimmer","retorno","hidro"];
-const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,dark,poolFmt,ar,autoPositions,blue,t,tubeOffsets={},setTubeOffsets=()=>{},invertSide=false,wMode="regular",walls=[]})=>{
+const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,dark,poolFmt,ar,autoPositions,blue,t,tubeOffsets={},setTubeOffsets=()=>{},invertSide=false,wMode="regular",walls=[],stamp=""})=>{
     // const SYSTEMS=["retorno","hidro","aspiracao","dreno","skimmer","nivelador"];
   const L=parseFloat(pool.length)||6,W=parseFloat(pool.width)||3,D=parseFloat(pool.depth)||1.4;
   const svgW=340,svgH=200,pad=30;
@@ -133,7 +134,7 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
   return <div>
     <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>Planta Baixa</div>
     <svg width={svgW} height={svgH} style={{background:dark?"#0f172a":"#f8fafc",borderRadius:"6px",border:"1px solid "+(dark?"#334155":"#e2e8f0"),cursor:dragging?"grabbing":"default",touchAction:"none"}} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onTouchMove={e=>{onMove({currentTarget:e.currentTarget,clientX:e.touches[0].clientX,clientY:e.touches[0].clientY})}} onTouchEnd={onUp}>
-      <defs><pattern id="grd" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke={dark?"#1e293b":"#e2e8f0"} strokeWidth="0.3"/></pattern></defs>
+      <defs><pattern id="grd" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke={dark?"#1e293b":"#e2e8f0"} strokeWidth="0.3"/></pattern>{stamp&&SWATCH_SLUG[stamp]&&<clipPath id="poolClip2d">{poolFmt==="Oval"||poolFmt==="Feijão"?<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2}/>:poolFmt==="Formato L"?<polygon points={`${ox},${oy} ${ox+pw},${oy} ${ox+pw},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph} ${ox},${oy+ph}`}/>:<rect x={ox} y={oy} width={pw} height={ph}/>}</clipPath>}</defs>
       <rect width={svgW} height={svgH} fill="url(#grd)"/>
       {(()=>{const fill=dark?"#1e3a5f":"#dbeafe";const stroke="#2563eb";
         if(poolFmt==="Formato L")return<polygon points={`${ox},${oy} ${ox+pw},${oy} ${ox+pw},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph} ${ox},${oy+ph}`} fill={fill} stroke={stroke} strokeWidth="2"/>;
@@ -142,6 +143,7 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
         if(wMode==="irregular"&&walls.length>=2){const w0=parseFloat(walls[0]?.l)||L,w1=parseFloat(walls[1]?.l)||W,w2=parseFloat(walls[2]?.l)||L,w3=parseFloat(walls[3]?.l)||W;const topW=Math.min(w0/L,1.2)*pw,botW=Math.min(w2/L,1.2)*pw,leftH=Math.min(w3/W,1.2)*ph,rightH=Math.min(w1/W,1.2)*ph;const offT=(pw-topW)/2,offB=(pw-botW)/2;const pts=`${ox+offT},${oy} ${ox+offT+topW},${oy} ${ox+offB+botW},${oy+Math.max(leftH,rightH)} ${ox+offB},${oy+Math.max(leftH,rightH)}`;return<><polygon points={pts} fill={fill} stroke={stroke} strokeWidth="2" strokeDasharray="6,2"/><text x={ox+pw/2} y={oy-7} textAnchor="middle" fontSize="7" fill="#f59e0b" fontWeight="700">⚠ Fora de esquadro</text></>;};
         return<rect x={ox} y={oy} width={pw} height={ph} rx="1" fill={fill} stroke={stroke} strokeWidth="2"/>;
       })()}
+      {stamp&&SWATCH_SLUG[stamp]&&<image href={`/swatches/${SWATCH_SLUG[stamp]}.png`} x={ox} y={oy} width={pw} height={ph} preserveAspectRatio="xMidYMid slice" clipPath="url(#poolClip2d)" opacity="0.85"/>}
       {poolFmt==="Com prainha"&&<rect x={ox} y={oy} width={pw*0.25} height={ph} rx="1" fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#2563eb" strokeWidth="0.5"/>}
       {hasSpa2&&(()=>{const side=spa.side||"top";let sx,sy,sw2,sh;if(side==="bottom"){sx=ox+pw-sL;sy=oy+ph;sw2=sL;sh=sW;}else if(side==="left"){sx=ox-sW;sy=oy+ph-sL;sw2=sW;sh=sL;}else if(side==="right"){sx=ox+pw;sy=oy+ph-sL;sw2=sW;sh=sL;}else{sx=ox+pw-sL;sy=oy-sW;sw2=sL;sh=sW;}return<><rect x={sx} y={sy} width={sw2} height={sh} rx="3" fill={dark?"#1e3a5f":"#93c5fd"} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="4,2"/><text x={sx+sw2/2} y={sy+sh/2+3} textAnchor="middle" fontSize="7" fill="#1d4ed8" fontWeight="700">SPA</text></>;})()}
       <text x={ox+pw/2} y={oy+ph/2-3} textAnchor="middle" fontSize="8" fill={dark?"#94a3b8":"#64748b"} fontWeight="600">PISCINA</text>
@@ -256,7 +258,7 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
 };
 
 // ═══ ISOMETRIC VIEW ═══
-const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,autoPositions,customPos={},invertSide=false,devHeights={}},ref)=>{
+const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,autoPositions,customPos={},invertSide=false,devHeights={},stamp=""},ref)=>{
   const L=parseFloat(pool.length)||6,W=parseFloat(pool.width)||3,D=parseFloat(pool.depth)||1.4;
   const svgW=640,svgH=440,cos30=Math.cos(Math.PI/6),sin30=0.5;
   const mX=28,mYt=54,mYb=90;
@@ -271,6 +273,9 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   const skQ=disps.skimmer||0,ledQ=disps.refletor||0,nivQ=disps.nivelador||0,hidQ=disps.hidro||0;
   const C={retorno:"#3b82f6",aspiracao:"#ec4899",dreno:"#8b5cf6",skimmer:"#f97316",refletor:"#eab308",nivelador:"#06b6d4",hidro:"#10b981"};
   const dk=dark;const els=[];
+  const swSlug=stamp?SWATCH_SLUG[stamp]:null;
+  const floorFill=dk?"#1e3a5f":"#bfdbfe";
+  const isoImg=(key,p0,pX,pY,clip,op)=>{const ta=(pX.x-p0.x).toFixed(2),tb=(pX.y-p0.y).toFixed(2),tc=(pY.x-p0.x).toFixed(2),td=(pY.y-p0.y).toFixed(2);return<image key={key} href={`/swatches/${swSlug}.png`} x="0" y="0" width="1" height="1" transform={`matrix(${ta},${tb},${tc},${td},${p0.x.toFixed(2)},${p0.y.toFixed(2)})`} clipPath={`url(#${clip})`} opacity={op} preserveAspectRatio="none"/>;};
   // Background
   els.push(<rect key="bg" x="0" y="0" width={svgW} height={svgH} fill={dk?"#0f172a":"#f8fafc"}/>);
   const wZ=D*0.91;
@@ -280,18 +285,20 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   if(isOval){
     // Elipse: chão, paredes, água e borda como fatias triangulares
     for(let i=0;i<N;i++){const a1=i/N*2*Math.PI,a2=(i+1)/N*2*Math.PI;const x1=L/2+L/2*Math.cos(a1),y1=W/2+W/2*Math.sin(a1),x2=L/2+L/2*Math.cos(a2),y2=W/2+W/2*Math.sin(a2);
-      els.push(<polygon key={`fl${i}`} points={pts([[L/2,W/2,0],[x1,y1,0],[x2,y2,0]])} fill={dk?"#1e3a5f":"#bfdbfe"} opacity="0.7"/>);
+      els.push(<polygon key={`fl${i}`} points={pts([[L/2,W/2,0],[x1,y1,0],[x2,y2,0]])} fill={floorFill} opacity="0.7"/>);
       const wallFill=a1>Math.PI&&a1<2*Math.PI?(dk?"#1a3060":"#7dd3fc"):(dk?"#1e4080":"#93c5fd");
       els.push(<polygon key={`wl${i}`} points={pts([[x1,y1,0],[x2,y2,0],[x2,y2,D],[x1,y1,D]])} fill={wallFill} stroke="#2563eb" strokeWidth="0.5" opacity="0.75"/>);
       els.push(<polygon key={`wt${i}`} points={pts([[L/2,W/2,wZ],[x1,y1,wZ],[x2,y2,wZ]])} fill={dk?"#1d4ed8":"#3b82f6"} opacity="0.22"/>);
       const r1=iso(x1,y1,D),r2=iso(x2,y2,D);els.push(<line key={`rim${i}`} x1={r1.x} y1={r1.y} x2={r2.x} y2={r2.y} stroke="#2563eb" strokeWidth="2.5"/>);
     }
     [0.25,0.5,0.75].forEach((f,i)=>els.push(<line key={`sh${i}`} x1={iso(L/2-L/2*0.8,W/2+W/2*f*0.6,wZ).x} y1={iso(L/2-L/2*0.8,W/2+W/2*f*0.6,wZ).y} x2={iso(L/2+L/2*0.8,W/2+W/2*f*0.6,wZ).x} y2={iso(L/2+L/2*0.8,W/2+W/2*f*0.6,wZ).y} stroke="#93c5fd" strokeWidth="0.5" opacity="0.4" strokeDasharray="5,4"/>));
+    if(swSlug){const ovalPts=Array.from({length:N},(_,i)=>{const a=i/N*2*Math.PI;return pt(L/2+L/2*Math.cos(a),W/2+W/2*Math.sin(a),0);}).join(' ');const p00=iso(0,0,0),pL0=iso(L,0,0),p0W=iso(0,W,0);els.push(<defs key="defsOval"><clipPath id="isoFlClip"><polygon points={ovalPts}/></clipPath></defs>);els.push(isoImg("flImg",p00,pL0,p0W,"isoFlClip","0.85"));}
   } else if(isLFmt){
     const W1=W*0.6,W2=W-W1,L2=L*0.6;
     // Chão (2 retângulos)
-    els.push(<polygon key="fl1" points={pts([[0,0,0],[L,0,0],[L,W1,0],[0,W1,0]])} fill={dk?"#1e3a5f":"#bfdbfe"} opacity="0.7"/>);
-    els.push(<polygon key="fl2" points={pts([[0,W1,0],[L2,W1,0],[L2,W,0],[0,W,0]])} fill={dk?"#1e3a5f":"#bfdbfe"} opacity="0.7"/>);
+    els.push(<polygon key="fl1" points={pts([[0,0,0],[L,0,0],[L,W1,0],[0,W1,0]])} fill={floorFill} opacity="0.7"/>);
+    els.push(<polygon key="fl2" points={pts([[0,W1,0],[L2,W1,0],[L2,W,0],[0,W,0]])} fill={floorFill} opacity="0.7"/>);
+    if(swSlug){const p00=iso(0,0,0),pL0=iso(L,0,0),p0W1=iso(0,W1,0),pW1=iso(0,W1,0),pL2W1=iso(L2,W1,0),p0W=iso(0,W,0);els.push(<defs key="defsLfmt"><clipPath id="isoFl1Clip"><polygon points={pts([[0,0,0],[L,0,0],[L,W1,0],[0,W1,0]])}/></clipPath><clipPath id="isoFl2Clip"><polygon points={pts([[0,W1,0],[L2,W1,0],[L2,W,0],[0,W,0]])}/></clipPath></defs>);els.push(isoImg("fl1Img",p00,pL0,p0W1,"isoFl1Clip","0.85"));els.push(isoImg("fl2Img",pW1,pL2W1,p0W,"isoFl2Clip","0.85"));}
     // Paredes traseiras
     els.push(<polygon key="wL" points={pts([[0,0,0],[0,W,0],[0,W,D],[0,0,D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);
     els.push(<polygon key="wB" points={pts([[0,W,0],[L2,W,0],[L2,W,D],[0,W,D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);
@@ -309,13 +316,17 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
     [[0,0],[L,0],[L,W1],[L2,W1],[L2,W],[0,W]].forEach(([x,y],i)=>{const a=iso(x,y,0),b=iso(x,y,D);els.push(<line key={`cv${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#2563eb" strokeWidth="1" opacity="0.35"/>);});
   } else {
     // Retangular (padrão)
-    els.push(<polygon key="fl" points={pts([[0,0,0],[L,0,0],[L,W,0],[0,W,0]])} fill={dk?"#1e3a5f":"#bfdbfe"} opacity="0.7"/>);
+    if(swSlug)els.push(<defs key="defsRect"><clipPath id="isoFlClip"><polygon points={pts([[0,0,0],[L,0,0],[L,W,0],[0,W,0]])}/></clipPath><clipPath id="isoFwClip"><polygon points={pts([[0,0,0],[L,0,0],[L,0,D],[0,0,D]])}/></clipPath><clipPath id="isoRwClip"><polygon points={pts([[L,0,0],[L,W,0],[L,W,D],[L,0,D]])}/></clipPath></defs>);
+    els.push(<polygon key="fl" points={pts([[0,0,0],[L,0,0],[L,W,0],[0,W,0]])} fill={floorFill} opacity="0.7"/>);
+    if(swSlug){const p00=iso(0,0,0),pL0=iso(L,0,0),p0W=iso(0,W,0);els.push(isoImg("flImg",p00,pL0,p0W,"isoFlClip","0.88"));}
     els.push(<polygon key="wL" points={pts([[0,0,0],[0,W,0],[0,W,D],[0,0,D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);
     els.push(<polygon key="wB" points={pts([[0,W,0],[L,W,0],[L,W,D],[0,W,D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);
     els.push(<polygon key="wtr" points={pts([[0,0,wZ],[L,0,wZ],[L,W,wZ],[0,W,wZ]])} fill={dk?"#1d4ed8":"#3b82f6"} opacity="0.22" stroke={dk?"#3b82f6":"#2563eb"} strokeWidth="0.5"/>);
     [0.25,0.5,0.75].forEach((f,i)=>els.push(<line key={`sh${i}`} x1={iso(L*0.1,W*f,wZ).x} y1={iso(L*0.1,W*f,wZ).y} x2={iso(L*0.9,W*f,wZ).x} y2={iso(L*0.9,W*f,wZ).y} stroke="#93c5fd" strokeWidth="0.5" opacity="0.45" strokeDasharray="5,4"/>));
     els.push(<polygon key="wF" points={pts([[0,0,0],[L,0,0],[L,0,D],[0,0,D]])} fill={dk?"#1e4080":"#93c5fd"} stroke="#2563eb" strokeWidth="1"/>);
+    if(swSlug){const p00=iso(0,0,0),pL0=iso(L,0,0),p0D=iso(0,0,D);els.push(isoImg("fwImg",p00,pL0,p0D,"isoFwClip","0.75"));}
     els.push(<polygon key="wR" points={pts([[L,0,0],[L,W,0],[L,W,D],[L,0,D]])} fill={dk?"#1a3570":"#7dd3fc"} stroke="#2563eb" strokeWidth="1"/>);
+    if(swSlug){const pL0=iso(L,0,0),pLW=iso(L,W,0),pLD=iso(L,0,D);els.push(isoImg("rwImg",pL0,pLW,pLD,"isoRwClip","0.70"));}
     els.push(<polygon key="rim" points={pts([[0,0,D],[L,0,D],[L,W,D],[0,W,D]])} fill="none" stroke="#2563eb" strokeWidth="2.5"/>);
     [[0,0],[L,0],[L,W],[0,W]].forEach(([x,y],i)=>{const a=iso(x,y,0),b=iso(x,y,D);els.push(<line key={`cv${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#2563eb" strokeWidth="1" opacity="0.35"/>);});
   }
@@ -404,9 +415,18 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
         route=[[ix,W,iz],[ix,W+laneOff,iz]];
         exitPts.push([ix,W+laneOff,iz]);
       } else {
-        // Meio da parede → vai até parede mais próxima e sai no nível iz
-        route=[[ix,iy,iz],[L,iy,iz],[L+laneOff,iy,iz]];
-        exitPts.push([L+laneOff,iy,iz]);
+        // Parede oval/intermediária: usa a mesma saída do tipo de dispositivo para manter collector unificado
+        if(sysType==='retorno'||sysType==='hidro'){
+          route=[[ix,iy,iz],[0,iy,iz],[-laneOff,iy,iz]];exitPts.push([-laneOff,iy,iz]);
+        } else if(sysType==='skimmer'||sysType==='nivelador'){
+          route=[[ix,iy,iz],[L,iy,iz],[L+laneOff,iy,iz]];exitPts.push([L+laneOff,iy,iz]);
+        } else if(sysType==='aspiracao'){
+          route=[[ix,iy,iz],[ix,W,iz],[ix,W+laneOff,iz]];exitPts.push([ix,W+laneOff,iz]);
+        } else if(iy<W/2){
+          route=[[ix,iy,iz],[ix,0,iz],[ix,-laneOff,iz]];exitPts.push([ix,-laneOff,iz]);
+        } else {
+          route=[[ix,iy,iz],[ix,W,iz],[ix,W+laneOff,iz]];exitPts.push([ix,W+laneOff,iz]);
+        }
       }
       els.push(pip(`${key}-pipe`,route,col));
     });
@@ -419,7 +439,8 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
     if(isLeftExit){
       if(exitPts.length>1){const ys=exitPts.map(p=>p[1]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[-laneOff,ys[0],eZ],[-laneOff,ys[ys.length-1],eZ]],col,3));}
       const midY=exitPts.reduce((s,p)=>s+p[1],0)/exitPts.length;
-      els.push(pip(`${sysType}-tocm`,[[-laneOff,midY,eZ],[-laneOff,W+laneOff,eZ],[cmX0,W+laneOff,eZ],[cmX0,cmEY,eZ]],col,3));
+      // Rota pela frente da piscina (y<0) para evitar cruzar estrutura no isométrico
+      els.push(pip(`${sysType}-tocm`,[[-laneOff,midY,eZ],[-laneOff,-laneOff,eZ],[cmX0,-laneOff,eZ],[cmX0,cmEY,eZ]],col,3));
     } else if(isFrontExit){
       if(exitPts.length>1){const xs=exitPts.map(p=>p[0]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[xs[0],-laneOff,eZ],[xs[xs.length-1],-laneOff,eZ]],col,3));}
       const midX=exitPts.reduce((s,p)=>s+p[0],0)/exitPts.length;
@@ -427,7 +448,8 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
     } else if(isBackExit){
       if(exitPts.length>1){const xs=exitPts.map(p=>p[0]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[xs[0],W+laneOff,eZ],[xs[xs.length-1],W+laneOff,eZ]],col,3));}
       const midX=exitPts.reduce((s,p)=>s+p[0],0)/exitPts.length;
-      els.push(pip(`${sysType}-tocm`,[[midX,W+laneOff,eZ],[cmX0,W+laneOff,eZ],[cmX0,cmEY,eZ]],col,3));
+      // Rota pela parede direita para evitar cruzar estrutura no isométrico
+      els.push(pip(`${sysType}-tocm`,[[midX,W+laneOff,eZ],[L+laneOff,W+laneOff,eZ],[L+laneOff,cmEY,eZ],[cmX0,cmEY,eZ]],col,3));
     } else {
       if(exitPts.length>1){const ys=exitPts.map(p=>p[1]).sort((a,b)=>a-b);els.push(pip(`${sysType}-col`,[[L+laneOff,ys[0],eZ],[L+laneOff,ys[ys.length-1],eZ]],col,3));}
       const midY=exitPts.reduce((s,p)=>s+p[1],0)/exitPts.length;
@@ -473,36 +495,36 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
 const mkItems=(tipo)=>{
   if(tipo==="revestimento")return[
     {id:1,n:"Vinil ACQUALINER",q:1,c:0,m:0,nt:"Resistência até 32°C · Estampa à escolha",on:true,un:"m²"},
-    {id:2,n:"Manta Acrílica 0,6mm",q:1,c:4.65,m:40,nt:"só chão",on:true,un:"chao"},
-    {id:3,n:"Perfil Rígido",q:1,c:6.32,m:40,nt:"R$379/60m",on:true,un:"ml"},
-    {id:15,n:"Kit Flangeamento",q:1,c:39.67,m:40,nt:"Perfil p/ dispositivos",on:true,un:"un"},
+    {id:2,n:"Manta Acrílica 0,6mm",q:1,c:4.65,m:0,nt:"só chão",on:true,un:"chao"},
+    {id:3,n:"Perfil Rígido",q:1,c:6.32,m:0,nt:"",on:true,un:"ml"},
+    {id:15,n:"Kit Flangeamento",q:1,c:39.67,m:0,nt:"Perfil p/ dispositivos",on:true,un:"un"},
     {id:14,n:"Mão de obra completa",q:1,c:0,m:0,nt:"Revestimento vinílico",on:true,un:"un"},
   ];
   if(tipo==="reforma")return[
     {id:1,n:"Vinil ACQUALINER",q:1,c:0,m:0,nt:"Resistência até 32°C · Estampa à escolha",on:true,un:"m²"},
-    {id:2,n:"Manta Acrílica 0,6mm",q:1,c:4.65,m:40,nt:"só chão",on:true,un:"chao"},
-    {id:3,n:"Perfil Rígido",q:1,c:6.32,m:40,nt:"R$379/60m",on:true,un:"ml"},
-    {id:15,n:"Kit Flangeamento",q:1,c:39.67,m:40,nt:"Perfil p/ dispositivos",on:true,un:"un"},
-    {id:4,n:"Filtro Império IP60",q:1,c:1586,m:35,nt:"1.0CV",on:true,un:"un"},
-    {id:5,n:"Dreno Fundo",q:2,c:74.90,m:40,nt:"Sibrape",on:true,un:"un"},
-    {id:6,n:"Disp. Retorno 2pol",q:2,c:22.90,m:40,nt:"",on:true,un:"un"},
-    {id:7,n:"Disp. Aspiração 2pol",q:1,c:22.90,m:40,nt:"",on:true,un:"un"},
+    {id:2,n:"Manta Acrílica 0,6mm",q:1,c:4.65,m:0,nt:"só chão",on:true,un:"chao"},
+    {id:3,n:"Perfil Rígido",q:1,c:6.32,m:0,nt:"",on:true,un:"ml"},
+    {id:15,n:"Kit Flangeamento",q:1,c:39.67,m:0,nt:"Perfil p/ dispositivos",on:true,un:"un"},
+    {id:4,n:"Filtro Império IP60",q:1,c:1586,m:0,nt:"1.0CV",on:true,un:"un"},
+    {id:5,n:"Dreno Fundo",q:2,c:74.90,m:0,nt:"Sibrape",on:true,un:"un"},
+    {id:6,n:"Disp. Retorno 2pol",q:2,c:22.90,m:0,nt:"",on:true,un:"un"},
+    {id:7,n:"Disp. Aspiração 2pol",q:1,c:22.90,m:0,nt:"",on:true,un:"un"},
     {id:14,n:"Mão de obra completa",q:1,c:0,m:0,nt:"Reforma completa",on:true,un:"un"},
   ];
   // construcao (default)
   return[
     {id:1,n:"Vinil ACQUALINER",q:1,c:0,m:0,nt:"Resistência até 32°C · Estampa à escolha",on:true,un:"m²"},
-    {id:2,n:"Manta Acrílica 0,6mm",q:1,c:4.65,m:40,nt:"só chão",on:true,un:"chao"},
-    {id:3,n:"Perfil Rígido",q:1,c:6.32,m:40,nt:"R$379/60m",on:true,un:"ml"},
-    {id:15,n:"Kit Flangeamento",q:1,c:39.67,m:40,nt:"Perfil p/ dispositivos",on:true,un:"un"},
-    {id:4,n:"Filtro Império IP60",q:1,c:1586,m:35,nt:"1.0CV",on:true,un:"un"},
-    {id:5,n:"Dreno Fundo",q:2,c:74.90,m:40,nt:"Sibrape",on:true,un:"un"},
-    {id:6,n:"Disp. Retorno 2pol",q:2,c:22.90,m:40,nt:"",on:true,un:"un"},
-    {id:7,n:"Disp. Aspiração 2pol",q:1,c:22.90,m:40,nt:"",on:true,un:"un"},
-    {id:8,n:"Skimmer Reto 30cm",q:1,c:194.90,m:40,nt:"Sibrape",on:true,un:"un"},
-    {id:9,n:"Refletor Império RGB",q:4,c:59.99,m:40,nt:"",on:true,un:"un"},
-    {id:10,n:"Nicho LED",q:4,c:17.90,m:40,nt:"",on:true,un:"un"},
-    {id:11,n:"Controladora LuxPool",q:1,c:199,m:35,nt:"",on:true,un:"un"},
+    {id:2,n:"Manta Acrílica 0,6mm",q:1,c:4.65,m:0,nt:"só chão",on:true,un:"chao"},
+    {id:3,n:"Perfil Rígido",q:1,c:6.32,m:0,nt:"",on:true,un:"ml"},
+    {id:15,n:"Kit Flangeamento",q:1,c:39.67,m:0,nt:"Perfil p/ dispositivos",on:true,un:"un"},
+    {id:4,n:"Filtro Império IP60",q:1,c:1586,m:0,nt:"1.0CV",on:true,un:"un"},
+    {id:5,n:"Dreno Fundo",q:2,c:74.90,m:0,nt:"Sibrape",on:true,un:"un"},
+    {id:6,n:"Disp. Retorno 2pol",q:2,c:22.90,m:0,nt:"",on:true,un:"un"},
+    {id:7,n:"Disp. Aspiração 2pol",q:1,c:22.90,m:0,nt:"",on:true,un:"un"},
+    {id:8,n:"Skimmer Reto 30cm",q:1,c:194.90,m:0,nt:"Sibrape",on:true,un:"un"},
+    {id:9,n:"Refletor Império RGB",q:4,c:59.99,m:0,nt:"",on:true,un:"un"},
+    {id:10,n:"Nicho LED",q:4,c:17.90,m:0,nt:"",on:true,un:"un"},
+    {id:11,n:"Controladora LuxPool",q:1,c:199,m:0,nt:"",on:true,un:"un"},
     {id:12,n:"Kit aspiração completo",q:1,c:0,m:0,nt:"",on:true,un:"un"},
     {id:13,n:"Projeto 3D",q:1,c:0,m:0,nt:"",on:true,un:"un"},
     {id:16,n:"Mão de obra pedreiro",q:1,c:0,m:0,nt:"Alvenaria da piscina",on:true,un:"un"},
@@ -520,19 +542,28 @@ const IPAY={pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
 const fmt=v=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(v);
 
 // ═══ AREA CALCULATION ═══
-const calcA=(pool,spa,wMode,walls)=>{
+const calcA=(pool,spa,wMode,walls,poolFmt)=>{
   const L=parseFloat(pool.length)||0,W=parseFloat(pool.width)||0;
   const dMin=parseFloat(pool.depthMin)||0,dMax=parseFloat(pool.depthMax)||0;
   const D=(dMin>0&&dMax>0)?(dMin+dMax)/2:parseFloat(pool.depth)||0;
   const realDMin=(dMin>0)?dMin:D,realDMax=(dMax>0)?dMax:D;
-  const chao=L*W;
-  let par=wMode==="irregular"&&walls.length>0?walls.reduce((s,w)=>s+(parseFloat(w.l)||0)*(parseFloat(w.h)||D),0):(L*realDMin+L*realDMax+2*W*D);
+  const isOval=poolFmt==="Oval";
+  // Para oval/elipse: a = L/2 (semi-eixo maior), b = W/2 (semi-eixo menor)
+  const a=L/2,b=W/2;
+  const chao=isOval?(Math.PI*a*b):L*W;
+  // Perímetro da elipse - aproximação de Ramanujan
+  const ovalPerim=isOval?(Math.PI*(3*(a+b)-Math.sqrt((3*a+b)*(a+3*b)))):0;
+  let par=wMode==="irregular"&&walls.length>0
+    ?walls.reduce((s,w)=>s+(parseFloat(w.l)||0)*(parseFloat(w.h)||D),0)
+    :(isOval?(ovalPerim*D):(L*realDMin+L*realDMax+2*W*D));
   // Perimeter: sum of wall lengths (for perfil)
-  let perim=wMode==="irregular"&&walls.length>0?walls.reduce((s,w)=>s+(parseFloat(w.l)||0),0):(2*L+2*W);
+  let perim=wMode==="irregular"&&walls.length>0
+    ?walls.reduce((s,w)=>s+(parseFloat(w.l)||0),0)
+    :(isOval?ovalPerim:(2*L+2*W));
   const sL=parseFloat(spa.length)||0,sW=parseFloat(spa.width)||0,sD=parseFloat(spa.depth)||0;
   const sChao=spa.on?sL*sW:0,sPar=spa.on?(2*sL*sD+2*sW*sD):0;
   const sPerim=spa.on?(2*sL+2*sW):0;
-  const vol=L*W*D+(spa.on?sL*sW*sD:0);
+  const vol=(isOval?(Math.PI*a*b):L*W)*D+(spa.on?sL*sW*sD:0);
   const depthInfo={avg:D,min:realDMin,max:realDMax,sloped:dMin>0&&dMax>0&&dMin!==dMax};
   return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:sChao.toFixed(1),sPar:sPar.toFixed(1),tot:(chao+par+sChao+sPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao).toFixed(1),depthInfo};
 };
@@ -605,7 +636,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
   const pool=d.pool||{length:"0",width:"0",depth:"0"};
   const spa=d.spa||{on:false,length:"0",width:"0",depth:"0"};
   const pay=d.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
-  const ar=calcA(pool,spa,d.wMode||"regular",d.walls||[]);
+  const ar=calcA(pool,spa,d.wMode||"regular",d.walls||[],d.poolFmt);
   const effQ=(i)=>{
     if(i.un==="m²")return parseFloat(ar.tot)||0;
     if(i.un==="chao")return parseFloat(ar.chaoTot)||0;
@@ -793,14 +824,15 @@ export default function App(){
   const [dark,setDark]=useState(false);
   const t=themes[dark?"dark":"light"];
   const [tab,setTab]=useState("cliente");
+  const [editingId,setEditingId]=useState(null);
   const [svcType,setST2]=useState("construcao");
   const [propNum,setPN]=useState(()=>{const d=new Date();return String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear()});
   const [poolFmt,setPF]=useState("Retangular");
   const [vinilT,setVT]=useState("0,7mm");
   const [stamp,setSt]=useState("");
   const [execDays,setED]=useState("60 a 90");
-  const [gM,setGM]=useState(40);
-  const [client,setCl]=useState({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:""});
+  const [gM,setGM]=useState(0);
+  const [client,setCl]=useState({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});
   const uc=f=>v=>setCl(p=>({...p,[f]:v}));
   const [pool,setPool]=useState({length:"10.00",width:"4.00",depth:"1.40",depthMin:"",depthMax:""});
   const [fieldErrors,setFieldErrors]=useState({});
@@ -877,7 +909,7 @@ export default function App(){
   const [ci,setCI]=useState(()=>mkCI("construcao"));
   const [newCI,setNCI]=useState("");
   const [pay,setPay]=useState(IPAY);
-  const [mo,setMO]=useState("15000");
+  const [mo,setMO]=useState("");
   const [totOv,setTO]=useState("");
   const [hist,setHist]=useState(()=>{try{const s=localStorage.getItem("vv_hist");return s?JSON.parse(s):[];}catch{return[]}});
   const [histLoaded,setHL]=useState(false);
@@ -1018,8 +1050,8 @@ export default function App(){
   const [contasPagar,setContasPagar]=useState(()=>{try{const s=localStorage.getItem("vv_pagar");return s?JSON.parse(s):[]}catch{return[]}});
   const [despesasFixas,setDespesasFixas]=useState(()=>{try{const s=localStorage.getItem("vv_fixas");return s?JSON.parse(s):[]}catch{return[]}});
   const [finTab,setFinTab]=useState("dash");
-  const [finFormR,setFinFormR]=useState({desc:"",valor:"",venc:"",obs:"",parcelas:"1"});
-  const [finFormP,setFinFormP]=useState({desc:"",valor:"",venc:"",cat:"materiais",obs:"",parcelas:"1",obra:""});
+  const [finFormR,setFinFormR]=useState({desc:"",valor:"",venc:"",obs:"",parcelas:"1",jaRecebido:false,dataRecebimento:""});
+  const [finFormP,setFinFormP]=useState({desc:"",valor:"",venc:"",cat:"materiais",obs:"",parcelas:"1",obra:"",jaPago:false,dataPagamento:""});
   const [finFormF,setFinFormF]=useState({desc:"",valor:"",cat:"fixas",dia:"5",obs:"",fimEm:""});
   const [calMes,setCalMes]=useState(new Date());
   const [calDiaSel,setCalDiaSel]=useState(null);
@@ -1259,11 +1291,28 @@ export default function App(){
     const ns={...stk};const nl=[...stkLog];
     items2.forEach(i=>{
       if(!i.catId)return;
-      const q=parseFloat(i.qty)||0;
-      if(!ns[i.catId])ns[i.catId]={qty:0,minQty:2,lastCost:0};
-      ns[i.catId].qty=Math.max(0,(ns[i.catId].qty||0)-q);
-      const item=CAT.find(p=>p.id===i.catId);
-      nl.unshift({type:"saida",catId:i.catId,name:item?.n||i.catId,qty:q,client:clientName,mode,date:new Date().toLocaleDateString("pt-BR"),ts:Date.now()});
+      const catItem=CAT.find(p=>p.id===i.catId);
+      const isVinil=catItem&&(catItem.c==="Vinil 0,7mm"||catItem.c==="Vinil 0,8mm");
+      if(!ns[i.catId])ns[i.catId]={qty:0,minQty:1,lastCost:catItem?.p||0,m2Aberto:0};
+      if(isVinil&&i._vinilM2){
+        // qty está em m²; primeiro consome da bobina aberta, depois abre novas bobinas fechadas
+        const m2Need=i._vinilM2;
+        let m2Aberto=ns[i.catId].m2Aberto||0;
+        let qtyM2=ns[i.catId].qty||0; // m² em bobinas fechadas
+        let m2FromAberto=Math.min(m2Aberto,m2Need);
+        let m2Rest=m2Need-m2FromAberto;
+        // m² a retirar das bobinas fechadas (abre bobinas inteiras)
+        let m2Pull=m2Rest>0?Math.ceil(m2Rest/70)*70:0;
+        let newM2Aberto=m2FromAberto<m2Aberto?(m2Aberto-m2FromAberto):(m2Rest>0?(m2Pull-m2Rest):0);
+        ns[i.catId].qty=Math.max(0,qtyM2-m2Pull);
+        ns[i.catId].m2Aberto=newM2Aberto;
+        const bobsFech=Math.floor(m2Pull/70)-(newM2Aberto>0?1:0);
+        nl.unshift({type:"saida",catId:i.catId,name:catItem?.n||i.catId,qty:m2Need,client:clientName,mode,obs:`${m2Need}m² → ${bobsFech>0?bobsFech+" bob. fech.":""}${newM2Aberto>0?(bobsFech>0?" + ":"")+"1 aberta ("+newM2Aberto+"m² rest.)":""}`,date:new Date().toLocaleDateString("pt-BR"),ts:Date.now()});
+      }else{
+        const q=parseFloat(i.qty)||0;
+        ns[i.catId].qty=Math.max(0,(ns[i.catId].qty||0)-q);
+        nl.unshift({type:"saida",catId:i.catId,name:catItem?.n||i.catId,qty:q,client:clientName,mode,date:new Date().toLocaleDateString("pt-BR"),ts:Date.now()});
+      }
     });
     saveStk(ns,nl);
   };
@@ -1284,7 +1333,17 @@ export default function App(){
       if(nm.includes("Vinil ACQUALINER")){
         const stampClean=stamp.replace(/\s+/g," ").trim();
         const vinilMatch=CAT.find(p=>p.c==="Vinil 0,"+thick+"mm"&&p.n.toUpperCase().includes(stampClean.toUpperCase()));
-        if(vinilMatch)stkItems.push({catId:vinilMatch.id,qty:Math.ceil(areaTotal*1.1),name:vinilMatch.n,matched:true});
+        if(vinilMatch){
+          const m2needed=Math.ceil(areaTotal*1.1);
+          const m2Aberto=stk[vinilMatch.id]?.m2Aberto||0;
+          const m2FromAberto=Math.min(m2Aberto,m2needed);
+          const m2Rest=m2needed-m2FromAberto;
+          const bobsAbertura=m2Rest>0?Math.ceil(m2Rest/70):0;
+          const newM2Aberto=m2FromAberto<m2Aberto?(m2Aberto-m2FromAberto):(m2Rest>0?(bobsAbertura*70-m2Rest):0);
+          const bobsFech=bobsAbertura-(newM2Aberto>0?1:0);
+          const obsLabel=`${m2needed}m² → ${bobsFech>0?bobsFech+` bob. fech.`:""}${newM2Aberto>0?(bobsFech>0?" + ":"")+"1 aberta ("+newM2Aberto+"m² rest.)":""}`+(m2FromAberto>0?` | usa ${m2FromAberto}m² aberto`:"");
+          stkItems.push({catId:vinilMatch.id,qty:m2needed,name:vinilMatch.n,matched:true,_obs:obsLabel,_vinilM2:m2needed});
+        }
         else unmatched.push({name:nm,reason:"Estampa '"+stampClean+"' não encontrada no catálogo"});
       }else if(nm.includes("Manta")){
         const nmLow=nm.toLowerCase();
@@ -1316,7 +1375,7 @@ export default function App(){
   const [stkReview,setStkReview]=useState(null); // {items:[{catId,qty,name,matched}], clientName}
   const exportStkCSV=()=>{
     const rows=[["Produto","Categoria","Qtd em Estoque","Qtd Mínima","Custo Unit. (R$)","Valor Total (R$)","Status"]];
-    CAT.forEach(p=>{const s=stk[p.id]||{qty:0,minQty:2,lastCost:p.p};const status=s.qty<=0?"Zerado":s.qty<=(s.minQty||2)?"Baixo":"OK";rows.push([p.n,p.c,s.qty,s.minQty||2,(s.lastCost||p.p).toFixed(2),(s.qty*(s.lastCost||p.p)).toFixed(2),status])});
+    CAT.forEach(p=>{const s=stk[p.id]||{qty:0,minQty:2,lastCost:p.p};const price=s.manualPrice!=null?s.manualPrice:(s.lastCost||p.p);const status=s.qty<=0?"Zerado":s.qty<=(s.minQty||2)?"Baixo":"OK";rows.push([p.n,p.c,s.qty,s.minQty||2,price.toFixed(2),(s.qty*price).toFixed(2),status])});
     const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(",")).join("\n");
     const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
     const url=URL.createObjectURL(blob);const a=document.createElement("a");
@@ -1361,7 +1420,7 @@ export default function App(){
 
   const inc=items.filter(i=>i.on);
   // Calculate effective quantity based on unit type
-  const ar=calcA(pool,spa,wMode,walls);
+  const ar=calcA(pool,spa,wMode,walls,poolFmt);
   const lowStockCount=Object.entries(stk).filter(([,s])=>s.qty>0&&s.qty<=(s.minQty||2)).length;
   const alertasFinCount=(()=>{const today=new Date().toISOString().split("T")[0];const d3=new Date();d3.setDate(d3.getDate()+3);const d3s=d3.toISOString().split("T")[0];return[...contasReceber,...contasPagar].filter(c=>c.status==="pendente"&&c.venc&&(c.venc<today||c.venc<=d3s)).length;})();
 
@@ -1391,7 +1450,14 @@ export default function App(){
     if(!(parseFloat(pool.depth)>0))errs.depth="Informe a profundidade";
     if(Object.keys(errs).length>0){setFieldErrors(errs);setFbMsg("Preencha os campos obrigatórios");setTimeout(()=>setFbMsg(""),3000);return;}
     setFieldErrors({});
-    const d=gData();const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setFbMsg("Salvo!");setTimeout(()=>setFbMsg(""),2000);
+    const d=gData();
+    if(editingId){
+      const existing=hist.find(q=>q.id===editingId);
+      const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};
+      const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);setFbMsg("Atualizado!");setTimeout(()=>setFbMsg(""),2000);
+    }else{
+      const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);setFbMsg("Salvo!");setTimeout(()=>setFbMsg(""),2000);
+    }
   };
   // Sincroniza automaticamente obra fechada em Contas a Receber
   const autoSyncReceber=(item)=>{
@@ -1402,7 +1468,7 @@ export default function App(){
   };
   const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);autoStockOut(item);autoSyncReceber(item);}setFbMsg("✅ Cliente fechado e lançado no financeiro!");setTimeout(()=>setFbMsg(""),3000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
-  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setWM(d.wMode||"regular");setWalls(d.walls||[]);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
+  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setWM(d.wMode||"regular");setWalls(d.walls||[]);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
   const movePipe=(id,stage)=>{const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);if(["fechou","execucao","concluido"].includes(stage))autoSyncReceber(item);}setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
   const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const url=`https://wa.me/55${num}${msg?`?text=${encodeURIComponent(msg)}`:""}`;window.open(url,"_blank")};
@@ -1460,7 +1526,7 @@ export default function App(){
 
 
 
-  if(view==="quote")return <QP d={gData()} autoPositions={autoPositions} onBack={()=>setView("editor")} onSave={()=>{const d=gData();const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item)}}/>;
+  if(view==="quote")return <QP d={gData()} autoPositions={autoPositions} onBack={()=>setView("editor")} onSave={()=>{const d=gData();if(editingId){const existing=hist.find(q=>q.id===editingId);const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);}else{const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);}}}/>;
 
   const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};// use className="vv-g2" for responsive
 
@@ -1476,7 +1542,7 @@ export default function App(){
             <Btn onClick={()=>setView("quote")} style={{background:"#fff",color:blue,fontWeight:"700"}}>📄 Orçamento</Btn>
           </div>
         </div>
-        <div style={{display:"flex",gap:"5px",marginTop:"10px",flexWrap:"wrap"}}>{SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(mkItems(sv.id));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20")}} style={{padding:"5px 10px",borderRadius:"16px",border:"1.5px solid rgba(255,255,255,.3)",background:svcType===sv.id?"rgba(255,255,255,.2)":"transparent",color:"#fff",fontSize:"10px",fontWeight:svcType===sv.id?"700":"400",cursor:"pointer"}}>{sv.icon} {sv.label}</button>)}</div>
+        <div style={{display:"flex",gap:"5px",marginTop:"10px",flexWrap:"wrap"}}>{SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(mkItems(sv.id));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20");setEditingId(null);}} style={{padding:"5px 10px",borderRadius:"16px",border:"1.5px solid rgba(255,255,255,.3)",background:svcType===sv.id?"rgba(255,255,255,.2)":"transparent",color:"#fff",fontSize:"10px",fontWeight:svcType===sv.id?"700":"400",cursor:"pointer"}}>{sv.icon} {sv.label}</button>)}</div>
       </div>
 
       <div className="vv-tab-bar" style={{display:"flex",padding:"0 14px",background:t.tabBg,borderBottom:`1px solid ${t.cardBorder}`,overflowX:"auto"}}>
@@ -1487,12 +1553,21 @@ export default function App(){
         {/* CLIENTE */}
         {tab==="cliente"&&<Card t={t}><ST icon="👤">Dados do Cliente</ST>
           <div style={{display:"flex",gap:"10px",marginBottom:"10px"}}><Inp label="Proposta" value={propNum} onChange={setPN} placeholder="03/26" style={{flex:"0 0 90px"}} t={t}/><Inp label="Nome completo *" value={client.name} onChange={v=>{uc("name")(v);if(v.trim())setFieldErrors(e=>({...e,clientName:false}))}} placeholder="Nome" style={{flex:1}} t={t} error={fieldErrors.clientName}/></div>
-          <div className="vv-g2" style={g2}><Inp label="WhatsApp" value={client.phone} onChange={uc("phone")} placeholder="(13) 99999-9999" t={t}/><Inp label="Email" value={client.email} onChange={uc("email")} placeholder="email@email.com" t={t}/><Inp label="Endereço" value={client.address} onChange={uc("address")} placeholder="Rua, nº, bairro" t={t}/><Inp label="Cidade" value={client.city} onChange={uc("city")} placeholder="Registro-SP" t={t}/><Inp label="CPF/CNPJ" value={client.cpf} onChange={uc("cpf")} placeholder="000.000.000-00" t={t}/><Inp label="RG" value={client.rg} onChange={uc("rg")} t={t}/></div>
+          <div className="vv-g2" style={g2}><Inp label="WhatsApp" value={client.phone} onChange={uc("phone")} placeholder="(13) 99999-9999" t={t}/><Inp label="Email" value={client.email} onChange={uc("email")} placeholder="email@email.com" t={t}/><Inp label="Endereço" value={client.address} onChange={uc("address")} placeholder="Rua, nº, bairro" t={t}/><Inp label="Cidade" value={client.city} onChange={uc("city")} placeholder="Registro-SP" t={t}/><Inp label="CPF/CNPJ" value={client.cpf} onChange={uc("cpf")} placeholder="000.000.000-00" t={t}/><Inp label="RG" value={client.rg} onChange={uc("rg")} t={t}/><Inp label="Aniversário" value={client.birthday} onChange={uc("birthday")} placeholder="DD/MM" t={t}/></div>
         </Card>}
 
         {/* PISCINA */}
         {tab==="piscina"&&<Card t={t}><ST icon="🏊">Piscina</ST>
-          <div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Comp. (m) *" value={pool.length} onChange={up("length")} t={t} error={fieldErrors.length}/><Inp label="Larg. (m) *" value={pool.width} onChange={up("width")} t={t} error={fieldErrors.width}/><Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
+          {poolFmt==="Oval"
+            ?<div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}>
+                <Inp label="Diâm. maior (m) *" value={pool.length} onChange={up("length")} t={t} error={fieldErrors.length}/>
+                <Inp label="Diâm. menor (m) *" value={pool.width} onChange={up("width")} t={t} error={fieldErrors.width}/>
+                <Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/>
+                <Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/>
+                <Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/>
+              </div>
+            :<div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Comp. (m) *" value={pool.length} onChange={up("length")} t={t} error={fieldErrors.length}/><Inp label="Larg. (m) *" value={pool.width} onChange={up("width")} t={t} error={fieldErrors.width}/><Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
+          }
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Formato" value={poolFmt} onChange={setPF} options={PFMT} t={t}/></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={setVT} options={VOPTS.map(v=>({value:v.t,label:`${v.t} (${v.w}a)`}))} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
           <div style={{marginTop:"10px"}}><CatalogoPicker value={stamp} onChange={setSt} t={t} dark={dark}/></div>
@@ -1517,7 +1592,7 @@ export default function App(){
               </div>)}
               <Btn onClick={addWall} style={{marginTop:"4px",fontSize:"9px"}}>+ Parede</Btn>
             </div>}
-            {wMode==="regular"&&<div style={{fontSize:"10px",color:t.textSec}}>Paredes calculadas automaticamente: 2×({pool.length}×{pool.depth}) + 2×({pool.width}×{pool.depth})</div>}
+            {wMode==="regular"&&<div style={{fontSize:"10px",color:t.textSec}}>{poolFmt==="Oval"?`Paredes calculadas automaticamente: Perímetro elipse × profundidade (Diâm. maior: ${pool.length}m, Diâm. menor: ${pool.width}m)`:`Paredes calculadas automaticamente: 2×(${pool.length}×${pool.depth}) + 2×(${pool.width}×${pool.depth})`}</div>}
           </div>
 
           {/* SPA */}
@@ -1652,6 +1727,7 @@ export default function App(){
                   <Btn onClick={()=>{setVC(q);initCE(q);setTab("contratos")}} style={{fontSize:"8px",padding:"3px 7px",background:"#7c3aed",color:"#fff",border:"none"}}>📝 Contrato</Btn>
                   <Btn onClick={()=>toBack(q.id)} style={{fontSize:"8px",padding:"3px 5px",background:"#f59e0b",color:"#fff",border:"none"}}>↩ Lead</Btn>
                   <Btn onClick={()=>load(q)} style={{fontSize:"8px",padding:"3px 5px",background:blue,color:"#fff",border:"none"}}>Abrir</Btn>
+                  <button onClick={e=>{e.stopPropagation();delQ(q.id)}} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>🗑</button>
                 </div>
               </div>
             ))}</div>}
@@ -1890,10 +1966,10 @@ export default function App(){
           </div>
           {stkTab==="dashboard"&&<>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"12px"}}>
-              <div style={{background:"linear-gradient(135deg,#0055a4,#003d7a)",borderRadius:"10px",padding:"12px",color:"#fff"}}><div style={{fontSize:"20px",fontWeight:"800"}}>{CAT.length}</div><div style={{fontSize:"9px",opacity:.8}}>Produtos Cadastrados</div><div style={{fontSize:"12px",fontWeight:"700",marginTop:"2px"}}>{Object.values(stk).reduce((a,s)=>a+s.qty,0)} un. em estoque</div></div>
+              <div style={{background:"linear-gradient(135deg,#0055a4,#003d7a)",borderRadius:"10px",padding:"12px",color:"#fff"}}><div style={{fontSize:"20px",fontWeight:"800"}}>{CAT.length}</div><div style={{fontSize:"9px",opacity:.8}}>Produtos Cadastrados</div><div style={{fontSize:"12px",fontWeight:"700",marginTop:"2px"}}>{CAT.filter(p=>stk[p.id]&&stk[p.id].qty>0).length} produtos em estoque</div></div>
               <div style={{background:Object.values(stk).filter(s=>s.qty<=0).length>0?"linear-gradient(135deg,#dc2626,#991b1b)":"linear-gradient(135deg,#16a34a,#15803d)",borderRadius:"10px",padding:"12px",color:"#fff"}}><div style={{fontSize:"20px",fontWeight:"800"}}>{CAT.filter(p=>!stk[p.id]||stk[p.id].qty<=0).length}</div><div style={{fontSize:"9px",opacity:.8}}>Estoque Zerado</div><div style={{fontSize:"12px",fontWeight:"700",marginTop:"2px"}}>{Object.values(stk).filter(s=>s.qty<=0).length===0?"Tudo OK!":"Reabastecer"}</div></div>
               <div style={{background:"linear-gradient(135deg,#f59e0b,#d97706)",borderRadius:"10px",padding:"12px",color:"#fff"}}><div style={{fontSize:"20px",fontWeight:"800"}}>{Object.entries(stk).filter(([k,s])=>s.qty>0&&s.qty<=s.minQty).length}</div><div style={{fontSize:"9px",opacity:.8}}>Estoque Minimo</div><div style={{fontSize:"12px",fontWeight:"700",marginTop:"2px"}}>Abaixo do minimo</div></div>
-              <div style={{background:"linear-gradient(135deg,#7c3aed,#6d28d9)",borderRadius:"10px",padding:"12px",color:"#fff"}}><div style={{fontSize:"20px",fontWeight:"800"}}>{fmt(Object.entries(stk).reduce((a,[k,s])=>a+(s.qty*(s.lastCost||0)),0))}</div><div style={{fontSize:"9px",opacity:.8}}>Investimento Total</div><div style={{fontSize:"12px",fontWeight:"700",marginTop:"2px"}}>Valor em estoque</div></div>
+              <div style={{background:"linear-gradient(135deg,#7c3aed,#6d28d9)",borderRadius:"10px",padding:"12px",color:"#fff"}}><div style={{fontSize:"20px",fontWeight:"800"}}>{fmt(Object.entries(stk).reduce((a,[k,s])=>a+(s.qty*(s.manualPrice!=null?s.manualPrice:(s.lastCost||0))),0))}</div><div style={{fontSize:"9px",opacity:.8}}>Investimento Total</div><div style={{fontSize:"12px",fontWeight:"700",marginTop:"2px"}}>Valor em estoque</div></div>
             </div>
             <div style={{background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`,marginBottom:"12px"}}>
               <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"8px"}}>Entradas vs Saidas - Ultimos 10 dias</div>
@@ -1928,10 +2004,24 @@ export default function App(){
               </div>
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:"3px",maxHeight:"400px",overflow:"auto"}}>
-              {(() => {const filtered=CAT.filter(p=>(stkCat==="todos"||p.c===stkCat)&&(!stkFilter||p.n.toLowerCase().includes(stkFilter.toLowerCase())));const key=stkCat+"|"+stkFilter;if(stkOrderRef.current._key!==key){stkOrderRef.current={_key:key,ids:filtered.map(p=>p.id).sort((a,b)=>(stk[b]?.qty||0)-(stk[a]?.qty||0))};};return stkOrderRef.current.ids.map(id=>filtered.find(p=>p.id===id)).filter(Boolean)})().map(p=>{const s=stk[p.id]||{qty:0,minQty:2,lastCost:p.p};const low=s.qty>0&&s.qty<=s.minQty;const zero=s.qty<=0;return <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 8px",background:zero?"#fef2f2":low?"#fffbeb":t.sectionBg,borderRadius:"6px",border:`1px solid ${zero?"#fecaca":low?"#fde68a":t.cardBorder}`}}>
-                <div style={{flex:1}}><span style={{fontSize:"7px",background:t.stampBg,color:blue,padding:"1px 4px",borderRadius:"3px",fontWeight:"600",marginRight:"4px"}}>{p.c}</span><span style={{fontSize:"11px",fontWeight:"600",color:t.text}}>{p.n}</span><div style={{fontSize:"8px",color:t.textMuted}}>Custo: {fmt(s.lastCost)}</div></div>
-                <div style={{display:"flex",alignItems:"center",gap:"6px"}}><div style={{fontSize:"16px",fontWeight:"800",color:zero?"#dc2626":low?"#f59e0b":"#16a34a",minWidth:"35px",textAlign:"right"}}>{s.qty}</div><span style={{fontSize:"8px",color:t.textMuted}}>{p.un}</span>
-                  <div style={{display:"flex",gap:"2px"}}><button onClick={(ev)=>{ev.stopPropagation();setStk(prev=>{const ns={...prev};if(!ns[p.id])ns[p.id]={qty:0,minQty:2,lastCost:p.p};ns[p.id]={...ns[p.id],qty:ns[p.id].qty+1};return ns})}} style={{width:"20px",height:"20px",borderRadius:"4px",border:"none",background:"#16a34a",color:"#fff",fontSize:"11px",cursor:"pointer",fontWeight:"700"}}>+</button><button onClick={(ev)=>{ev.stopPropagation();setStk(prev=>{const ns={...prev};if(!ns[p.id])ns[p.id]={qty:0,minQty:2,lastCost:p.p};ns[p.id]={...ns[p.id],qty:Math.max(0,ns[p.id].qty-1)};return ns})}} style={{width:"20px",height:"20px",borderRadius:"4px",border:"none",background:"#dc2626",color:"#fff",fontSize:"11px",cursor:"pointer",fontWeight:"700"}}>-</button></div>
+              {(() => {const filtered=CAT.filter(p=>(stkCat==="todos"||p.c===stkCat)&&(!stkFilter||p.n.toLowerCase().includes(stkFilter.toLowerCase())));const key=stkCat+"|"+stkFilter;if(stkOrderRef.current._key!==key){stkOrderRef.current={_key:key,ids:filtered.map(p=>p.id).sort((a,b)=>(stk[b]?.qty||0)-(stk[a]?.qty||0))};};return stkOrderRef.current.ids.map(id=>filtered.find(p=>p.id===id)).filter(Boolean)})().map(p=>{const s=stk[p.id]||{qty:0,minQty:2,lastCost:p.p};const low=s.qty>0&&s.qty<=s.minQty;const zero=s.qty<=0;const isVinil=p.c==="Vinil 0,7mm"||p.c==="Vinil 0,8mm";const isM2=isVinil||p.c==="Mantas"||p.c==="Lona Aquatica";const m2Fech=s.qty||0;const bobFech=Math.floor(m2Fech/70);const m2Ab=s.m2Aberto||0;const total=m2Fech+m2Ab;const dispPrice=s.manualPrice!=null?s.manualPrice:(s.lastCost||p.p);const unitLabel=isM2?"m²":p.un;return <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 8px",background:zero?"#fef2f2":low?"#fffbeb":t.sectionBg,borderRadius:"6px",border:`1px solid ${zero?"#fecaca":low?"#fde68a":t.cardBorder}`}}>
+                <div style={{flex:1}}>
+                  <div><span style={{fontSize:"7px",background:t.stampBg,color:blue,padding:"1px 4px",borderRadius:"3px",fontWeight:"600",marginRight:"4px"}}>{p.c}</span><span style={{fontSize:"11px",fontWeight:"600",color:t.text}}>{p.n}</span></div>
+                  <div style={{fontSize:"8px",color:t.textMuted,marginTop:"1px"}}>{isVinil?<><b>{bobFech}</b> bob. fech. ({m2Fech}m²){m2Ab>0?<span style={{color:"#f59e0b"}}> + {m2Ab}m² aberto</span>:""} · Total: <b>{total}m²</b></>:isM2?<><b>{m2Fech}m²</b> em estoque</>:<><b>{s.qty||0}</b> {p.un} em estoque</>}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:"3px",marginTop:"2px"}}>
+                    <span style={{fontSize:"8px",color:t.textMuted}}>R$</span>
+                    <input type="number" min="0" step="0.01" value={dispPrice} onChange={ev=>{const v=parseFloat(ev.target.value)||0;setStk(prev=>{const ns={...prev};if(!ns[p.id])ns[p.id]={qty:0,minQty:2,lastCost:p.p};ns[p.id]={...ns[p.id],manualPrice:v};return ns})}} style={{width:"58px",padding:"1px 4px",border:`1px solid ${t.cardBorder}`,borderRadius:"4px",fontSize:"9px",textAlign:"center",background:t.inputBg,color:t.text,outline:"none"}}/>
+                    <span style={{fontSize:"8px",color:t.textMuted}}>/{unitLabel}</span>
+                    {s.manualPrice!=null&&<button title="Voltar ao preço padrão" onClick={()=>setStk(prev=>{const ns={...prev};if(ns[p.id]){const nd={...ns[p.id]};delete nd.manualPrice;ns[p.id]=nd;}return ns})} style={{fontSize:"7px",padding:"1px 4px",border:"none",background:"#e5e7eb",borderRadius:"3px",cursor:"pointer",color:"#6b7280"}}>reset</button>}
+                  </div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:"4px"}}>
+                  <input type="number" min="0" value={isM2?(s.qty||0):s.qty} onChange={ev=>{const v=parseFloat(ev.target.value)||0;setStk(prev=>{const ns={...prev};if(!ns[p.id])ns[p.id]={qty:0,minQty:2,lastCost:p.p};ns[p.id]={...ns[p.id],qty:Math.max(0,v)};return ns})}} style={{width:"58px",padding:"3px 4px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"5px",textAlign:"center",fontSize:"12px",fontWeight:"700",color:zero?"#dc2626":low?"#f59e0b":"#16a34a",background:t.inputBg,outline:"none"}}/>
+                  <span style={{fontSize:"8px",color:t.textMuted}}>{unitLabel}</span>
+                  <div style={{display:"flex",gap:"2px"}}>
+                    <button onClick={ev=>{ev.stopPropagation();setStk(prev=>{const ns={...prev};if(!ns[p.id])ns[p.id]={qty:0,minQty:2,lastCost:p.p};ns[p.id]={...ns[p.id],qty:(ns[p.id].qty||0)+1};return ns})}} style={{width:"20px",height:"20px",borderRadius:"4px",border:"none",background:"#16a34a",color:"#fff",fontSize:"11px",cursor:"pointer",fontWeight:"700"}}>+</button>
+                    <button onClick={ev=>{ev.stopPropagation();setStk(prev=>{const ns={...prev};if(!ns[p.id])ns[p.id]={qty:0,minQty:2,lastCost:p.p};ns[p.id]={...ns[p.id],qty:Math.max(0,(ns[p.id].qty||0)-1)};return ns})}} style={{width:"20px",height:"20px",borderRadius:"4px",border:"none",background:"#dc2626",color:"#fff",fontSize:"11px",cursor:"pointer",fontWeight:"700"}}>-</button>
+                  </div>
                 </div></div>})}
             </div></>}
           {stkTab==="entrada"&&<>
@@ -2036,10 +2126,10 @@ export default function App(){
             <span style={{fontSize:"8px",color:t.textMuted}}>(vazio = padrão {((parseFloat(pool?.depth)||1.4)*0.55).toFixed(2)}m)</span>
           </div>}
           {show3D
-            ?<Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights}/></Suspense>
+            ?<Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights} stamp={stamp}/></Suspense>
             :isoView
-              ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide} devHeights={devHeights}/>
-              :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls}/>}
+              ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide} devHeights={devHeights} stamp={stamp}/>
+              :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} stamp={stamp}/>}
         </Card>}
 
         {/* CONTRATOS */}
@@ -2299,8 +2389,10 @@ export default function App(){
         // fluxo de caixa mensal
         const meses={};
         [...contasReceber].forEach(c=>{
-          if(!c.venc)return;
-          const m=c.venc.substring(0,7);
+          // Usa dataRecebimento quando disponível (data real do recebimento), senão usa venc
+          const refDate=c.status==="recebido"&&c.dataRecebimento?c.dataRecebimento:c.venc;
+          if(!refDate)return;
+          const m=refDate.substring(0,7);
           if(!meses[m])meses[m]={mes:m,entradas:0,saidas:0};
           if(c.status==="recebido")meses[m].entradas+=parseFloat(c.valor)||0;
         });
@@ -2382,7 +2474,7 @@ export default function App(){
             const anoAtual=now2.getFullYear();
             const mesAtual=now2.getMonth();
             const mesKeyAtual=`${anoAtual}-${String(mesAtual+1).padStart(2,"0")}`;
-            const entMes=contasReceber.filter(c=>c.status==="recebido"&&c.venc&&c.venc.startsWith(mesKeyAtual)).reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
+            const entMes=contasReceber.filter(c=>c.status==="recebido"&&((c.dataRecebimento&&c.dataRecebimento.startsWith(mesKeyAtual))||(c.venc&&c.venc.startsWith(mesKeyAtual)))).reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
             const saiMes=contasPagar.filter(c=>c.status==="pago"&&c.venc&&c.venc.startsWith(mesKeyAtual)).reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
             const saldoMes=entMes-saiMes;
             const fixasMes=despesasFixas.reduce((a,f)=>a+(parseFloat(f.valor)||0),0);
@@ -2520,6 +2612,16 @@ export default function App(){
                 <input value={finFormR.venc} onChange={e=>setFinFormR(p=>({...p,venc:e.target.value}))} type="date" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
                 <input value={finFormR.parcelas} onChange={e=>setFinFormR(p=>({...p,parcelas:e.target.value}))} placeholder="Parcelas" type="number" min="1" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}} title="Número de parcelas"/>
               </div>
+              <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"6px",flexWrap:"wrap"}}>
+                <label style={{display:"flex",alignItems:"center",gap:"5px",fontSize:"10px",color:t.text,cursor:"pointer",fontWeight:"600"}}>
+                  <input type="checkbox" checked={finFormR.jaRecebido} onChange={e=>setFinFormR(p=>({...p,jaRecebido:e.target.checked}))}/>
+                  Já foi recebido?
+                </label>
+                {finFormR.jaRecebido&&<label style={{display:"flex",alignItems:"center",gap:"5px",fontSize:"10px",color:t.textSec}}>
+                  Data do recebimento:
+                  <input type="date" value={finFormR.dataRecebimento} onChange={e=>setFinFormR(p=>({...p,dataRecebimento:e.target.value}))} style={{padding:"4px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+                </label>}
+              </div>
               <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
                 <input value={finFormR.obs} onChange={e=>setFinFormR(p=>({...p,obs:e.target.value}))} placeholder="Obs (opcional)" style={{flex:1,padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
                 <Btn onClick={()=>{
@@ -2529,10 +2631,12 @@ export default function App(){
                   const novas=Array.from({length:n},(_,i)=>{
                     let vencP=finFormR.venc;
                     if(finFormR.venc&&n>1){const d=new Date(finFormR.venc+"T00:00");d.setDate(d.getDate()+i*30);vencP=d.toISOString().split("T")[0];}
-                    return{id:"rcb_"+Date.now()+"_"+i,desc:n>1?`${finFormR.desc} (${i+1}/${n})`:finFormR.desc,valor:valUnit,venc:vencP,status:"pendente",obs:finFormR.obs,parcela:n>1?i+1:undefined,totalParcelas:n>1?n:undefined};
+                    const stRcb=finFormR.jaRecebido?"recebido":"pendente";
+                    const dtRcb=finFormR.jaRecebido?(finFormR.dataRecebimento||today):undefined;
+                    return{id:"rcb_"+Date.now()+"_"+i,desc:n>1?`${finFormR.desc} (${i+1}/${n})`:finFormR.desc,valor:valUnit,venc:vencP,status:stRcb,dataRecebimento:dtRcb,obs:finFormR.obs,parcela:n>1?i+1:undefined,totalParcelas:n>1?n:undefined};
                   });
                   saveReceber([...novas,...contasReceber]);
-                  setFinFormR({desc:"",valor:"",venc:"",obs:"",parcelas:"1"});
+                  setFinFormR({desc:"",valor:"",venc:"",obs:"",parcelas:"1",jaRecebido:false,dataRecebimento:""});
                 }} style={{background:"#16a34a",color:"#fff",border:"none",whiteSpace:"nowrap",fontSize:"11px"}}>Adicionar</Btn>
               </div>
             </div>
@@ -2544,12 +2648,15 @@ export default function App(){
                 return <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:t.sectionBg,borderRadius:"8px",border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${cor}`}}>
                   <div style={{flex:1}}>
                     <div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{c.desc}</div>
-                    <div style={{fontSize:"9px",color:t.textMuted}}>{c.venc?new Date(c.venc+"T00:00").toLocaleDateString("pt-BR"):""} {c.obs?" · "+c.obs:""}</div>
+                    <div style={{fontSize:"9px",color:t.textMuted}}>{c.venc?new Date(c.venc+"T00:00").toLocaleDateString("pt-BR"):""}{c.status==="recebido"&&c.dataRecebimento?" · Recebido em: "+new Date(c.dataRecebimento+"T00:00").toLocaleDateString("pt-BR"):""} {c.obs?" · "+c.obs:""}</div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:"8px",flexShrink:0}}>
                     <div style={{fontSize:"13px",fontWeight:"800",color:cor}}>{fmtV(parseFloat(c.valor))}</div>
                     <span style={{fontSize:"8px",fontWeight:"600",color:cor,whiteSpace:"nowrap"}}>{statusLabel(c.status,c.venc)}</span>
-                    {c.status!=="recebido"&&<button onClick={()=>saveReceber(contasReceber.map(x=>x.id===c.id?{...x,status:"recebido"}:x))} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#16a34a",color:"#fff",cursor:"pointer",fontWeight:"600"}}>Recebido</button>}
+                    {c.status!=="recebido"
+                      ?<button onClick={()=>saveReceber(contasReceber.map(x=>x.id===c.id?{...x,status:"recebido",dataRecebimento:today}:x))} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#16a34a",color:"#fff",cursor:"pointer",fontWeight:"600"}}>✓ Recebido</button>
+                      :<input type="date" value={c.dataRecebimento||""} onChange={e=>saveReceber(contasReceber.map(x=>x.id===c.id?{...x,dataRecebimento:e.target.value}:x))} title="Data do recebimento" style={{fontSize:"9px",border:`1px solid ${t.cardBorder}`,borderRadius:"4px",padding:"2px 4px",background:t.inputBg,color:"#16a34a",width:"110px"}}/>
+                    }
                     <button onClick={()=>saveReceber(contasReceber.filter(x=>x.id!==c.id))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>✕</button>
                   </div>
                 </div>;
@@ -2585,6 +2692,18 @@ export default function App(){
                   {obrasAtivas.map(o=><option key={o.id} value={String(o.id)}>{o.cN||"Cliente"}</option>)}
                 </select>
                 <input value={finFormP.obs} onChange={e=>setFinFormP(p=>({...p,obs:e.target.value}))} placeholder="Obs (opcional)" style={{flex:1,padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"6px",flexWrap:"wrap"}}>
+                <label style={{display:"flex",alignItems:"center",gap:"5px",fontSize:"10px",color:t.text,cursor:"pointer",fontWeight:"600"}}>
+                  <input type="checkbox" checked={finFormP.jaPago} onChange={e=>setFinFormP(p=>({...p,jaPago:e.target.checked}))}/>
+                  Já foi pago?
+                </label>
+                {finFormP.jaPago&&<label style={{display:"flex",alignItems:"center",gap:"5px",fontSize:"10px",color:t.textSec}}>
+                  Data do pagamento:
+                  <input type="date" value={finFormP.dataPagamento} onChange={e=>setFinFormP(p=>({...p,dataPagamento:e.target.value}))} style={{padding:"4px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+                </label>}
+              </div>
+              <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
                 <Btn onClick={()=>{
                   if(!finFormP.desc||!finFormP.valor)return;
                   const n=Math.max(1,parseInt(finFormP.parcelas)||1);
@@ -2592,10 +2711,12 @@ export default function App(){
                   const novas=Array.from({length:n},(_,i)=>{
                     let vencP=finFormP.venc;
                     if(finFormP.venc&&n>1){const d=new Date(finFormP.venc+"T00:00");d.setDate(d.getDate()+i*30);vencP=d.toISOString().split("T")[0];}
-                    return{id:"pag_"+Date.now()+"_"+i,desc:n>1?`${finFormP.desc} (${i+1}/${n})`:finFormP.desc,valor:valUnit,venc:vencP,cat:finFormP.cat,obra:finFormP.obra,status:"pendente",obs:finFormP.obs,parcela:n>1?i+1:undefined,totalParcelas:n>1?n:undefined};
+                    const stPago=finFormP.jaPago?"pago":"pendente";
+                    const dtPago=finFormP.jaPago?(finFormP.dataPagamento||today):undefined;
+                    return{id:"pag_"+Date.now()+"_"+i,desc:n>1?`${finFormP.desc} (${i+1}/${n})`:finFormP.desc,valor:valUnit,venc:vencP,cat:finFormP.cat,obra:finFormP.obra,status:stPago,dataPagamento:dtPago,obs:finFormP.obs,parcela:n>1?i+1:undefined,totalParcelas:n>1?n:undefined};
                   });
                   savePagar([...novas,...contasPagar]);
-                  setFinFormP({desc:"",valor:"",venc:"",cat:"materiais",obs:"",parcelas:"1",obra:""});
+                  setFinFormP({desc:"",valor:"",venc:"",cat:"materiais",obs:"",parcelas:"1",obra:"",jaPago:false,dataPagamento:""});
                 }} style={{background:"#dc2626",color:"#fff",border:"none",whiteSpace:"nowrap",fontSize:"11px"}}>Adicionar</Btn>
               </div>
             </div>
@@ -2611,12 +2732,15 @@ export default function App(){
                       <span style={{fontSize:"8px",background:catColors[c.cat]||"#64748b",color:"#fff",padding:"1px 5px",borderRadius:"3px",fontWeight:"600"}}>{CAT_LABELS[c.cat]||c.cat}</span>
                       <div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{c.desc}</div>
                     </div>
-                    <div style={{fontSize:"9px",color:t.textMuted}}>{c.venc?new Date(c.venc+"T00:00").toLocaleDateString("pt-BR"):""} {c.obs?" · "+c.obs:""}</div>
+                    <div style={{fontSize:"9px",color:t.textMuted}}>{c.venc?new Date(c.venc+"T00:00").toLocaleDateString("pt-BR"):""}{c.status==="pago"&&c.dataPagamento?" · Pago em: "+new Date(c.dataPagamento+"T00:00").toLocaleDateString("pt-BR"):""} {c.obs?" · "+c.obs:""}</div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:"8px",flexShrink:0}}>
                     <div style={{fontSize:"13px",fontWeight:"800",color:cor}}>{fmtV(parseFloat(c.valor))}</div>
                     <span style={{fontSize:"8px",fontWeight:"600",color:cor,whiteSpace:"nowrap"}}>{statusLabel(c.status,c.venc)}</span>
-                    {c.status!=="pago"&&<button onClick={()=>savePagar(contasPagar.map(x=>x.id===c.id?{...x,status:"pago"}:x))} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#16a34a",color:"#fff",cursor:"pointer",fontWeight:"600"}}>Pago</button>}
+                    {c.status!=="pago"
+                      ?<button onClick={()=>savePagar(contasPagar.map(x=>x.id===c.id?{...x,status:"pago",dataPagamento:today}:x))} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#16a34a",color:"#fff",cursor:"pointer",fontWeight:"600"}}>✓ Pago</button>
+                      :<input type="date" value={c.dataPagamento||""} onChange={e=>savePagar(contasPagar.map(x=>x.id===c.id?{...x,dataPagamento:e.target.value}:x))} title="Data do pagamento" style={{fontSize:"9px",border:`1px solid ${t.cardBorder}`,borderRadius:"4px",padding:"2px 4px",background:t.inputBg,color:"#16a34a",width:"110px"}}/>
+                    }
                     <button onClick={()=>savePagar(contasPagar.filter(x=>x.id!==c.id))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>✕</button>
                   </div>
                 </div>;
@@ -2639,10 +2763,15 @@ export default function App(){
             {/* Formulário nova fixa */}
             <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",marginBottom:"12px",border:`1px solid ${t.cardBorder}`}}>
               <div style={{fontSize:"10px",fontWeight:"700",color:"#06b6d4",marginBottom:"8px"}}>+ Nova despesa fixa</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 90px 70px",gap:"6px",marginBottom:"6px"}} className="vv-g3">
+              <div style={{display:"grid",gridTemplateColumns:"1fr 90px",gap:"6px",marginBottom:"6px"}} className="vv-g3">
                 <input value={finFormF.desc} onChange={e=>setFinFormF(p=>({...p,desc:e.target.value}))} placeholder="Descrição (ex: Aluguel escritório)" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
                 <input value={finFormF.valor} onChange={e=>setFinFormF(p=>({...p,valor:e.target.value}))} placeholder="R$ valor" type="number" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                <input value={finFormF.dia} onChange={e=>setFinFormF(p=>({...p,dia:e.target.value}))} placeholder="Dia" type="number" min="1" max="28" title="Dia do mês para vencimento (1-28)" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"6px",flexWrap:"wrap"}}>
+                <label style={{display:"flex",alignItems:"center",gap:"5px",fontSize:"10px",color:t.textSec,fontWeight:"600"}}>
+                  📅 Dia do vencimento (1–28):
+                  <input value={finFormF.dia} onChange={e=>setFinFormF(p=>({...p,dia:e.target.value}))} type="number" min="1" max="28" style={{width:"56px",padding:"4px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
+                </label>
               </div>
               <div style={{display:"flex",gap:"6px",alignItems:"center",flexWrap:"wrap",marginBottom:"6px"}}>
                 <select value={finFormF.cat} onChange={e=>setFinFormF(p=>({...p,cat:e.target.value}))} style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}>
@@ -2945,7 +3074,10 @@ ${pendPag.length===0?"<p style='color:#888;font-size:12px'>Nenhuma</p>":`<table 
               <input type="checkbox" checked={s.selected} onChange={e=>{const ni=[...stkReview.items];ni[idx]={...ni[idx],selected:e.target.checked};setStkReview(p=>({...p,items:ni}))}} style={{cursor:"pointer"}}/>
               <div>
                 <div style={{fontSize:"11px",fontWeight:"600",color:t.text}}>{s.name}</div>
-                <div style={{fontSize:"9px",color:t.textMuted}}>{s.catId.startsWith("v")?"m²":"unidade(s)"}</div>
+                {s._vinilM2
+                  ?<div style={{fontSize:"9px"}}><span style={{color:"#16a34a",fontWeight:"600"}}>{s._obs}</span></div>
+                  :<div style={{fontSize:"9px",color:t.textMuted}}>{s._obs||"unidade(s)"}</div>
+                }
               </div>
               <input type="number" min="0" value={s.editQty} onChange={e=>{const ni=[...stkReview.items];ni[idx]={...ni[idx],editQty:e.target.value};setStkReview(p=>({...p,items:ni}))}} style={{padding:"4px 6px",borderRadius:"6px",border:`1.5px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,fontSize:"11px",fontWeight:"700",textAlign:"center",width:"100%"}}/>
             </div>)}
