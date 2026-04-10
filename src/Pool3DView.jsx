@@ -1,8 +1,11 @@
-import React, { Suspense, useRef } from 'react';
+import React, { Suspense, useRef, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Line, GizmoHelper, GizmoViewcube } from '@react-three/drei';
+import { OrbitControls, Line, GizmoHelper, GizmoViewcube, useTexture } from '@react-three/drei';
+import * as THREE from 'three';
 
-// Mesmas cores do isométrico e 2D
+const SWATCH_SLUG={"Marmo Carrara Azul":"marmo-carrara-azul","Marmo Carrara Verde":"marmo-carrara-verde","Marmo Carrara Cinza":"marmo-carrara-cinza","Travertino":"travertino","Travertino Gris":"travertino-gris","Travertino Verde":"travertino-verde","Travertino Azul":"travertino-azul","Bali Hijau":"bali-hijau","Bali Blue":"bali-blue","Santorini":"santorini","Malibu Azul":"malibu-azul","Malibu Verde":"malibu-verde","Punta Cana":"punta-cana","Porto Vecchio Azul":"porto-vecchio-azul","Porto Vecchio Verde":"porto-vecchio-verde","Batu Blue":"batu-blue","Batu Vert":"batu-vert","Sukabumi Azul":"sukabumi-azul","Sukabumi Verde":"sukabumi-verde","Petra Natural Azul":"petra-natural-azul","Petra Natural Verde":"petra-natural-verde","Montblanc":"montblanc","Montblanc Block":"montblanc-block","Mid Blue Liso":"mid-blue-liso","Aquática Azul":"aquatica-azul"};
+const STAMP_COLOR={"Marmo Carrara Azul":"#a8cce8","Marmo Carrara Verde":"#a8d4c0","Marmo Carrara Cinza":"#b0bcc8","Travertino":"#c8b89a","Travertino Gris":"#b0a898","Travertino Verde":"#98b4a0","Travertino Azul":"#8ab0c8","Bali Hijau":"#5aaa88","Bali Blue":"#5090c0","Santorini":"#6aaccc","Malibu Azul":"#4a98d8","Malibu Verde":"#4aac7a","Porto Vecchio Azul":"#3d8fc0","Porto Vecchio Verde":"#3da878","Batu Blue":"#4a90c0","Batu Vert":"#4aa880","Sukabumi Azul":"#3aa8d0","Sukabumi Verde":"#3ab080","Petra Natural Azul":"#6aa8c0","Petra Natural Verde":"#6ab090","Montblanc":"#7ab8e0","Montblanc Block":"#5aa0c8","Mid Blue Liso":"#3a96d0","Aquática Azul":"#3aacdc","Punta Cana":"#50c0b0"};
+
 const C = {
   retorno:   '#3b82f6',
   aspiracao: '#ec4899',
@@ -13,7 +16,6 @@ const C = {
   hidro:     '#10b981',
 };
 
-// Mesma lógica de altura por tipo (igual ao IsometricView typeZ)
 function devZ(type, isFloor, D, devHeights) {
   if (isFloor) return 0;
   if (type === 'skimmer')   return D;
@@ -22,39 +24,35 @@ function devZ(type, isFloor, D, devHeights) {
   if (type === 'aspiracao') return D * 0.5;
   if (type === 'retorno' && devHeights?.retorno) return Math.min(parseFloat(devHeights.retorno) || D*0.55, D);
   if (type === 'hidro'   && devHeights?.hidro)   return Math.min(parseFloat(devHeights.hidro)   || D*0.55, D);
-  return D * 0.55; // retorno, hidro (padrão)
+  return D * 0.55;
 }
 
-// Converte coordenadas isométricas (ix=0..L, iy=0..W, iz=0..D)
-// para Three.js (X=-L/2..L/2, Y=iz, Z=-W/2..W/2)
-function iso2three(ix, iy, iz, L, W) {
-  return [ix - L / 2, iz, iy - W / 2];
+// iso coords (ix=0..L, iy=0..W, iz=0..D) → Three.js [x, y, z]
+function i2t(ix, iy, iz, L, W) {
+  return [ix - L/2, iz, iy - W/2];
 }
 
-// Constrói dispositivos e tubulações com a MESMA lógica do IsometricView
 function buildScene(allPos, L, W, D, invertSide, customPos, devHeights) {
-  const lo  = 0.32;
-  const pZ  = Math.max(0, D - 0.30);
+  const lo = 0.32;
+  const pZ = Math.max(0, D - 0.30); // height for floor-drain runs
+
   const sysOrder = ['retorno', 'hidro', 'dreno', 'aspiracao', 'skimmer', 'nivelador', 'refletor'];
 
   const casaFrac = customPos?.casa || (invertSide ? { x: -0.15, y: 0.5 } : { x: 1.12, y: 0.5 });
   const cmX0   = casaFrac.x * L;
-  const cmBY0  = W * 0.1;
-  const cmWd   = W * 0.8;
+  const cmMidY = W * 0.5;
   const cmWw   = Math.min(1.4, W * 0.5);
-  const cmMidY = cmBY0 + cmWd / 2;
+  const cmWd   = W * 0.8;
 
   const byType = {};
-  Object.entries(allPos).filter(([, p]) => !p.special).forEach(([key, p]) => {
+  Object.entries(allPos).filter(([,p]) => !p.special).forEach(([key, p]) => {
     if (!byType[p.type]) byType[p.type] = [];
     byType[p.type].push([key, p]);
   });
 
   const devices = [];
   const pipes   = [];
-
-  // Converte array de [ix,iy,iz] → Three.js points
-  const toP = pts => pts.map(([rx,ry,rz]) => iso2three(rx,ry,rz,L,W));
+  const toP = pts => pts.map(([rx,ry,rz]) => i2t(rx, ry, rz, L, W));
 
   sysOrder.forEach((sysType, sysIdx) => {
     const devs = byType[sysType];
@@ -62,112 +60,161 @@ function buildScene(allPos, L, W, D, invertSide, customPos, devHeights) {
     const col     = C[sysType] || '#999';
     const laneOff = lo + sysIdx * 0.16;
 
-    // Para cada dispositivo: ramo individual até a lane externa a pZ
-    // exits acumula os pontos de chegada na lane (todos em height=pZ)
-    const exits = []; // { side, x, y }  (z é sempre pZ)
+    const exitPts = [];
 
     devs.forEach(([key, p]) => {
       const ix = p.x * L;
       const iy = p.y * W;
       const iz = devZ(sysType, p.floor, D, devHeights);
 
-      devices.push({ key, pos: iso2three(ix, iy, iz, L, W), color: col, type: sysType });
+      devices.push({ key, pos: i2t(ix, iy, iz, L, W), color: col, type: sysType });
 
-      let branch, exit;
-
+      // Same routing logic as IsometricView
+      let route;
       if (p.floor) {
-        // Dreno no fundo → anda pelo chão até a lane direita, sobe até pZ
-        const xL = L + laneOff;
-        branch = [[ix,iy,0],[xL,iy,0],[xL,iy,pZ]];
-        exit   = { side:'right', x:xL, y:iy };
+        route = [[ix,iy,0],[L,iy,0],[L+laneOff,iy,0],[L+laneOff,iy,pZ]];
+        exitPts.push([L+laneOff, iy, pZ]);
       } else if (p.x < 0.12) {
-        // Parede esquerda → sai para lane esquerda, desce até pZ
-        const xL = -laneOff;
-        branch = [[0,iy,iz],[xL,iy,iz],[xL,iy,pZ]];
-        exit   = { side:'left', x:xL, y:iy };
+        route = [[0,iy,iz],[-laneOff,iy,iz]];
+        exitPts.push([-laneOff, iy, iz]);
       } else if (p.x > 0.88) {
-        // Parede direita → sai para lane direita, desce até pZ
-        const xL = L + laneOff;
-        branch = [[L,iy,iz],[xL,iy,iz],[xL,iy,pZ]];
-        exit   = { side:'right', x:xL, y:iy };
+        route = [[L,iy,iz],[L+laneOff,iy,iz]];
+        exitPts.push([L+laneOff, iy, iz]);
       } else if (p.y < 0.08) {
-        // Parede frontal → sai para lane frontal, desce até pZ
-        const yL = -laneOff;
-        branch = [[ix,0,iz],[ix,yL,iz],[ix,yL,pZ]];
-        exit   = { side:'front', x:ix, y:yL };
+        route = [[ix,0,iz],[ix,-laneOff,iz]];
+        exitPts.push([ix, -laneOff, iz]);
       } else if (p.y > 0.88) {
-        // Parede traseira → sai para lane traseira, desce até pZ
-        const yL = W + laneOff;
-        branch = [[ix,W,iz],[ix,yL,iz],[ix,yL,pZ]];
-        exit   = { side:'back', x:ix, y:yL };
+        route = [[ix,W,iz],[ix,W+laneOff,iz]];
+        exitPts.push([ix, W+laneOff, iz]);
       } else {
-        // Interior/padrão → vai à parede direita, desce até pZ
-        const xL = L + laneOff;
-        branch = [[ix,iy,iz],[L,iy,iz],[xL,iy,iz],[xL,iy,pZ]];
-        exit   = { side:'right', x:xL, y:iy };
-      }
-
-      exits.push(exit);
-      pipes.push({ points: toP(branch), color: col, width: 2 });
-    });
-
-    if (exits.length === 0) return;
-
-    // Agrupar saídas por lado
-    const bySide = {};
-    exits.forEach(e => {
-      if (!bySide[e.side]) bySide[e.side] = [];
-      bySide[e.side].push(e);
-    });
-
-    Object.entries(bySide).forEach(([side, sideExits]) => {
-      if (side === 'right' || side === 'left') {
-        // Lane vertical: mesmo X, diferentes Y — spine ao longo de Y
-        const xL = sideExits[0].x;
-        const ys = sideExits.map(e => e.y).sort((a,b) => a-b);
-        const yMin = ys[0], yMax = ys[ys.length-1];
-
-        // Spine (manifold) conectando todos os ramos
-        if (yMin < yMax) {
-          pipes.push({ points: toP([[xL,yMin,pZ],[xL,yMax,pZ]]), color: col, width: 3 });
-        }
-
-        // Da spine até a casa de máquinas
-        let toCM;
-        if (side === 'left') {
-          // CM à esquerda: sobe para o fundo, depois vai até cmX0
-          toCM = [[xL,yMin,pZ],[xL,W+laneOff,pZ],[cmX0,W+laneOff,pZ],[cmX0,cmMidY,pZ]];
+        // Oval/intermediate wall: route by system type to keep collector unified
+        if (sysType==='retorno'||sysType==='hidro') {
+          route = [[ix,iy,iz],[0,iy,iz],[-laneOff,iy,iz]]; exitPts.push([-laneOff,iy,iz]);
+        } else if (sysType==='skimmer'||sysType==='nivelador') {
+          route = [[ix,iy,iz],[L,iy,iz],[L+laneOff,iy,iz]]; exitPts.push([L+laneOff,iy,iz]);
+        } else if (sysType==='aspiracao') {
+          route = [[ix,iy,iz],[ix,W,iz],[ix,W+laneOff,iz]]; exitPts.push([ix,W+laneOff,iz]);
+        } else if (iy < W/2) {
+          route = [[ix,iy,iz],[ix,0,iz],[ix,-laneOff,iz]]; exitPts.push([ix,-laneOff,iz]);
         } else {
-          // CM à direita: vai horizontal do topo da spine até cmX0
-          toCM = [[xL,yMax,pZ],[cmX0,yMax,pZ],[cmX0,cmMidY,pZ]];
+          route = [[ix,iy,iz],[ix,W,iz],[ix,W+laneOff,iz]]; exitPts.push([ix,W+laneOff,iz]);
         }
-        pipes.push({ points: toP(toCM), color: col, width: 3 });
-
-      } else {
-        // Lane horizontal (front/back): mesmo Y, diferentes X — spine ao longo de X
-        const yL = sideExits[0].y;
-        const xs = sideExits.map(e => e.x).sort((a,b) => a-b);
-        const xMin = xs[0], xMax = xs[xs.length-1];
-
-        if (xMin < xMax) {
-          pipes.push({ points: toP([[xMin,yL,pZ],[xMax,yL,pZ]]), color: col, width: 3 });
-        }
-
-        // Da spine até CM: escolhe o extremo mais próximo do CM
-        const startX = Math.abs(xMin - cmX0) < Math.abs(xMax - cmX0) ? xMin : xMax;
-        const toCM = [[startX,yL,pZ],[cmX0,yL,pZ],[cmX0,cmMidY,pZ]];
-        pipes.push({ points: toP(toCM), color: col, width: 3 });
       }
+      pipes.push({ points: toP(route), color: col, width: 2 });
     });
+
+    if (exitPts.length === 0) return;
+    const eZ = exitPts[0][2];
+    const isLeftExit  = exitPts[0][0] < 0;
+    const isFrontExit = exitPts[0][1] < 0;
+    const isBackExit  = exitPts[0][1] > W;
+
+    if (isLeftExit) {
+      if (exitPts.length > 1) {
+        const ys = exitPts.map(p => p[1]).sort((a,b) => a-b);
+        pipes.push({ points: toP([[-laneOff,ys[0],eZ],[-laneOff,ys[ys.length-1],eZ]]), color: col, width: 3 });
+      }
+      const midY = exitPts.reduce((s,p) => s+p[1], 0) / exitPts.length;
+      // Route via front of pool to avoid crossing structure
+      pipes.push({ points: toP([[-laneOff,midY,eZ],[-laneOff,-laneOff,eZ],[cmX0,-laneOff,eZ],[cmX0,cmMidY,eZ]]), color: col, width: 3 });
+    } else if (isFrontExit) {
+      if (exitPts.length > 1) {
+        const xs = exitPts.map(p => p[0]).sort((a,b) => a-b);
+        pipes.push({ points: toP([[xs[0],-laneOff,eZ],[xs[xs.length-1],-laneOff,eZ]]), color: col, width: 3 });
+      }
+      const midX = exitPts.reduce((s,p) => s+p[0], 0) / exitPts.length;
+      pipes.push({ points: toP([[midX,-laneOff,eZ],[cmX0,-laneOff,eZ],[cmX0,cmMidY,eZ]]), color: col, width: 3 });
+    } else if (isBackExit) {
+      if (exitPts.length > 1) {
+        const xs = exitPts.map(p => p[0]).sort((a,b) => a-b);
+        pipes.push({ points: toP([[xs[0],W+laneOff,eZ],[xs[xs.length-1],W+laneOff,eZ]]), color: col, width: 3 });
+      }
+      const midX = exitPts.reduce((s,p) => s+p[0], 0) / exitPts.length;
+      // Route via right wall to avoid crossing structure
+      pipes.push({ points: toP([[midX,W+laneOff,eZ],[L+laneOff,W+laneOff,eZ],[L+laneOff,cmMidY,eZ],[cmX0,cmMidY,eZ]]), color: col, width: 3 });
+    } else {
+      if (exitPts.length > 1) {
+        const ys = exitPts.map(p => p[1]).sort((a,b) => a-b);
+        pipes.push({ points: toP([[L+laneOff,ys[0],eZ],[L+laneOff,ys[ys.length-1],eZ]]), color: col, width: 3 });
+      }
+      const midY = exitPts.reduce((s,p) => s+p[1], 0) / exitPts.length;
+      pipes.push({ points: toP([[L+laneOff,midY,eZ],[cmX0,midY,eZ],[cmX0,cmMidY,eZ]]), color: col, width: 3 });
+    }
   });
 
-  const cmPos3 = iso2three(cmX0 + cmWw/2, cmMidY, pZ, L, W);
+  // Machine room at ground level
+  const cmPos3 = i2t(cmX0 + cmWw/2, cmMidY, 0, L, W);
   return { devices, pipes, cmPos3, cmWw, cmWd };
 }
 
-// ── Paredes ─────────────────────────────────────────────────────────────────
-function PoolWalls({ L, W, D }) {
+// ── Pool walls ───────────────────────────────────────────────────────────────
+function PoolWalls({ L, W, D, poolFmt }) {
   const wt = 0.14;
+  const isOval = poolFmt === 'Oval' || poolFmt === 'Feijão';
+  const isL    = poolFmt === 'Formato L';
+
+  if (isOval) {
+    const scX = L / W;
+    return (
+      <group>
+        <mesh position={[0, -wt/2, 0]} scale={[scX, 1, 1]}>
+          <cylinderGeometry args={[W/2, W/2, wt, 48]} />
+          <meshStandardMaterial color="#64748b" roughness={0.95} />
+        </mesh>
+        <mesh position={[0, D/2, 0]} scale={[scX, 1, 1]}>
+          <cylinderGeometry args={[W/2+wt, W/2+wt, D, 48, 1, true]} />
+          <meshStandardMaterial color="#94a3b8" roughness={0.85} side={2} />
+        </mesh>
+        <mesh position={[0, D+0.04, 0]} scale={[scX, 1, 1]} rotation={[Math.PI/2, 0, 0]}>
+          <torusGeometry args={[W/2+wt/2, 0.06, 8, 48]} />
+          <meshStandardMaterial color="#cbd5e1" roughness={0.7} />
+        </mesh>
+      </group>
+    );
+  }
+
+  if (isL) {
+    const W1 = W * 0.6, W2 = W - W1, L2 = L * 0.6;
+    const offX = (L - L2) / 2;
+    return (
+      <group>
+        <mesh position={[0, -wt/2, -(W2)/2]}>
+          <boxGeometry args={[L+wt*2, wt, W1+wt]} />
+          <meshStandardMaterial color="#64748b" roughness={0.95} />
+        </mesh>
+        <mesh position={[-offX, -wt/2, W1/2]}>
+          <boxGeometry args={[L2, wt, W2+wt]} />
+          <meshStandardMaterial color="#64748b" roughness={0.95} />
+        </mesh>
+        <mesh position={[0, D/2, -W/2-wt/2]}>
+          <boxGeometry args={[L+wt*2, D, wt]} />
+          <meshStandardMaterial color="#94a3b8" roughness={0.85} />
+        </mesh>
+        <mesh position={[-offX, D/2, W/2+wt/2]}>
+          <boxGeometry args={[L2, D, wt]} />
+          <meshStandardMaterial color="#94a3b8" roughness={0.85} />
+        </mesh>
+        <mesh position={[-L/2-wt/2, D/2, 0]}>
+          <boxGeometry args={[wt, D, W+wt*2]} />
+          <meshStandardMaterial color="#8ca5b8" roughness={0.85} />
+        </mesh>
+        <mesh position={[L/2+wt/2, D/2, -(W2)/2]}>
+          <boxGeometry args={[wt, D, W1+wt]} />
+          <meshStandardMaterial color="#8ca5b8" roughness={0.85} />
+        </mesh>
+        <mesh position={[-offX+L2/2+wt/2, D/2, W1/2]}>
+          <boxGeometry args={[wt, D, W2+wt]} />
+          <meshStandardMaterial color="#8ca5b8" roughness={0.85} />
+        </mesh>
+        <mesh position={[-offX, D/2, W1/2-wt/2]}>
+          <boxGeometry args={[L-L2+wt, D, wt]} />
+          <meshStandardMaterial color="#8ca5b8" roughness={0.85} />
+        </mesh>
+      </group>
+    );
+  }
+
+  // Rectangular (default)
   return (
     <group>
       <mesh position={[0, -wt/2, 0]}>
@@ -190,7 +237,6 @@ function PoolWalls({ L, W, D }) {
         <boxGeometry args={[wt, D, W]} />
         <meshStandardMaterial color="#8ca5b8" roughness={0.85} />
       </mesh>
-      {/* Bordas superiores */}
       <mesh position={[0, D+0.04, -W/2]}><boxGeometry args={[L+wt*2, 0.08, wt+0.12]}/><meshStandardMaterial color="#cbd5e1" roughness={0.7}/></mesh>
       <mesh position={[0, D+0.04,  W/2]}><boxGeometry args={[L+wt*2, 0.08, wt+0.12]}/><meshStandardMaterial color="#cbd5e1" roughness={0.7}/></mesh>
       <mesh position={[-L/2, D+0.04, 0]}><boxGeometry args={[wt+0.12, 0.08, W]}/><meshStandardMaterial color="#cbd5e1" roughness={0.7}/></mesh>
@@ -199,22 +245,91 @@ function PoolWalls({ L, W, D }) {
   );
 }
 
-// ── Água animada ─────────────────────────────────────────────────────────────
-function Water({ L, W, D }) {
+// ── Vinyl interior (stamp texture on floor + walls) ──────────────────────────
+function VinylInterior({ L, W, D, texUrl, poolFmt }) {
+  const base = useTexture(texUrl);
+  const texFloor = useMemo(() => {
+    const t = base.clone(); t.needsUpdate = true;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(Math.max(1, Math.round(L)), Math.max(1, Math.round(W)));
+    return t;
+  }, [base, L, W]);
+  const texHwall = useMemo(() => {
+    const t = base.clone(); t.needsUpdate = true;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(Math.max(1, Math.round(L)), Math.max(1, Math.round(D * 2)));
+    return t;
+  }, [base, L, D]);
+  const texVwall = useMemo(() => {
+    const t = base.clone(); t.needsUpdate = true;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(Math.max(1, Math.round(W)), Math.max(1, Math.round(D * 2)));
+    return t;
+  }, [base, W, D]);
+  const isOval = poolFmt === 'Oval' || poolFmt === 'Feijão';
+  if (isOval) return (
+    <group>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]} scale={[L / W, 1, 1]}>
+        <circleGeometry args={[W / 2 - 0.07, 48]} />
+        <meshStandardMaterial map={texFloor} roughness={0.75} />
+      </mesh>
+      <mesh position={[0, D / 2, 0]} scale={[L / W, 1, 1]}>
+        <cylinderGeometry args={[W / 2 - 0.07, W / 2 - 0.07, D, 48, 1, true]} />
+        <meshStandardMaterial map={texHwall} side={THREE.BackSide} roughness={0.75} />
+      </mesh>
+    </group>
+  );
+  return (
+    <group>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
+        <planeGeometry args={[L - 0.12, W - 0.12]} />
+        <meshStandardMaterial map={texFloor} roughness={0.75} />
+      </mesh>
+      <mesh position={[0, D / 2, -W / 2 + 0.07]}>
+        <planeGeometry args={[L - 0.12, D]} />
+        <meshStandardMaterial map={texHwall} roughness={0.75} />
+      </mesh>
+      <mesh position={[0, D / 2, W / 2 - 0.07]} rotation={[0, Math.PI, 0]}>
+        <planeGeometry args={[L - 0.12, D]} />
+        <meshStandardMaterial map={texHwall} roughness={0.75} />
+      </mesh>
+      <mesh position={[-L / 2 + 0.07, D / 2, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[W - 0.12, D]} />
+        <meshStandardMaterial map={texVwall} roughness={0.75} />
+      </mesh>
+      <mesh position={[L / 2 - 0.07, D / 2, 0]} rotation={[0, -Math.PI / 2, 0]}>
+        <planeGeometry args={[W - 0.12, D]} />
+        <meshStandardMaterial map={texVwall} roughness={0.75} />
+      </mesh>
+    </group>
+  );
+}
+
+// ── Animated water ───────────────────────────────────────────────────────────
+function Water({ L, W, D, poolFmt, color="#38bdf8" }) {
   const ref = useRef();
   const wl  = D * 0.91;
+  const isOval = poolFmt === 'Oval' || poolFmt === 'Feijão';
   useFrame(({ clock }) => {
     if (ref.current) ref.current.position.y = wl/2 + Math.sin(clock.elapsedTime*0.6)*0.006;
   });
+  if (isOval) {
+    return (
+      <mesh ref={ref} position={[0, wl/2, 0]} scale={[L/W, 1, 1]}>
+        <cylinderGeometry args={[W/2-0.02, W/2-0.02, wl, 48]} />
+        <meshStandardMaterial color={color} transparent opacity={0.38} roughness={0.05} metalness={0.15} />
+      </mesh>
+    );
+  }
   return (
     <mesh ref={ref} position={[0, wl/2, 0]}>
       <boxGeometry args={[L-0.03, wl, W-0.03]} />
-      <meshStandardMaterial color="#38bdf8" transparent opacity={0.38} roughness={0.05} metalness={0.15} />
+      <meshStandardMaterial color={color} transparent opacity={0.38} roughness={0.05} metalness={0.15} />
     </mesh>
   );
 }
 
-// ── Dispositivo ──────────────────────────────────────────────────────────────
+// ── Device ───────────────────────────────────────────────────────────────────
 function Device({ position, color, type }) {
   return (
     <mesh position={position} castShadow>
@@ -226,21 +341,19 @@ function Device({ position, color, type }) {
   );
 }
 
-// ── Casa de Máquinas ─────────────────────────────────────────────────────────
+// ── Machine room ─────────────────────────────────────────────────────────────
 function MachineRoom({ pos, cmWw, cmWd }) {
-  const [mx, my, mz] = pos;
+  const [mx, , mz] = pos;
   return (
-    <group position={[mx, my, mz]}>
+    <group position={[mx, 0.275, mz]}>
       <mesh castShadow>
         <boxGeometry args={[cmWw, 0.55, cmWd]} />
         <meshStandardMaterial color="#334155" roughness={0.85} />
       </mesh>
-      {/* Filtro */}
       <mesh position={[0, 0.35, -cmWd*0.25]}>
         <cylinderGeometry args={[0.14, 0.14, 0.45, 16]} />
         <meshStandardMaterial color="#15803d" roughness={0.5} metalness={0.4} />
       </mesh>
-      {/* Bomba */}
       <mesh position={[0, 0.18, cmWd*0.2]} rotation={[Math.PI/2,0,0]}>
         <cylinderGeometry args={[0.16, 0.16, 0.32, 16]} />
         <meshStandardMaterial color="#2563eb" roughness={0.4} metalness={0.7} />
@@ -249,7 +362,7 @@ function MachineRoom({ pos, cmWw, cmWd }) {
   );
 }
 
-// ── Chão ─────────────────────────────────────────────────────────────────────
+// ── Ground ───────────────────────────────────────────────────────────────────
 function Ground({ L, W }) {
   return (
     <mesh position={[0, -0.22, 0]} receiveShadow>
@@ -259,8 +372,8 @@ function Ground({ L, W }) {
   );
 }
 
-// ── Cena principal ────────────────────────────────────────────────────────────
-function Scene({ pool, disps, customPos, poolFmt, autoPositions, invertSide, devHeights }) {
+// ── Main scene ───────────────────────────────────────────────────────────────
+function Scene({ pool, disps, customPos, poolFmt, autoPositions, invertSide, devHeights, stamp="" }) {
   const L = parseFloat(pool?.length) || 6;
   const W = parseFloat(pool?.width)  || 3;
   const D = parseFloat(pool?.depth)  || 1.4;
@@ -269,12 +382,9 @@ function Scene({ pool, disps, customPos, poolFmt, autoPositions, invertSide, dev
     ? { ...autoPositions(L, W, disps, invertSide, poolFmt), ...(customPos || {}) }
     : {};
 
-  // Filtra apenas dispositivos ativos (não especiais e existentes no autoPositions)
   const active = {};
   Object.entries(allPos).forEach(([k, p]) => {
-    if (p.special) return;
-    if (autoPositions && !autoPositions(L, W, disps, invertSide, poolFmt)[k]) return;
-    active[k] = p;
+    if (!p.special) active[k] = p;
   });
 
   const { devices, pipes, cmPos3, cmWw, cmWd } = buildScene(active, L, W, D, invertSide, customPos, devHeights);
@@ -284,11 +394,12 @@ function Scene({ pool, disps, customPos, poolFmt, autoPositions, invertSide, dev
       <ambientLight intensity={0.7} />
       <directionalLight position={[L*1.5, D*5, W*2]} intensity={1.4} castShadow shadow-mapSize={[1024,1024]} />
       <directionalLight position={[-L, D*2, -W]} intensity={0.35} />
-      <pointLight position={[0, D*0.6, 0]} intensity={0.4} color="#38bdf8" />
+      <pointLight position={[0, D*0.6, 0]} intensity={0.4} color={STAMP_COLOR[stamp]||"#38bdf8"} />
 
       <Ground L={L} W={W} />
-      <PoolWalls L={L} W={W} D={D} />
-      <Water L={L} W={W} D={D} />
+      <PoolWalls L={L} W={W} D={D} poolFmt={poolFmt} />
+      {SWATCH_SLUG[stamp] && <VinylInterior L={L} W={W} D={D} texUrl={`/swatches/${SWATCH_SLUG[stamp]}.png`} poolFmt={poolFmt} />}
+      <Water L={L} W={W} D={D} poolFmt={poolFmt} color={STAMP_COLOR[stamp]||"#38bdf8"} />
       <MachineRoom pos={cmPos3} cmWw={cmWw} cmWd={cmWd} />
 
       {devices.map(d => (
@@ -308,7 +419,7 @@ function Scene({ pool, disps, customPos, poolFmt, autoPositions, invertSide, dev
   );
 }
 
-// ── Legenda ───────────────────────────────────────────────────────────────────
+// ── Legend ───────────────────────────────────────────────────────────────────
 function Legend({ disps }) {
   const items = [
     ['retorno','Retorno','#3b82f6'],['aspiracao','Aspiração','#ec4899'],
@@ -329,8 +440,8 @@ function Legend({ disps }) {
   );
 }
 
-// ── Export ────────────────────────────────────────────────────────────────────
-export default function Pool3DView({ pool, disps, customPos, poolFmt, autoPositions, invertSide, dark, devHeights }) {
+// ── Export ───────────────────────────────────────────────────────────────────
+export default function Pool3DView({ pool, disps, customPos, poolFmt, autoPositions, invertSide, dark, devHeights, stamp="" }) {
   const L  = parseFloat(pool?.length) || 6;
   const D  = parseFloat(pool?.depth)  || 1.4;
   const bg = dark ? '#0f172a' : '#bfdbfe';
@@ -348,6 +459,7 @@ export default function Pool3DView({ pool, disps, customPos, poolFmt, autoPositi
             autoPositions={autoPositions}
             invertSide={invertSide}
             devHeights={devHeights}
+            stamp={stamp}
           />
         </Suspense>
       </Canvas>

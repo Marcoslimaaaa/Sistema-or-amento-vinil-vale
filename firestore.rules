@@ -6,24 +6,42 @@ service cloud.firestore {
     match /users/{userId}/{document=**} {
       allow read: if request.auth != null && request.auth.uid == userId;
 
-      // Escrita: autenticado + dono + validações básicas de integridade
-      allow write: if request.auth != null
+      // Escrita (create/update): autenticado + dono + validações básicas
+      allow create, update: if request.auth != null
         && request.auth.uid == userId
-        // Impede documentos gigantes (max 500KB via limite de campos)
         && request.resource.data.keys().size() < 100;
+
+      // Delete: autenticado + dono (sem validação de resource.data que não existe em deletes)
+      allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
     // Validação extra para orçamentos: campos obrigatórios e tipos
     match /users/{userId}/orcamentos/{orcId} {
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow write: if request.auth != null
+      allow create, update: if request.auth != null
         && request.auth.uid == userId
-        // id deve existir
         && request.resource.data.keys().hasAll(['id'])
-        // tot (valor total) deve ser numérico se presente
         && (!request.resource.data.keys().hasAny(['tot']) ||
             request.resource.data.tot is number ||
             request.resource.data.tot is string);
+
+      // Delete permitido para o próprio dono
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Contatos Google - acessível por qualquer usuário autenticado
+    match /google_contacts/{contactId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Conversas WhatsApp - acessível por qualquer usuário autenticado
+    match /whatsapp_conversations/{phone} {
+      allow read: if request.auth != null;
+    }
+
+    // Leads WhatsApp - acessível por qualquer usuário autenticado
+    match /whatsapp_leads/{phone} {
+      allow read: if request.auth != null;
     }
 
     // Bloqueia tudo mais por padrão

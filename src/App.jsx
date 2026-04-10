@@ -2805,10 +2805,22 @@ export default function App(){
         </Card>}
 
         {/* CONTRATOS */}
-        {tab==="contratos"&&<Card t={t}><ST icon="📝">Contratos</ST>
+        {tab==="contratos"&&<Card t={t}>
+          <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"18px"}}>
+            <img src="/logo.jpg" alt="Vinil Vale" style={{width:"48px",height:"48px",objectFit:"contain",borderRadius:"8px"}}/>
+            <div>
+              <h3 style={{fontSize:"16px",fontWeight:"800",color:blue,margin:0,letterSpacing:".5px"}}>Contratos</h3>
+              <div style={{fontSize:"10px",color:t.textSec,marginTop:"2px"}}>Gerencie seus contratos de prestação de serviços</div>
+            </div>
+          </div>
           {(() => {
             const clientes=hist.filter(q=>["cliente","fechou","execucao","concluido"].includes(q.status));
-            if(clientes.length===0)return <div style={{textAlign:"center",padding:"24px",color:t.textMuted}}><div style={{fontSize:"28px"}}>📝</div><div style={{fontSize:"11px"}}>Nenhum cliente fechado ainda.</div><div style={{fontSize:"10px",color:t.textMuted,marginTop:"4px"}}>Vá em "Salvos" e clique "Fechou" em um orçamento.</div></div>;
+            if(clientes.length===0)return <div style={{textAlign:"center",padding:"40px 24px",color:t.textMuted}}>
+              <img src="/logo.jpg" alt="Vinil Vale" style={{width:"80px",height:"auto",objectFit:"contain",opacity:.4,marginBottom:"12px"}}/>
+              <div style={{fontSize:"13px",fontWeight:"600",color:t.textSec}}>Nenhum cliente fechado ainda</div>
+              <div style={{fontSize:"11px",color:t.textMuted,marginTop:"6px"}}>Vá em "Salvos" e clique "Fechou" em um orçamento para gerar contratos.</div>
+              <div style={{width:"40px",height:"3px",background:gold,margin:"12px auto",borderRadius:"2px",opacity:.5}}></div>
+            </div>;
 
             const sel=viewContract||clientes[0];
             const d=sel.data;
@@ -2825,41 +2837,41 @@ export default function App(){
               const a=document.createElement("a");a.href=url;a.download=`Contrato_${(d.client.name||"Cliente").replace(/\s+/g,"_")}.html`;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),1000);
             };
 
-            const cs={p:{fontSize:"14px",lineHeight:"1.9",textAlign:"justify",marginBottom:"12px",color:"#222"},h:{fontSize:"15px",fontWeight:"700",color:"#111",marginTop:"20px",marginBottom:"8px"},li:{fontSize:"14px",lineHeight:"1.8",marginBottom:"6px",paddingLeft:"8px",color:"#222"},sep:{borderTop:"1px solid #ccc",margin:"16px 0"},ed:{background:"#fffff0",border:"1px dashed #e8b100",borderRadius:"4px",padding:"2px 6px",outline:"none",fontSize:"14px"}};
+            const cs={p:{fontSize:"14px",lineHeight:"1.9",textAlign:"justify",marginBottom:"12px",color:"#222"},h:{fontSize:"15px",fontWeight:"700",color:"#0a1f44",marginTop:"24px",marginBottom:"10px",display:"flex",alignItems:"center",gap:"8px",borderBottom:"2px solid #e2e8f0",paddingBottom:"6px"},li:{fontSize:"14px",lineHeight:"1.8",marginBottom:"6px",paddingLeft:"8px",color:"#222"},sep:{borderTop:"none",margin:"8px 0"},ed:{background:"#fffff0",border:"1px dashed #e8b100",borderRadius:"4px",padding:"2px 6px",outline:"none",fontSize:"14px"}};
 
             return <>
               {/* SELETOR DE CLIENTE */}
-              {clientes.length>1&&<div style={{marginBottom:"14px"}}>
-                <div style={{fontSize:"10px",fontWeight:"700",color:t.textSec,marginBottom:"6px",textTransform:"uppercase",letterSpacing:".5px"}}>Selecionar Cliente</div>
-                <div style={{display:"flex",gap:"6px",overflowX:"auto",paddingBottom:"4px"}}>
+              {clientes.length>1&&<div style={{marginBottom:"16px"}}>
+                <div style={{fontSize:"10px",fontWeight:"700",color:gold,marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px",display:"flex",alignItems:"center",gap:"6px"}}><span style={{width:"18px",height:"2px",background:gold,display:"inline-block"}}></span>Selecionar Cliente<span style={{width:"18px",height:"2px",background:gold,display:"inline-block"}}></span></div>
+                <div style={{display:"flex",gap:"8px",overflowX:"auto",paddingBottom:"6px"}}>
                   {clientes.map(c=>{
                     const stg=PIPE.find(p=>p.id===c.status)||PIPE[0];
                     const isSel=sel.id===c.id;
-                    return <button key={c.id} onClick={()=>{setVC(c);setCeInit(null);setTimeout(()=>initCE(c),50)}} style={{flexShrink:0,padding:"6px 12px",borderRadius:"8px",border:`1.5px solid ${isSel?blue:t.cardBorder}`,background:isSel?blue+"10":"transparent",cursor:"pointer",textAlign:"left",minWidth:"120px"}}>
-                      <div style={{fontSize:"11px",fontWeight:"700",color:isSel?blue:t.text,whiteSpace:"nowrap"}}>{c.cN||"Sem nome"}</div>
-                      <div style={{fontSize:"8px",color:stg.color,fontWeight:"600",marginTop:"1px"}}>{stg.icon} {stg.label}</div>
+                    return <button key={c.id} onClick={()=>{setVC(c);setCeInit(null);setTimeout(()=>initCE(c),50)}} style={{flexShrink:0,padding:"10px 14px",borderRadius:"10px",border:isSel?`2px solid ${blue}`:`1.5px solid ${t.cardBorder}`,background:isSel?`linear-gradient(135deg,${blue}15,${blue}08)`:"transparent",cursor:"pointer",textAlign:"left",minWidth:"130px",transition:"all .2s",boxShadow:isSel?"0 2px 8px rgba(0,85,164,.15)":"none"}}>
+                      <div style={{fontSize:"12px",fontWeight:"700",color:isSel?blue:t.text,whiteSpace:"nowrap"}}>{c.cN||"Sem nome"}</div>
+                      <div style={{fontSize:"9px",color:stg.color,fontWeight:"600",marginTop:"3px",display:"flex",alignItems:"center",gap:"4px"}}>{stg.icon} {stg.label}</div>
                     </button>;
                   })}
                 </div>
               </div>}
 
               {/* INFO DO CLIENTE SELECIONADO */}
-              <div style={{background:`linear-gradient(135deg,${blue}12,${blue}06)`,border:`1.5px solid ${blue}30`,borderRadius:"10px",padding:"12px 14px",marginBottom:"12px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"8px"}}>
+              <div style={{background:`linear-gradient(135deg,${navy},${blue})`,borderRadius:"12px",padding:"16px 18px",marginBottom:"14px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"10px",boxShadow:"0 4px 15px rgba(0,85,164,.25)"}}>
                 <div>
-                  <div style={{fontSize:"14px",fontWeight:"800",color:t.text}}>{d.client.name||"Cliente"}</div>
-                  <div style={{fontSize:"10px",color:t.textSec,marginTop:"2px"}}>
+                  <div style={{fontSize:"15px",fontWeight:"800",color:"#fff",letterSpacing:".3px"}}>{d.client.name||"Cliente"}</div>
+                  <div style={{fontSize:"10px",color:"rgba(255,255,255,.7)",marginTop:"3px",display:"flex",alignItems:"center",gap:"6px"}}>
                     {[d.client.city,d.client.phone,SVC.find(s=>s.id===d.svcType)?.label].filter(Boolean).join(" · ")}
                   </div>
                 </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:"18px",fontWeight:"800",color:blue}}>{ce.valor}</div>
-                  <div style={{fontSize:"9px",color:t.textSec}}>Valor do contrato</div>
+                <div style={{textAlign:"right",background:"rgba(255,255,255,.12)",borderRadius:"10px",padding:"8px 14px",backdropFilter:"blur(8px)"}}>
+                  <div style={{fontSize:"20px",fontWeight:"800",color:gold}}>{ce.valor}</div>
+                  <div style={{fontSize:"9px",color:"rgba(255,255,255,.6)",fontWeight:"600"}}>Valor do contrato</div>
                 </div>
               </div>
 
               {/* EDITOR */}
-              <div style={{background:t.sectionBg,borderRadius:"10px",padding:"14px",marginBottom:"12px",border:`1px solid ${t.cardBorder}`}}>
-                <div style={{fontSize:"11px",fontWeight:"700",color:blue,marginBottom:"12px"}}>✏️ Configurar Contrato</div>
+              <div style={{background:t.sectionBg,borderRadius:"12px",padding:"16px",marginBottom:"14px",border:`1.5px solid ${t.cardBorder}`,boxShadow:"0 1px 4px rgba(0,0,0,.04)"}}>
+                <div style={{fontSize:"12px",fontWeight:"700",color:navy,marginBottom:"14px",display:"flex",alignItems:"center",gap:"8px"}}><span style={{width:"3px",height:"16px",background:`linear-gradient(${blue},${navy})`,borderRadius:"2px",display:"inline-block"}}></span>Configurar Contrato</div>
 
                 {/* Linha 1: Valor / Prazo / Data */}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px",marginBottom:"10px"}}>
@@ -2901,27 +2913,32 @@ export default function App(){
               </div>
 
               {/* AÇÕES */}
-              <div style={{display:"flex",gap:"8px",marginBottom:"14px"}}>
-                <Btn onClick={dlContract} style={{flex:1,background:"linear-gradient(135deg,#16a34a,#15803d)",color:"#fff",border:"none",padding:"10px",fontSize:"12px",fontWeight:"700",borderRadius:"8px",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}}><DownloadIcon size={15} color="#fff"/>Baixar Contrato (PDF)</Btn>
-                <Btn onClick={()=>sendOrcWA(sel)} style={{flex:1,background:"linear-gradient(135deg,#25d366,#128c7e)",color:"#fff",border:"none",padding:"10px",fontSize:"12px",fontWeight:"700",borderRadius:"8px",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}}><SendIcon size={15} color="#fff"/>Enviar via WhatsApp</Btn>
+              <div style={{display:"flex",gap:"10px",marginBottom:"16px"}}>
+                <Btn onClick={dlContract} style={{flex:1,background:`linear-gradient(135deg,${navy},${blue})`,color:"#fff",border:"none",padding:"12px",fontSize:"12px",fontWeight:"700",borderRadius:"10px",display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",boxShadow:"0 3px 10px rgba(0,85,164,.3)",letterSpacing:".3px"}}><DownloadIcon size={16} color="#fff"/>Baixar Contrato (PDF)</Btn>
+                <Btn onClick={()=>sendOrcWA(sel)} style={{flex:1,background:"linear-gradient(135deg,#25d366,#128c7e)",color:"#fff",border:"none",padding:"12px",fontSize:"12px",fontWeight:"700",borderRadius:"10px",display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",boxShadow:"0 3px 10px rgba(37,211,102,.3)",letterSpacing:".3px"}}><SendIcon size={16} color="#fff"/>Enviar via WhatsApp</Btn>
               </div>
 
               {/* PREVIEW DO CONTRATO */}
-              <div id="contract-doc" style={{background:"#fff",color:"#111",padding:"32px",borderRadius:"10px",border:`1px solid ${t.cardBorder}`,fontFamily:"'Segoe UI','Helvetica Neue',Arial,sans-serif",fontSize:"14px",lineHeight:"1.9"}}>
-                
-                <div style={{textAlign:"center",marginBottom:"24px",paddingBottom:"16px",borderBottom:"2px solid #0055a4"}}>
-                  <div style={{fontSize:"22px",fontWeight:"800",color:"#0055a4",letterSpacing:"2px"}}>VINIL VALE</div>
-                  <div style={{fontSize:"13px",fontWeight:"600",color:"#333",marginTop:"2px"}}>REVESTIMENTOS E CAPAS PARA PISCINAS LTDA</div>
-                  <div style={{fontSize:"12px",color:"#666",marginTop:"6px"}}>{CO.addr}</div>
-                  <div style={{fontSize:"12px",color:"#666"}}>Fones: {CO.ph1} / {CO.ph2} · {CO.email}</div>
-                  <div style={{fontSize:"12px",color:"#666"}}>CNPJ: {CO.cnpj} · IE: {CO.ie}</div>
-                  {d.propNum&&<div style={{fontSize:"13px",fontWeight:"700",color:"#0055a4",marginTop:"8px"}}>PROPOSTA Nº {d.propNum}</div>}
+              <div style={{fontSize:"10px",fontWeight:"600",color:t.textSec,textTransform:"uppercase",letterSpacing:"1px",marginBottom:"8px",display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontSize:"14px"}}>👁️</span>Pré-visualização do Contrato</div>
+              <div id="contract-doc" style={{background:"#fff",color:"#111",padding:"36px",borderRadius:"12px",border:`2px solid ${blue}20`,fontFamily:"'Segoe UI','Helvetica Neue',Arial,sans-serif",fontSize:"14px",lineHeight:"1.9",boxShadow:"0 4px 20px rgba(0,0,0,.08)"}}>
+
+                <div style={{textAlign:"center",marginBottom:"28px",paddingBottom:"20px",borderBottom:`3px solid ${navy}`,position:"relative"}}>
+                  <img src="/logo.jpg" alt="Vinil Vale" style={{width:"120px",height:"auto",objectFit:"contain",marginBottom:"10px"}}/>
+                  <div style={{fontSize:"13px",fontWeight:"600",color:"#333",marginTop:"4px",letterSpacing:"1px"}}>REVESTIMENTOS E CAPAS PARA PISCINAS LTDA</div>
+                  <div style={{width:"60px",height:"3px",background:gold,margin:"10px auto",borderRadius:"2px"}}></div>
+                  <div style={{fontSize:"12px",color:"#555",marginTop:"6px"}}>{CO.addr}</div>
+                  <div style={{fontSize:"12px",color:"#555"}}>Fones: {CO.ph1} / {CO.ph2} · {CO.email}</div>
+                  <div style={{fontSize:"12px",color:"#555"}}>CNPJ: {CO.cnpj} · IE: {CO.ie}</div>
+                  {d.propNum&&<div style={{fontSize:"13px",fontWeight:"700",color:navy,marginTop:"10px",background:"#f0f7ff",display:"inline-block",padding:"4px 16px",borderRadius:"6px"}}>PROPOSTA Nº {d.propNum}</div>}
                 </div>
 
-                <div style={{textAlign:"center",fontSize:"18px",fontWeight:"800",margin:"20px 0",color:"#111"}}>CONTRATO DE PRESTAÇÃO DE SERVIÇOS</div>
+                <div style={{textAlign:"center",margin:"24px 0"}}>
+                  <div style={{fontSize:"20px",fontWeight:"800",color:navy,letterSpacing:"1.5px"}}>CONTRATO DE PRESTAÇÃO DE SERVIÇOS</div>
+                  <div style={{width:"80px",height:"3px",background:`linear-gradient(90deg,${blue},${gold})`,margin:"8px auto",borderRadius:"2px"}}></div>
+                </div>
 
-                <div style={{background:"#f8fafc",borderRadius:"8px",padding:"16px",marginBottom:"16px",border:"1px solid #e2e8f0"}}>
-                  <div style={{fontSize:"13px",fontWeight:"700",color:"#0055a4",marginBottom:"8px"}}>CONTRATADA</div>
+                <div style={{background:`linear-gradient(135deg,#f0f7ff,#f8fafc)`,borderRadius:"10px",padding:"18px",marginBottom:"16px",border:"1px solid #c5d9f0",borderLeft:`4px solid ${navy}`}}>
+                  <div style={{fontSize:"13px",fontWeight:"700",color:navy,marginBottom:"10px",display:"flex",alignItems:"center",gap:"6px"}}>🏢 CONTRATADA</div>
                   <div style={{fontSize:"14px",lineHeight:"1.8"}}>
                     <b>Vinil Vale Revestimentos e Capas para Piscinas Ltda.</b><br/>
                     Endereço: {CO.addr}<br/>
@@ -2932,8 +2949,8 @@ export default function App(){
                   </div>
                 </div>
 
-                <div style={{background:"#f8fafc",borderRadius:"8px",padding:"16px",marginBottom:"20px",border:"1px solid #e2e8f0"}}>
-                  <div style={{fontSize:"13px",fontWeight:"700",color:"#0055a4",marginBottom:"8px"}}>CONTRATANTE</div>
+                <div style={{background:`linear-gradient(135deg,#fffbeb,#f8fafc)`,borderRadius:"10px",padding:"18px",marginBottom:"20px",border:"1px solid #e8d5a0",borderLeft:`4px solid ${gold}`}}>
+                  <div style={{fontSize:"13px",fontWeight:"700",color:"#92400e",marginBottom:"10px",display:"flex",alignItems:"center",gap:"6px"}}>👤 CONTRATANTE</div>
                   <div style={{fontSize:"14px",lineHeight:"1.8"}}>
                     <b>{d.client.name||"_______________________________"}</b><br/>
                     Endereço: {d.client.address||"_______________________________"} – {d.client.city||"_______________"}<br/>
@@ -2949,8 +2966,8 @@ export default function App(){
                 <div style={cs.h}>1. SERVIÇOS CONTRATADOS</div>
                 <p style={cs.p}>A CONTRATADA compromete-se a realizar os seguintes serviços de <b>{ce.tipoServico||SVC.find(s=>s.id===d.svcType)?.label||""}</b> no endereço: {d.client.address||"___"} – {d.client.city||"___"}</p>
 
-                <div style={{background:"#f0f7ff",borderRadius:"6px",padding:"12px",marginBottom:"14px",border:"1px solid #c5d9f0"}}>
-                  <div style={{fontSize:"12px",fontWeight:"700",color:"#0055a4",marginBottom:"6px"}}>ESPECIFICAÇÕES DA PISCINA</div>
+                <div style={{background:"linear-gradient(135deg,#f0f7ff,#edf5ff)",borderRadius:"10px",padding:"16px",marginBottom:"14px",border:"1px solid #b8d4f0",borderLeft:`4px solid ${blue}`}}>
+                  <div style={{fontSize:"12px",fontWeight:"700",color:navy,marginBottom:"8px",display:"flex",alignItems:"center",gap:"6px"}}>🏊 ESPECIFICAÇÕES DA PISCINA</div>
                   <div style={{fontSize:"13px",lineHeight:"1.8"}}>
                     Dimensões: <b>{ce.piscina||((d.pool?.length||0)+"x"+(d.pool?.width||0)+"x"+(d.pool?.depth||0)+"m")}</b><br/>
                     Revestimento: <b>{ce.vinil||"ACQUALINER"}</b><br/>
@@ -2989,7 +3006,7 @@ export default function App(){
                 <div style={cs.sep}/>
 
                 <div style={cs.h}>4. PAGAMENTO</div>
-                <p style={cs.p}>4.1. O valor total acordado é de <b style={{fontSize:"16px",color:"#0055a4"}}>{ce.valor}</b>, conforme condições de pagamento definidas no orçamento.</p>
+                <p style={cs.p}>4.1. O valor total acordado é de <b style={{fontSize:"17px",color:navy,background:"#f0f7ff",padding:"2px 8px",borderRadius:"4px"}}>{ce.valor}</b>, conforme condições de pagamento definidas no orçamento.</p>
 
                 <div style={cs.sep}/>
 
@@ -3014,13 +3031,16 @@ export default function App(){
                 <p style={cs.p}>8.2. Qualquer alteração deverá ser formalizada por escrito e assinada pelas partes.</p>
                 <p style={cs.p}>8.3. Este contrato é regido pelas leis brasileiras, sendo eleito o Foro da Comarca de <b>Registro-SP</b> para dirimir quaisquer controvérsias.</p>
 
-                <div style={{textAlign:"center",margin:"30px 0 20px",fontSize:"15px",fontWeight:"600"}}>{ce.data}</div>
+                <div style={{textAlign:"center",margin:"30px 0 10px"}}>
+                  <div style={{width:"60px",height:"3px",background:`linear-gradient(90deg,${blue},${gold})`,margin:"0 auto 12px",borderRadius:"2px"}}></div>
+                  <div style={{fontSize:"15px",fontWeight:"600",color:"#333"}}>{ce.data}</div>
+                </div>
 
                 <div style={{marginTop:"40px"}}>
-                  <div style={{borderTop:"2px solid #333",width:"55%",margin:"0 auto",textAlign:"center",paddingTop:"8px"}}><div style={{fontSize:"14px",fontWeight:"700"}}>Vinil Vale Revestimentos e Capas para Piscinas Ltda.</div><div style={{fontSize:"12px",color:"#666"}}>CNPJ: {CO.cnpj}</div></div>
+                  <div style={{borderTop:`2px solid ${navy}`,width:"55%",margin:"0 auto",textAlign:"center",paddingTop:"10px"}}><div style={{fontSize:"14px",fontWeight:"700",color:navy}}>Vinil Vale Revestimentos e Capas para Piscinas Ltda.</div><div style={{fontSize:"12px",color:"#666"}}>CNPJ: {CO.cnpj}</div></div>
                 </div>
                 <div style={{marginTop:"40px"}}>
-                  <div style={{borderTop:"2px solid #333",width:"55%",margin:"0 auto",textAlign:"center",paddingTop:"8px"}}><div style={{fontSize:"14px",fontWeight:"700"}}>{d.client.name||"________________________"}</div><div style={{fontSize:"12px",color:"#666"}}>CPF: {d.client.cpf||"________________________"}</div></div>
+                  <div style={{borderTop:`2px solid ${navy}`,width:"55%",margin:"0 auto",textAlign:"center",paddingTop:"10px"}}><div style={{fontSize:"14px",fontWeight:"700",color:navy}}>{d.client.name||"________________________"}</div><div style={{fontSize:"12px",color:"#666"}}>CPF: {d.client.cpf||"________________________"}</div></div>
                 </div>
                 <div style={{marginTop:"36px"}}>
                   <div style={{fontSize:"14px",fontWeight:"700",marginBottom:"24px"}}>TESTEMUNHAS:</div>
