@@ -1573,7 +1573,7 @@ export default function App(){
   const [viewContract,setVC]=useState(null);
   const [ce,setCE]=useState({servicos:[],obs:"",garantias:"",valor:"",prazo:"20",data:"",novoServico:""});
   const uce=f=>v=>setCE(p=>({...p,[f]:v}));
-  const initCE=(q)=>{const d=q.data;const inc=(d.items||[]).filter(i=>i.on);const p=d.pool||{};const pay2=d.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};const tot=parseFloat(q.tot)||0;const svcLabel=SVC.find(s=>s.id===d.svcType)?.label||"Serviço";setCE({servicos:inc.map(it=>it.n+(it.q>1?" ("+it.q+"x)":"")+(it.nt?" - "+it.nt:"")),obs:(d.ci||[]).join(", ")||"Materiais de alvenaria e hidráulico, pedra de borda, água para enchimento, remoção de entulho",garantias:(d.guar||[]).filter(g=>g.on).map(g=>g.y+" anos para "+g.it).join(", "),valor:fmt(tot),prazo:d.execDays||"20",data:new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"}),novoServico:"",tipoServico:svcLabel,piscina:p.length+"x"+p.width+"x"+p.depth+"m"+(d.poolFmt?" - "+d.poolFmt:""),vinil:"ACQUALINER "+(d.vinilT||"0,7mm"),estampa:d.stamp||"",pagPix:fmt(tot*(1-pay2.pixD/100))+" ("+pay2.pixD+"% desc.)",pagCartao:"até "+(pay2.noFee||5)+"x sem juros ou "+(pay2.wFee||12)+"x com juros",pagParcelado:pay2.entPct+"% entrada + "+pay2.balPct+"% no término",pagBtc:fmt(tot*(1-pay2.btcD/100))+" ("+pay2.btcD+"% desc.)",propNum:d.propNum||""})};
+  const initCE=(q)=>{const d=q.data;const inc=(d.items||[]).filter(i=>i.on);const p=d.pool||{};const pay2=d.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};const tot=parseFloat(q.tot)||0;const svcLabel=SVC.find(s=>s.id===d.svcType)?.label||"Serviço";const vt=d.vinilT||"0,7mm";const vo=VOPTS.find(o=>o.t===vt);const vinilAnos=vo?vo.w:3;const guarAdj=(d.guar||[]).filter(g=>g.on).map(g=>{const y=(g.it==="Vinil (fabricação)"||g.it==="Mão de obra/Soldas")?vinilAnos:g.y;return y+" anos para "+g.it;}).join(", ");setCE({servicos:inc.map(it=>it.n+(it.q>1?" ("+it.q+"x)":"")+(it.nt?" - "+it.nt:"")),obs:(d.ci||[]).join(", ")||"Materiais de alvenaria e hidráulico, pedra de borda, água para enchimento, remoção de entulho",garantias:guarAdj,valor:fmt(tot),prazo:d.execDays||"20",data:new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"}),novoServico:"",tipoServico:svcLabel,piscina:p.length+"x"+p.width+"x"+p.depth+"m"+(d.poolFmt?" - "+d.poolFmt:""),vinil:"ACQUALINER "+vt,estampa:d.stamp||"",pagPix:fmt(tot*(1-pay2.pixD/100))+" ("+pay2.pixD+"% desc.)",pagCartao:"até "+(pay2.noFee||5)+"x sem juros ou "+(pay2.wFee||12)+"x com juros",pagParcelado:pay2.entPct+"% entrada + "+pay2.balPct+"% no término",pagBtc:fmt(tot*(1-pay2.btcD/100))+" ("+pay2.btcD+"% desc.)",propNum:d.propNum||""})};
   // Auto-init contract when switching to contratos tab
   const [ceInit,setCeInit]=useState(null);
   useEffect(()=>{
@@ -1744,7 +1744,7 @@ export default function App(){
             :<div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Comp. (m) *" value={pool.length} onChange={up("length")} t={t} error={fieldErrors.length}/><Inp label="Larg. (m) *" value={pool.width} onChange={up("width")} t={t} error={fieldErrors.width}/><Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
           }
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Formato" value={poolFmt} onChange={setPF} options={PFMT} t={t}/></div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={setVT} options={VOPTS.map(v=>({value:v.t,label:`${v.t} (${v.w}a)`}))} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={v=>{setVT(v);const vo=VOPTS.find(o=>o.t===v);if(vo)setG(prev=>prev.map(g=>(g.it==="Vinil (fabricação)"||g.it==="Mão de obra/Soldas")?{...g,y:vo.w}:g));}} options={VOPTS.map(v=>({value:v.t,label:`${v.t} (${v.w}a)`}))} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
           <div style={{marginTop:"10px"}}><CatalogoPicker value={stamp} onChange={setSt} t={t} dark={dark}/></div>
 
           {/* MODO PAREDES */}
@@ -3007,6 +3007,7 @@ export default function App(){
 
                 <div style={cs.h}>4. PAGAMENTO</div>
                 <p style={cs.p}>4.1. O valor total acordado é de <b style={{fontSize:"17px",color:navy,background:"#f0f7ff",padding:"2px 8px",borderRadius:"4px"}}>{ce.valor}</b>, conforme condições de pagamento definidas no orçamento.</p>
+                <p style={cs.p}>4.2. Em caso de pagamento via <b>cartão de crédito</b>, o mesmo deverá ser realizado <b>no ato da assinatura do contrato</b>.</p>
 
                 <div style={cs.sep}/>
 
