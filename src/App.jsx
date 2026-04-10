@@ -3032,22 +3032,26 @@ export default function App(){
                 <p style={cs.p}>8.2. Qualquer alteração deverá ser formalizada por escrito e assinada pelas partes.</p>
                 <p style={cs.p}>8.3. Este contrato é regido pelas leis brasileiras, sendo eleito o Foro da Comarca de <b>Registro-SP</b> para dirimir quaisquer controvérsias.</p>
 
-                <div style={{textAlign:"center",margin:"30px 0 10px"}}>
-                  <div style={{width:"60px",height:"3px",background:`linear-gradient(90deg,${blue},${gold})`,margin:"0 auto 12px",borderRadius:"2px"}}></div>
-                  <div style={{fontSize:"15px",fontWeight:"600",color:"#333"}}>{ce.data}</div>
-                </div>
+                <div style={{fontSize:"9px",color:blue,fontWeight:"700",textAlign:"center",margin:"20px 0 6px",textTransform:"uppercase",letterSpacing:".5px"}}>✏️ Área editável — clique para alterar</div>
 
-                <div style={{marginTop:"40px"}}>
-                  <div style={{borderTop:`2px solid ${navy}`,width:"55%",margin:"0 auto",textAlign:"center",paddingTop:"10px"}}><div style={{fontSize:"14px",fontWeight:"700",color:navy}}>Vinil Vale Revestimentos e Capas para Piscinas Ltda.</div><div style={{fontSize:"12px",color:"#666"}}>CNPJ: {CO.cnpj}</div></div>
-                </div>
-                <div style={{marginTop:"40px"}}>
-                  <div style={{borderTop:`2px solid ${navy}`,width:"55%",margin:"0 auto",textAlign:"center",paddingTop:"10px"}}><div style={{fontSize:"14px",fontWeight:"700",color:navy}}>{d.client.name||"________________________"}</div><div style={{fontSize:"12px",color:"#666"}}>CPF: {d.client.cpf||"________________________"}</div></div>
-                </div>
-                <div style={{marginTop:"36px"}}>
-                  <div style={{fontSize:"14px",fontWeight:"700",marginBottom:"24px"}}>TESTEMUNHAS:</div>
-                  <div style={{display:"flex",justifyContent:"space-between"}}>
-                    <div style={{borderTop:"2px solid #333",width:"42%",textAlign:"center",paddingTop:"8px",fontSize:"12px"}}>Nome: _________________<br/>CPF: _________________</div>
-                    <div style={{borderTop:"2px solid #333",width:"42%",textAlign:"center",paddingTop:"8px",fontSize:"12px"}}>Nome: _________________<br/>CPF: _________________</div>
+                <div contentEditable suppressContentEditableWarning style={{outline:"none",border:"1px dashed #c5d9f0",borderRadius:"8px",padding:"16px",background:"#fafcff"}}>
+                  <div style={{textAlign:"center",margin:"10px 0"}}>
+                    <div style={{width:"60px",height:"3px",background:`linear-gradient(90deg,${blue},${gold})`,margin:"0 auto 12px",borderRadius:"2px"}}></div>
+                    <div style={{fontSize:"15px",fontWeight:"600",color:"#333"}}>{ce.data}</div>
+                  </div>
+
+                  <div style={{marginTop:"40px"}}>
+                    <div style={{borderTop:`2px solid ${navy}`,width:"55%",margin:"0 auto",textAlign:"center",paddingTop:"10px"}}><div style={{fontSize:"14px",fontWeight:"700",color:navy}}>Vinil Vale Revestimentos e Capas para Piscinas Ltda.</div><div style={{fontSize:"12px",color:"#666"}}>CNPJ: {CO.cnpj}</div></div>
+                  </div>
+                  <div style={{marginTop:"40px"}}>
+                    <div style={{borderTop:`2px solid ${navy}`,width:"55%",margin:"0 auto",textAlign:"center",paddingTop:"10px"}}><div style={{fontSize:"14px",fontWeight:"700",color:navy}}>{d.client.name||"________________________"}</div><div style={{fontSize:"12px",color:"#666"}}>CPF: {d.client.cpf||"________________________"}</div></div>
+                  </div>
+                  <div style={{marginTop:"36px"}}>
+                    <div style={{fontSize:"14px",fontWeight:"700",marginBottom:"24px"}}>TESTEMUNHAS:</div>
+                    <div style={{display:"flex",justifyContent:"space-between"}}>
+                      <div style={{borderTop:"2px solid #333",width:"42%",textAlign:"center",paddingTop:"8px",fontSize:"12px"}}>Nome: _________________<br/>CPF: _________________</div>
+                      <div style={{borderTop:"2px solid #333",width:"42%",textAlign:"center",paddingTop:"8px",fontSize:"12px"}}>Nome: _________________<br/>CPF: _________________</div>
+                    </div>
                   </div>
                 </div>
               </div>
