@@ -2831,7 +2831,11 @@ export default function App(){
 
             const dlContract=()=>{
               const el=document.getElementById("contract-doc");if(!el)return;
-              const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Contrato - ${d.client.name||"Cliente"}</title><style>*{margin:0;box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;padding:15mm 20mm;font-size:14px;line-height:1.8;color:#111}@page{size:A4;margin:12mm 18mm}p{text-align:justify;margin-bottom:10px}[contenteditable]{outline:none}</style></head><body>${el.innerHTML}<script>window.onload=function(){setTimeout(function(){window.print()},600)}<\/script></body></html>`;
+              // Clone e limpar elementos de UI (área editável marcada, labels) para impressão
+              const clone=el.cloneNode(true);
+              clone.querySelectorAll("[contenteditable]").forEach(ed=>{ed.removeAttribute("contenteditable");ed.style.border="none";ed.style.background="transparent";ed.style.padding="0";});
+              clone.querySelectorAll("[data-edit-label]").forEach(lb=>lb.remove());
+              const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Contrato - ${d.client.name||"Cliente"}</title><style>*{margin:0;box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;padding:15mm 20mm;font-size:14px;line-height:1.8;color:#111}@page{size:A4;margin:12mm 18mm}p{text-align:justify;margin-bottom:10px}</style></head><body>${clone.innerHTML}<script>window.onload=function(){setTimeout(function(){window.print()},600)}<\/script></body></html>`;
               const blob=new Blob([html],{type:"text/html;charset=utf-8"});
               const url=URL.createObjectURL(blob);
               const a=document.createElement("a");a.href=url;a.download=`Contrato_${(d.client.name||"Cliente").replace(/\s+/g,"_")}.html`;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -3032,28 +3036,15 @@ export default function App(){
                 <p style={cs.p}>8.2. Qualquer alteração deverá ser formalizada por escrito e assinada pelas partes.</p>
                 <p style={cs.p}>8.3. Este contrato é regido pelas leis brasileiras, sendo eleito o Foro da Comarca de <b>Registro-SP</b> para dirimir quaisquer controvérsias.</p>
 
-                <div style={{fontSize:"9px",color:blue,fontWeight:"700",textAlign:"center",margin:"20px 0 6px",textTransform:"uppercase",letterSpacing:".5px"}}>✏️ Área editável — clique para alterar</div>
+                <div data-edit-label="1" style={{fontSize:"9px",color:blue,fontWeight:"700",textAlign:"center",margin:"20px 0 6px",textTransform:"uppercase",letterSpacing:".5px"}}>✏️ Área 100% editável — clique em qualquer parte abaixo para alterar</div>
 
-                <div contentEditable suppressContentEditableWarning style={{outline:"none",border:"1px dashed #c5d9f0",borderRadius:"8px",padding:"16px",background:"#fafcff"}}>
-                  <div style={{textAlign:"center",margin:"10px 0"}}>
-                    <div style={{width:"60px",height:"3px",background:`linear-gradient(90deg,${blue},${gold})`,margin:"0 auto 12px",borderRadius:"2px"}}></div>
-                    <div style={{fontSize:"15px",fontWeight:"600",color:"#333"}}>{ce.data}</div>
-                  </div>
-
-                  <div style={{marginTop:"40px"}}>
-                    <div style={{borderTop:`2px solid ${navy}`,width:"55%",margin:"0 auto",textAlign:"center",paddingTop:"10px"}}><div style={{fontSize:"14px",fontWeight:"700",color:navy}}>Vinil Vale Revestimentos e Capas para Piscinas Ltda.</div><div style={{fontSize:"12px",color:"#666"}}>CNPJ: {CO.cnpj}</div></div>
-                  </div>
-                  <div style={{marginTop:"40px"}}>
-                    <div style={{borderTop:`2px solid ${navy}`,width:"55%",margin:"0 auto",textAlign:"center",paddingTop:"10px"}}><div style={{fontSize:"14px",fontWeight:"700",color:navy}}>{d.client.name||"________________________"}</div><div style={{fontSize:"12px",color:"#666"}}>CPF: {d.client.cpf||"________________________"}</div></div>
-                  </div>
-                  <div style={{marginTop:"36px"}}>
-                    <div style={{fontSize:"14px",fontWeight:"700",marginBottom:"24px"}}>TESTEMUNHAS:</div>
-                    <div style={{display:"flex",justifyContent:"space-between"}}>
-                      <div style={{borderTop:"2px solid #333",width:"42%",textAlign:"center",paddingTop:"8px",fontSize:"12px"}}>Nome: _________________<br/>CPF: _________________</div>
-                      <div style={{borderTop:"2px solid #333",width:"42%",textAlign:"center",paddingTop:"8px",fontSize:"12px"}}>Nome: _________________<br/>CPF: _________________</div>
-                    </div>
-                  </div>
-                </div>
+                <div
+                  key={`bottom-${sel.id}`}
+                  contentEditable
+                  suppressContentEditableWarning
+                  ref={el=>{if(el&&!el.dataset.init){el.innerHTML=`<div style="text-align:center;margin:10px 0"><div style="width:60px;height:3px;background:linear-gradient(90deg,${blue},${gold});margin:0 auto 12px;border-radius:2px"></div><div style="font-size:15px;font-weight:600;color:#333">${ce.data}</div></div><div style="margin-top:40px"><div style="border-top:2px solid ${navy};width:55%;margin:0 auto;text-align:center;padding-top:10px"><div style="font-size:14px;font-weight:700;color:${navy}">Vinil Vale Revestimentos e Capas para Piscinas Ltda.</div><div style="font-size:12px;color:#666">CNPJ: ${CO.cnpj}</div></div></div><div style="margin-top:40px"><div style="border-top:2px solid ${navy};width:55%;margin:0 auto;text-align:center;padding-top:10px"><div style="font-size:14px;font-weight:700;color:${navy}">${d.client.name||"________________________"}</div><div style="font-size:12px;color:#666">CPF: ${d.client.cpf||"________________________"}</div></div></div><div style="margin-top:36px"><div style="font-size:14px;font-weight:700;margin-bottom:24px">TESTEMUNHAS:</div><div style="display:flex;justify-content:space-between"><div style="border-top:2px solid #333;width:42%;text-align:center;padding-top:8px;font-size:12px">Nome: _________________<br/>CPF: _________________</div><div style="border-top:2px solid #333;width:42%;text-align:center;padding-top:8px;font-size:12px">Nome: _________________<br/>CPF: _________________</div></div></div>`;el.dataset.init="1";}}}
+                  style={{outline:"none",border:`2px dashed ${blue}40`,borderRadius:"10px",padding:"16px",background:"#fafcff",cursor:"text",minHeight:"100px"}}
+                />
               </div>
             </>;
           })() }
