@@ -2983,7 +2983,7 @@ export default function App(){
                 <div style={cs.sep}/>
 
                 <div style={cs.h}>2. GARANTIA E ASSISTÊNCIA TÉCNICA</div>
-                <p style={cs.p}><b>2.1. Da Garantia:</b> A CONTRATADA oferece garantia de {ce.garantias}. A garantia do material (bolsão de vinil) é de <b>{ce.vinil&&ce.vinil.includes("0,8")?"4":"3"} anos</b> contra defeitos de fabricação, conforme termos do fabricante ACQUALINER.</p>
+                <p style={cs.p}><b>2.1. Da Garantia:</b> {ce.vinil&&ce.vinil.includes("0,8")?<>A CONTRATADA oferece garantia de <b>3 anos</b> para confecção das Soldas, e <b>4 anos</b> na espessura 0.8mm, conforme termos do fabricante.</>:<>A CONTRATADA oferece garantia de <b>3 anos</b> para confecção das Soldas e <b>3 anos</b> para o vinil, conforme termos do fabricante.</>}</p>
                 <p style={cs.p}><b>2.2. Da Assistência Técnica:</b> Em caso de chamado para assistência, a CONTRATADA terá um prazo de até 10 (dez) dias úteis para realizar a vistoria técnica no local. A garantia cobre apenas defeitos de instalação quando a instalação seja feita pela fabricante Vinil Vale Revestimentos. Caso a vistoria identifique que o problema decorre de fatores externos (infiltração, mau uso, intervenção de terceiros, desequilíbrio químico, etc.), será apresentado orçamento separado para o reparo.</p>
                 <p style={cs.p}><b>2.3. Exclusões de Revestimento:</b> A garantia não cobre:</p>
                 <div style={{paddingLeft:"20px",marginBottom:"14px"}}>
