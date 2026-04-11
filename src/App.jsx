@@ -753,6 +753,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
               <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Vinil:</b> ACQUALINER {d.vinilT} · Resist. até 32°C</span>
               <span style={{background:goldL,padding:"2px 7px",borderRadius:"10px",border:`1px solid ${gold}`}}><b>Estampa:</b> {d.stamp||"À escolha"}</span>
               <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Chão:</b> {ar.chao}m² <b>Paredes:</b> {ar.par}m²</span>
+              {d.execDays&&<span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Prazo:</b> {d.execDays} dias úteis{d.svcType==="revestimento"?" após a medição detalhada":""}</span>}
             </div>
             {spa.on&&<div style={{marginTop:"6px",background:goldL,borderRadius:"6px",padding:"6px 8px",border:`1px solid ${gold}44`,fontSize:"8.5px"}}><b style={{color:navy}}>🌊 SPA Externo:</b> {spa.length}×{spa.width}×{spa.depth}m — Chão: {ar.sChao}m² | Paredes: {ar.sPar}m²</div>}
             {(d.wMode||"")==="irregular"&&(d.walls||[]).length>0&&<div style={{marginTop:"6px",background:"#eef2ff",borderRadius:"6px",padding:"6px 8px",border:"1px solid #c7d2fe",fontSize:"8.5px"}}><b style={{color:navy}}>📐 Paredes fora de esquadro:</b> {(d.walls||[]).map((w,i)=>`P${i+1}: ${w.l}×${w.h}m`).join(" | ")}</div>}
@@ -1661,7 +1662,7 @@ export default function App(){
 <table class="tbl"><tr><th>Item</th><th>Obs</th><th>Qtd</th></tr>${inc.map(i=>`<tr><td><b>${escHtml(i.n)}</b></td><td style="color:#666;font-style:italic">${escHtml(i.nt||"")}</td><td>${i.q>1?i.q+"x":"1"}</td></tr>`).join("")}</table>
 <div class="tot">${fmt(tot)}</div>
 <div class="info" style="font-size:12px"><b>Formas de Pagamento:</b><br>💚 Pix/Dinheiro: ${pay2.pixD}% desc. = <b>${fmt(tot*(1-pay2.pixD/100))}</b><br>💳 Cartão: até ${pay2.noFee}x s/juros<br>📋 Parcelado: ${pay2.entPct}% + ${pay2.balPct}%<br>₿ Bitcoin: ${pay2.btcD}% desc. = <b>${fmt(tot*(1-pay2.btcD/100))}</b></div>
-<div style="margin-top:12px;font-size:12px"><b>Prazo de execução:</b> ${escHtml(d?.execDays||"20")} dias úteis</div>
+<div style="margin-top:12px;font-size:12px"><b>Prazo de execução:</b> ${escHtml(d?.execDays||"20")} dias úteis${d?.svcType==="revestimento"?" após a medição detalhada":""}</div>
 <div class="ft">${escHtml(CO.name)}<br>${escHtml(CO.addr)} · ${escHtml(CO.ph1)} / ${escHtml(CO.ph2)}<br>${escHtml(CO.email)} · ${escHtml(CO.insta)}</div>
 <script>window.onload=function(){setTimeout(function(){window.print()},800)}<\/script></body></html>`;
     const blob=new Blob([html],{type:"text/html;charset=utf-8"});
