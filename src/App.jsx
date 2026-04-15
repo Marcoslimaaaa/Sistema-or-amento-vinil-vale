@@ -544,30 +544,44 @@ const IPAY={pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
 const fmt=v=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(v);
 
 // ═══ AREA CALCULATION ═══
-const calcA=(pool,spa,wMode,walls,poolFmt)=>{
+const calcA=(pool,spa,wMode,walls,poolFmt,extras)=>{
   const L=parseFloat(pool.length)||0,W=parseFloat(pool.width)||0;
   const dMin=parseFloat(pool.depthMin)||0,dMax=parseFloat(pool.depthMax)||0;
   const D=(dMin>0&&dMax>0)?(dMin+dMax)/2:parseFloat(pool.depth)||0;
   const realDMin=(dMin>0)?dMin:D,realDMax=(dMax>0)?dMax:D;
   const isOval=poolFmt==="Oval";
-  // Para oval/elipse: a = L/2 (semi-eixo maior), b = W/2 (semi-eixo menor)
   const a=L/2,b=W/2;
-  const chao=isOval?(Math.PI*a*b):L*W;
-  // Perímetro da elipse - aproximação de Ramanujan
+  // Se raso+fundo preenchidos e diferentes, usa comprimento inclinado real da rampa (√(L² + (dMax−dMin)²))
+  const sloped=dMin>0&&dMax>0&&dMin!==dMax;
+  const Linc=sloped?Math.sqrt(L*L+(dMax-dMin)*(dMax-dMin)):L;
+  let chao=isOval?(Math.PI*a*b):Linc*W;
   const ovalPerim=isOval?(Math.PI*(3*(a+b)-Math.sqrt((3*a+b)*(a+3*b)))):0;
   let par=wMode==="irregular"&&walls.length>0
     ?walls.reduce((s,w)=>s+(parseFloat(w.l)||0)*(parseFloat(w.h)||D),0)
     :(isOval?(ovalPerim*D):(L*realDMin+L*realDMax+2*W*D));
-  // Perimeter: sum of wall lengths (for perfil)
   let perim=wMode==="irregular"&&walls.length>0
     ?walls.reduce((s,w)=>s+(parseFloat(w.l)||0),0)
     :(isOval?ovalPerim:(2*L+2*W));
+  // Extras (prainha, degrau, banco — cada peça: topo=L×W, face=L×H)
+  const pf=v=>parseFloat(String(v||"").replace(",","."))||0;
+  let extraChao=0,extraPar=0;
+  if(Array.isArray(extras)){
+    extras.forEach(e=>{
+      const l=pf(e.l),w=pf(e.w),h=pf(e.h);
+      if(e.mode==="peca"){extraChao+=l*w;extraPar+=l*h;}
+      else if(e.mode==="topo_add")extraChao+=l*w;
+      else if(e.mode==="chao_sub")extraChao-=l*w;
+      else if(e.mode==="face_add")extraPar+=l*h;
+      else if(e.mode==="parede_sub")extraPar-=l*h;
+    });
+  }
+  chao+=extraChao;par+=extraPar;
   const sL=parseFloat(spa.length)||0,sW=parseFloat(spa.width)||0,sD=parseFloat(spa.depth)||0;
   const sChao=spa.on?sL*sW:0,sPar=spa.on?(2*sL*sD+2*sW*sD):0;
   const sPerim=spa.on?(2*sL+2*sW):0;
   const vol=(isOval?(Math.PI*a*b):L*W)*D+(spa.on?sL*sW*sD:0);
   const depthInfo={avg:D,min:realDMin,max:realDMax,sloped:dMin>0&&dMax>0&&dMin!==dMax};
-  return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:sChao.toFixed(1),sPar:sPar.toFixed(1),tot:(chao+par+sChao+sPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao).toFixed(1),depthInfo};
+  return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:sChao.toFixed(1),sPar:sPar.toFixed(1),tot:(chao+par+sChao+sPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao).toFixed(1),depthInfo,extraChao:extraChao.toFixed(1),extraPar:extraPar.toFixed(1)};
 };
 
 // ═══ CRM CONSTANTS ═══
@@ -638,7 +652,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
   const pool=d.pool||{length:"0",width:"0",depth:"0"};
   const spa=d.spa||{on:false,length:"0",width:"0",depth:"0"};
   const pay=d.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
-  const ar=calcA(pool,spa,d.wMode||"regular",d.walls||[],d.poolFmt);
+  const ar=calcA(pool,spa,d.wMode||"regular",d.walls||[],d.poolFmt,d.extras||[]);
   const effQ=(i)=>{
     if(i.un==="m²")return parseFloat(ar.tot)||0;
     if(i.un==="chao")return parseFloat(ar.chaoTot)||0;
@@ -906,6 +920,14 @@ export default function App(){
   const addWall=()=>setWalls(p=>[...p,{l:"",h:pool.depth||"1.40"}]);
   const rmWall=i=>setWalls(p=>p.filter((_,x)=>x!==i));
   const uWall=(i,f,v)=>setWalls(p=>p.map((w,x)=>x===i?{...w,[f]:v}:w));
+
+  // EXTRAS (prainha, degrau, banco — cada peça = topo L×W + face L×H, H = borda até topo da peça)
+  const [extras,setExtras]=useState([]);
+  const addPeca=(tipo)=>{
+    setExtras(p=>[...p,{id:Date.now()+Math.random(),desc:tipo,l:"",w:"",h:"",mode:"peca"}]);
+  };
+  const rmExtra=id=>setExtras(p=>p.filter(e=>e.id!==id));
+  const uExtra=(id,f,v)=>setExtras(p=>p.map(e=>e.id===id?{...e,[f]:v}:e));
 
   const [items,setItems]=useState(()=>mkItems("construcao"));
   const [guar,setG]=useState(()=>mkG("construcao"));
@@ -1596,7 +1618,7 @@ export default function App(){
 
   const inc=items.filter(i=>i.on);
   // Calculate effective quantity based on unit type
-  const ar=calcA(pool,spa,wMode,walls,poolFmt);
+  const ar=calcA(pool,spa,wMode,walls,poolFmt,extras);
   const lowStockCount=Object.entries(stk).filter(([,s])=>s.qty>0&&s.qty<=(s.minQty||2)).length;
   const alertasFinCount=(()=>{const today=new Date().toISOString().split("T")[0];const d3=new Date();d3.setDate(d3.getDate()+3);const d3s=d3.toISOString().split("T")[0];return[...contasReceber,...contasPagar].filter(c=>c.status==="pendente"&&c.venc&&(c.venc<today||c.venc<=d3s)).length;})();
 
@@ -1617,7 +1639,7 @@ export default function App(){
   const addM=()=>setItems(p=>[...p,{id:Date.now(),n:"Novo item",q:1,c:0,m:gM,nt:"",on:true,un:"un"}]);
   const apM=()=>{setItems(p=>p.map(i=>({...i,m:gM})));setFbMsg("Margem aplicada!");setTimeout(()=>setFbMsg(""),1500)};
 
-  const gData=()=>({client,pool,items,guar,ci,pay,totOv:String(total),vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,wMode,walls,includePlanta,disps,customPos,isoView,invertSide,devHeights});
+  const gData=()=>({client,pool,items,guar,ci,pay,totOv:String(total),vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,wMode,walls,extras,includePlanta,disps,customPos,isoView,invertSide,devHeights});
   const save=()=>{
     const errs={};
     if(!client.name||client.name.trim()==="")errs.clientName="Nome obrigatório";
@@ -1644,7 +1666,7 @@ export default function App(){
   };
   const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);autoStockOut(item);autoSyncReceber(item);}setFbMsg("✅ Cliente fechado e lançado no financeiro!");setTimeout(()=>setFbMsg(""),3000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
-  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setWM(d.wMode||"regular");setWalls(d.walls||[]);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
+  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
   const movePipe=(id,stage)=>{const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);if(["fechou","execucao","concluido"].includes(stage))autoSyncReceber(item);}setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
   const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const fullNum=num.startsWith("55")?num:`55${num}`;const conv=waConvs.find(c=>c.phone===fullNum||c.phone===num);if(conv){setTab("whatsapp");setWaChat(conv.phone);if(msg)setWaMsg(msg)}else{setTab("whatsapp");setFbMsg("📱 Conversa não encontrada no sistema. Inicie pelo WhatsApp.");setTimeout(()=>setFbMsg(""),3000)}};
@@ -1769,6 +1791,44 @@ export default function App(){
               <Btn onClick={addWall} style={{marginTop:"4px",fontSize:"9px"}}>+ Parede</Btn>
             </div>}
             {wMode==="regular"&&<div style={{fontSize:"10px",color:t.textSec}}>{poolFmt==="Oval"?`Paredes calculadas automaticamente: Perímetro elipse × profundidade (Diâm. maior: ${pool.length}m, Diâm. menor: ${pool.width}m)`:`Paredes calculadas automaticamente: 2×(${pool.length}×${pool.depth}) + 2×(${pool.width}×${pool.depth})`}</div>}
+          </div>
+
+          {/* EXTRAS: cada peça = topo (L×W) + face (L×H), H = da borda até o topo da peça */}
+          <div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"8px",padding:"12px",border:`1px solid ${t.cardBorder}`}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"8px",marginBottom:"8px"}}>
+              <div>
+                <span style={{fontSize:"11px",fontWeight:"700",color:blue}}>➕ Peças extras (prainha, degrau, banco)</span>
+                <div style={{fontSize:"9px",color:t.textSec,marginTop:"2px"}}>Cada peça gera 2 cortes de vinil: <b>Topo</b> (L×W, chão da peça) e <b>Face</b> (L×H, parede da borda até o topo da peça). <b>H = medido sempre da borda pra baixo</b> até encontrar a peça.</div>
+              </div>
+              <div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>
+                <Btn onClick={()=>addPeca("Prainha")} style={{fontSize:"10px",background:"#dbeafe",color:"#1e40af"}}>+ Prainha</Btn>
+                <Btn onClick={()=>addPeca("Degrau")} style={{fontSize:"10px",background:"#dbeafe",color:"#1e40af"}}>+ Degrau</Btn>
+                <Btn onClick={()=>addPeca("Banco")} style={{fontSize:"10px",background:"#dbeafe",color:"#1e40af"}}>+ Banco</Btn>
+              </div>
+            </div>
+            {extras.length>0&&<div style={{marginTop:"8px"}}>
+              <div style={{display:"grid",gridTemplateColumns:"2fr 60px 60px 60px 90px 90px 30px",gap:"6px",fontSize:"8px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",marginBottom:"4px",padding:"0 4px"}}>
+                <span>Descrição</span><span>L (m)</span><span>W (m)</span><span>H (m)</span><span>Topo L×W</span><span>Face L×H</span><span></span>
+              </div>
+              {extras.map(e=>{
+                const pf=v=>parseFloat(String(v||"").replace(",","."))||0;
+                const l=pf(e.l),w=pf(e.w),h=pf(e.h);
+                const topo=l*w,face=l*h;
+                return <div key={e.id} style={{display:"grid",gridTemplateColumns:"2fr 60px 60px 60px 90px 90px 30px",gap:"6px",alignItems:"center",marginBottom:"4px"}}>
+                  <input value={e.desc} onChange={ev=>uExtra(e.id,"desc",ev.target.value)} placeholder="Ex: Prainha" style={{padding:"6px 8px",border:`1.5px solid ${t.inputBorder}`,borderRadius:"5px",fontSize:"10px",background:t.inputBg,color:t.text}}/>
+                  <input value={e.l} onChange={ev=>uExtra(e.id,"l",ev.target.value)} placeholder="L" style={{padding:"6px 8px",border:`1.5px solid ${t.inputBorder}`,borderRadius:"5px",fontSize:"10px",background:t.inputBg,color:t.text}}/>
+                  <input value={e.w} onChange={ev=>uExtra(e.id,"w",ev.target.value)} placeholder="W" style={{padding:"6px 8px",border:`1.5px solid ${t.inputBorder}`,borderRadius:"5px",fontSize:"10px",background:t.inputBg,color:t.text}}/>
+                  <input value={e.h} onChange={ev=>uExtra(e.id,"h",ev.target.value)} placeholder="H" style={{padding:"6px 8px",border:`1.5px solid ${t.inputBorder}`,borderRadius:"5px",fontSize:"10px",background:t.inputBg,color:t.text}}/>
+                  <span style={{fontSize:"10px",fontWeight:"700",color:"#16a34a",textAlign:"right"}}>+{topo.toFixed(2)} m²</span>
+                  <span style={{fontSize:"10px",fontWeight:"700",color:"#16a34a",textAlign:"right"}}>+{face.toFixed(2)} m²</span>
+                  <button onClick={()=>rmExtra(e.id)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>✕</button>
+                </div>;
+              })}
+              <div style={{marginTop:"6px",padding:"6px 8px",background:t.card,borderRadius:"5px",fontSize:"9px",display:"flex",justifyContent:"space-between",gap:"10px"}}>
+                <span>Vinil extra p/ topos: <b style={{color:"#16a34a"}}>+{ar.extraChao} m²</b></span>
+                <span>Vinil extra p/ faces: <b style={{color:"#16a34a"}}>+{ar.extraPar} m²</b></span>
+              </div>
+            </div>}
           </div>
 
           {/* SPA */}
