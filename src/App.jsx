@@ -946,23 +946,18 @@ export default function App(){
   const [loginErr,setLErr]=useState("");
   const [loginMode,setLM]=useState("login");
 
-  // Init Firebase on mount
+  // Init Firebase on mount — timeout global de 8s para não travar no iOS
   useEffect(()=>{
+    const timeout=setTimeout(()=>setAL(false),8000);
     initFB().then(async ok=>{
       setFBR(ok);
       if(ok&&fb.auth){
-        // Aguarda resultado do redirect com timeout de 4s (Safari iOS pode travar getRedirectResult)
-        try{
-          await Promise.race([
-            fbFns.getRedirectResult(fb.auth),
-            new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),4000))
-          ]);
-        }catch(e){ console.log("redirect:",e.message); }
-        fbFns.onAuthStateChanged(fb.auth,(u)=>{setUser(u);setAL(false)});
+        try{ await fbFns.getRedirectResult(fb.auth); }catch(e){ console.log("redirect:",e.code||e.message); }
+        fbFns.onAuthStateChanged(fb.auth,(u)=>{setUser(u);setAL(false);clearTimeout(timeout)});
       } else {
-        setAL(false);
+        setAL(false);clearTimeout(timeout);
       }
-    });
+    }).catch(()=>{setAL(false);clearTimeout(timeout)});
   },[]);
 
   // Firestore sync when user logs in
