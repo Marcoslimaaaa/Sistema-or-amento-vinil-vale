@@ -7,7 +7,7 @@ const Pool3DView = lazy(() => import('./Pool3DView'));
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
 const FB_CFG = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCER8yKsRuFLh2GDUE3yLscq-pFGZNlrG0",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "sistema-vinil-vale.firebaseapp.com",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "sistema-or-amento-vinil-vale.vercel.app",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "sistema-vinil-vale",
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "sistema-vinil-vale.firebasestorage.app",
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "847282557064",
@@ -999,14 +999,19 @@ export default function App(){
     if(!fbReady||!fb.auth||!fb.GoogleProvider){setLErr("⚠️ Sem conexão com o servidor. Verifique sua internet e tente novamente.");return;}
     setLErr("");
     const provider=new fb.GoogleProvider();
-    try{
-      await fbFns.signInWithPopup(fb.auth,provider);
-    }catch(e){
-      if(e.code==="auth/popup-blocked"){
-        // Popup bloqueado — tenta redirect como fallback
-        try{await fbFns.signInWithRedirect(fb.auth,provider);}catch(e2){setLErr("Erro Google: "+e2.message);}
-      }else if(e.code!=="auth/popup-closed-by-user"){
-        setLErr("Erro Google: "+e.message);
+    const isMobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if(isMobile){
+      // Mobile: redirect direto (popup não funciona bem no iOS)
+      try{await fbFns.signInWithRedirect(fb.auth,provider);}catch(e){setLErr("Erro Google: "+e.message);}
+    }else{
+      try{
+        await fbFns.signInWithPopup(fb.auth,provider);
+      }catch(e){
+        if(e.code==="auth/popup-blocked"){
+          try{await fbFns.signInWithRedirect(fb.auth,provider);}catch(e2){setLErr("Erro Google: "+e2.message);}
+        }else if(e.code!=="auth/popup-closed-by-user"){
+          setLErr("Erro Google: "+e.message);
+        }
       }
     }
   };
