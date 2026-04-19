@@ -951,9 +951,13 @@ export default function App(){
     initFB().then(async ok=>{
       setFBR(ok);
       if(ok&&fb.auth){
-        // Aguarda resultado do redirect ANTES de liberar a tela de login
-        // Isso evita o flash de "tela de login" quando volta do Google no mobile
-        try{ await fbFns.getRedirectResult(fb.auth); }catch(e){ console.log("redirect:",e.code); }
+        // Aguarda resultado do redirect com timeout de 4s (Safari iOS pode travar getRedirectResult)
+        try{
+          await Promise.race([
+            fbFns.getRedirectResult(fb.auth),
+            new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),4000))
+          ]);
+        }catch(e){ console.log("redirect:",e.message); }
         fbFns.onAuthStateChanged(fb.auth,(u)=>{setUser(u);setAL(false)});
       } else {
         setAL(false);
