@@ -999,20 +999,12 @@ export default function App(){
     if(!fbReady||!fb.auth||!fb.GoogleProvider){setLErr("⚠️ Sem conexão com o servidor. Verifique sua internet e tente novamente.");return;}
     setLErr("");
     const provider=new fb.GoogleProvider();
-    const isMobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if(isMobile){
-      // Mobile: redirect direto (popup não funciona bem no iOS)
-      try{await fbFns.signInWithRedirect(fb.auth,provider);}catch(e){setLErr("Erro Google: "+e.message);}
-    }else{
-      try{
-        await fbFns.signInWithPopup(fb.auth,provider);
-      }catch(e){
-        if(e.code==="auth/popup-blocked"){
-          try{await fbFns.signInWithRedirect(fb.auth,provider);}catch(e2){setLErr("Erro Google: "+e2.message);}
-        }else if(e.code!=="auth/popup-closed-by-user"){
-          setLErr("Erro Google: "+e.message);
-        }
-      }
+    try{
+      await fbFns.signInWithPopup(fb.auth,provider);
+    }catch(e){
+      console.error("Google login error:",e.code,e.message);
+      if(e.code==="auth/popup-closed-by-user")return;
+      setLErr("Erro Google ("+e.code+"): "+e.message);
     }
   };
   const doLogout=()=>{
