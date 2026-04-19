@@ -7,7 +7,7 @@ const Pool3DView = lazy(() => import('./Pool3DView'));
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
 const FB_CFG = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCER8yKsRuFLh2GDUE3yLscq-pFGZNlrG0",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "sistema-or-amento-vinil-vale.vercel.app",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "sistema-vinil-vale.firebaseapp.com",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "sistema-vinil-vale",
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "sistema-vinil-vale.firebasestorage.app",
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "847282557064",
