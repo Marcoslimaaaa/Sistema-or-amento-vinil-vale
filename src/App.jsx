@@ -49,22 +49,54 @@ const escHtml=(s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 if(typeof document!=="undefined"&&!document.getElementById("vv-styles")){const s=document.createElement("style");s.id="vv-styles";s.textContent=`
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 div:hover>.wa-msg-hover{opacity:1!important}
+*{box-sizing:border-box}
+.vv-layout{display:flex;min-height:100vh;font-family:'Segoe UI',sans-serif}
+.vv-sidebar{width:220px;flex-shrink:0;position:fixed;top:0;left:0;bottom:0;z-index:40;display:flex;flex-direction:column;transition:transform .25s ease}
+.vv-sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:39}
+.vv-main{margin-left:220px;flex:1;display:flex;flex-direction:column;min-height:100vh;transition:margin .25s ease}
+.vv-topbar{position:sticky;top:0;z-index:30;height:52px;display:flex;align-items:center;padding:0 18px;gap:10px;border-bottom:1px solid var(--border)}
+.vv-content{flex:1;padding:18px;max-width:960px;width:100%}
+.vv-nav-item{display:flex;align-items:center;gap:10px;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:500;border:none;width:100%;text-align:left;transition:background .15s}
+.vv-nav-item:hover{opacity:.85}
+.vv-nav-item.active{font-weight:700}
+.vv-nav-group{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:16px 16px 6px;opacity:.5}
+.vv-badge{background:#dc2626;color:#fff;border-radius:9px;padding:0 5px;font-size:8px;font-weight:800;line-height:16px;min-width:16px;text-align:center}
+@media(max-width:768px){
+  .vv-sidebar{transform:translateX(-100%)}
+  .vv-sidebar.open{transform:translateX(0)}
+  .vv-sidebar-overlay.open{display:block}
+  .vv-main{margin-left:0!important}
+  .vv-content{padding:12px}
+  .vv-hamburger{display:block!important}
+}
 @media(max-width:600px){
   .vv-g2{grid-template-columns:1fr!important}
   .vv-g3{grid-template-columns:1fr 1fr!important}
   .vv-g4{grid-template-columns:1fr 1fr!important}
   .vv-header-actions{flex-direction:column!important;gap:6px!important}
-  .vv-tab-bar{gap:0!important}
-  .vv-tab-bar button{padding:6px 7px!important;font-size:9px!important}
   .vv-card{padding:12px!important}
   .vv-pool-grid{grid-template-columns:1fr 1fr!important}
   .vv-cost-row{grid-template-columns:20px 1fr 40px 55px 36px 65px 20px!important;gap:2px!important}
 }
-@media(max-width:400px){
-  .vv-tab-bar button span:last-child{display:none}
-  .vv-tab-bar button{padding:8px 6px!important}
-}
 `;document.head.appendChild(s)}
+const NAV=[
+  {group:"Orçamento",items:[
+    {id:"cliente",icon:"👤",label:"Cliente"},
+    {id:"piscina",icon:"🏊",label:"Piscina"},
+    {id:"itens",icon:"🛒",label:"Custos"},
+    {id:"garantias",icon:"🛡",label:"Garantias"},
+    {id:"pagamento",icon:"💰",label:"Valor"},
+    {id:"planta",icon:"📐",label:"Planta"},
+  ]},
+  {group:"Gestão",items:[
+    {id:"historico",icon:"📋",label:"Salvos"},
+    {id:"crm",icon:"📈",label:"Pipeline"},
+    {id:"whatsapp",icon:"💬",label:"WhatsApp"},
+    {id:"estoque",icon:"📦",label:"Estoque"},
+    {id:"contratos",icon:"📝",label:"Contratos"},
+    {id:"financeiro",icon:"💵",label:"Financeiro"},
+  ]},
+];
 const PIPE=[
   {id:"lead",label:"Lead",icon:"📊",color:"#f59e0b"},
   {id:"orcamento",label:"Orçamento",icon:"📄",color:"#3b82f6"},
@@ -841,6 +873,7 @@ export default function App(){
   const [dark,setDark]=useState(false);
   const t=themes[dark?"dark":"light"];
   const [tab,setTab]=useState("cliente");
+  const [sidebarOpen,setSidebarOpen]=useState(false);
   const [editingId,setEditingId]=useState(null);
   const [svcType,setST2]=useState("construcao");
   const [propNum,setPN]=useState(()=>{const d=new Date();return String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear()});
@@ -1724,26 +1757,64 @@ export default function App(){
 
   const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};// use className="vv-g2" for responsive
 
+  const curNav=NAV.flatMap(g=>g.items).find(i=>i.id===tab);
+  const badgeMap={estoque:lowStockCount,financeiro:alertasFinCount};
+
   return(
-    <div style={{fontFamily:"'Segoe UI',sans-serif",maxWidth:"920px",margin:"0 auto",background:t.bg,minHeight:"100vh",color:t.text,transition:"background .3s,color .3s"}}>
-      <div style={{background:`linear-gradient(135deg,#001d3d,${blue} 60%,#0077cc)`,padding:"14px 18px",color:"#fff"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"6px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:"6px"}}><div><div style={{fontSize:"17px",fontWeight:"800"}}>💧 VINIL VALE</div><div style={{fontSize:"9px",opacity:.7}}>{user?.email?.split("@")[0]} · {VER}</div></div><DarkToggle dark={dark} onToggle={()=>setDark(p=>!p)}/>
-          <button onClick={doLogout} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:"6px",padding:"4px 7px",color:"#fff",fontSize:"9px",cursor:"pointer",fontWeight:"600"}}>Sair</button></div>
-          <div style={{display:"flex",gap:"5px",alignItems:"center",flexWrap:"wrap"}}>
-            {fbMsg&&<span style={{background:"rgba(255,255,255,.2)",padding:"4px 8px",borderRadius:"5px",fontSize:"10px",fontWeight:"600"}}>✅ {fbMsg}</span>}
-            <Btn onClick={save} style={{background:"rgba(255,255,255,.12)",color:"#fff",border:"1px solid rgba(255,255,255,.25)"}}>💾 Salvar</Btn>
-            <Btn onClick={()=>setView("quote")} style={{background:"#fff",color:blue,fontWeight:"700"}}>📄 Orçamento</Btn>
-          </div>
+    <div className="vv-layout" style={{background:t.bg,color:t.text,transition:"background .3s,color .3s"}}>
+      {/* SIDEBAR OVERLAY (mobile) */}
+      <div className={"vv-sidebar-overlay"+(sidebarOpen?" open":"")} onClick={()=>setSidebarOpen(false)}/>
+
+      {/* SIDEBAR */}
+      <aside className={"vv-sidebar"+(sidebarOpen?" open":"")} style={{background:dark?"#0f172a":"#001d3d",color:"#fff"}}>
+        {/* Logo */}
+        <div style={{padding:"20px 16px 12px",borderBottom:"1px solid rgba(255,255,255,.1)"}}>
+          <div style={{fontSize:"18px",fontWeight:"800",letterSpacing:".5px"}}>💧 VINIL VALE</div>
+          <div style={{fontSize:"9px",opacity:.5,marginTop:"2px"}}>{VER} · Sistema de Orçamentos</div>
         </div>
-        <div style={{display:"flex",gap:"5px",marginTop:"10px",flexWrap:"wrap"}}>{SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(mkItems(sv.id));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20");setEditingId(null);}} style={{padding:"5px 10px",borderRadius:"16px",border:"1.5px solid rgba(255,255,255,.3)",background:svcType===sv.id?"rgba(255,255,255,.2)":"transparent",color:"#fff",fontSize:"10px",fontWeight:svcType===sv.id?"700":"400",cursor:"pointer"}}>{sv.icon} {sv.label}</button>)}</div>
-      </div>
 
-      <div className="vv-tab-bar" style={{display:"flex",padding:"0 14px",background:t.tabBg,borderBottom:`1px solid ${t.cardBorder}`,overflowX:"auto"}}>
-        {[["cliente","👤","Cliente",0],["piscina","🏊","Piscina",0],["itens","🛒","Custos",0],["garantias","🛡","Garantias",0],["pagamento","💰","Valor",0],["historico","📋","Salvos",0],["crm","📈","CRM",0],["whatsapp","💬","WhatsApp",0],["estoque","📦","Estoque",lowStockCount],["planta","📐","Planta",0],["contratos","📝","Contratos",0],["financeiro","💵","Financeiro",alertasFinCount]].map(([k,ic,lb,badge])=><Tab key={k} a={tab===k} onClick={()=>setTab(k)} icon={ic} badge={badge} t={t}>{lb}</Tab>)}
-      </div>
+        {/* Service type */}
+        <div style={{padding:"12px 12px 8px",display:"flex",flexDirection:"column",gap:"4px"}}>
+          {SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(mkItems(sv.id));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20");setEditingId(null);setSidebarOpen(false);}} style={{padding:"7px 12px",borderRadius:"8px",border:"none",background:svcType===sv.id?"rgba(255,255,255,.15)":"transparent",color:"#fff",fontSize:"11px",fontWeight:svcType===sv.id?"700":"400",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:"6px"}}>{sv.icon} {sv.label}</button>)}
+        </div>
 
-      <div style={{padding:"14px"}}>
+        {/* Nav items */}
+        <nav style={{flex:1,overflowY:"auto",padding:"4px 8px"}}>
+          {NAV.map(g=><div key={g.group}>
+            <div className="vv-nav-group" style={{color:"rgba(255,255,255,.4)"}}>{g.group}</div>
+            {g.items.map(n=><button key={n.id} className={"vv-nav-item"+(tab===n.id?" active":"")} onClick={()=>{setTab(n.id);setSidebarOpen(false);}} style={{background:tab===n.id?"rgba(255,255,255,.12)":"transparent",color:tab===n.id?"#fff":"rgba(255,255,255,.7)"}}>
+              <span style={{fontSize:"15px",width:"22px",textAlign:"center"}}>{n.icon}</span>
+              <span>{n.label}</span>
+              {badgeMap[n.id]>0&&<span className="vv-badge">{badgeMap[n.id]}</span>}
+            </button>)}
+          </div>)}
+        </nav>
+
+        {/* User + logout */}
+        <div style={{padding:"12px 16px",borderTop:"1px solid rgba(255,255,255,.1)",display:"flex",alignItems:"center",gap:"8px"}}>
+          <div style={{flex:1,overflow:"hidden"}}><div style={{fontSize:"11px",fontWeight:"600",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user?.email?.split("@")[0]}</div><div style={{fontSize:"9px",opacity:.5}}>{user?.email}</div></div>
+          <DarkToggle dark={dark} onToggle={()=>setDark(p=>!p)}/>
+          <button onClick={doLogout} style={{background:"rgba(255,255,255,.1)",border:"none",borderRadius:"6px",padding:"5px 8px",color:"#fff",fontSize:"10px",cursor:"pointer",fontWeight:"600"}}>Sair</button>
+        </div>
+      </aside>
+
+      {/* MAIN */}
+      <div className="vv-main">
+        {/* TOP BAR */}
+        <div className="vv-topbar" style={{background:t.card,borderColor:t.cardBorder,"--border":t.cardBorder}}>
+          <button onClick={()=>setSidebarOpen(o=>!o)} style={{background:"none",border:"none",fontSize:"20px",cursor:"pointer",color:t.text,padding:"4px",display:"none"}} className="vv-hamburger">☰</button>
+          <div style={{fontSize:"13px",fontWeight:"600",color:t.text,flex:1,display:"flex",alignItems:"center",gap:"6px"}}>
+            <span style={{color:t.textMuted,fontSize:"11px"}}>{SVC.find(s=>s.id===svcType)?.label}</span>
+            <span style={{color:t.textMuted}}>›</span>
+            <span>{curNav?.icon} {curNav?.label}</span>
+          </div>
+          {fbMsg&&<span style={{background:"#dcfce7",color:"#166534",padding:"4px 10px",borderRadius:"6px",fontSize:"10px",fontWeight:"600"}}>✅ {fbMsg}</span>}
+          <Btn onClick={save} style={{fontSize:"11px"}}>💾 Salvar</Btn>
+          <Btn onClick={()=>setView("quote")} style={{background:blue,color:"#fff",border:"none",fontWeight:"700",fontSize:"11px"}}>���� Orçamento</Btn>
+        </div>
+
+        {/* CONTENT */}
+        <div className="vv-content">
         {/* CLIENTE */}
         {tab==="cliente"&&<Card t={t}><ST icon="👤">Dados do Cliente</ST>
           <div style={{display:"flex",gap:"10px",marginBottom:"10px"}}><Inp label="Proposta" value={propNum} onChange={setPN} placeholder="03/26" style={{flex:"0 0 90px"}} t={t}/><Inp label="Nome completo *" value={client.name} onChange={v=>{uc("name")(v);if(v.trim())setFieldErrors(e=>({...e,clientName:false}))}} placeholder="Nome" style={{flex:1}} t={t} error={fieldErrors.clientName}/></div>
@@ -3925,7 +3996,8 @@ ${pendPag.length===0?"<p style='color:#888;font-size:12px'>Nenhuma</p>":`<table 
         </div>
       </div>}
 
-      </div>
+      </div>{/* end vv-content */}
+      </div>{/* end vv-main */}
     </div>
   );
 }
