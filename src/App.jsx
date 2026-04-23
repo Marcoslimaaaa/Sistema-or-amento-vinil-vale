@@ -133,12 +133,18 @@ const CAT=[
 // un: "m²" = custo por m² (usa área total), "ml" = custo por metro linear (usa perímetro), "un" = custo unitário
 
 const SYSTEMS=["dreno","aspiracao","skimmer","retorno","hidro"];
-const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,dark,poolFmt,ar,autoPositions,blue,t,tubeOffsets={},setTubeOffsets=()=>{},invertSide=false,wMode="regular",walls=[],stamp=""})=>{
+const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,dark,poolFmt,ar,autoPositions,blue,t,tubeOffsets={},setTubeOffsets=()=>{},invertSide=false,wMode="regular",walls=[],stamp="",spaType={redondo:false,quadrado:true}})=>{
     // const SYSTEMS=["retorno","hidro","aspiracao","dreno","skimmer","nivelador"];
   const L=parseFloat(pool.length)||6,W=parseFloat(pool.width)||3,D=parseFloat(pool.depth)||1.4;
   const svgW=340,svgH=200,pad=30;
-  const scale=Math.min((svgW-pad*2-50)/L,(svgH-pad*2)/W);
-  const pw=L*scale,ph=W*scale,ox=pad,oy=pad;
+  let spaExL=0,spaExR=0,spaExT=0,spaExB=0;
+  if(poolFmt==="Com Spa"){
+    if(spaType.quadrado){const ql=parseFloat(spaType.qLarg)||2;const c=spaType.qCanto;if(c==="top-left"||c==="top-right")spaExT=Math.max(spaExT,ql);else spaExB=Math.max(spaExB,ql)}
+    if(spaType.redondo){const rd=(parseFloat(spaType.rDiam)||2)/2;const c=spaType.rCanto;if(c==="top-left"){spaExL=Math.max(spaExL,rd);spaExT=Math.max(spaExT,rd)}else if(c==="top-right"){spaExR=Math.max(spaExR,rd);spaExT=Math.max(spaExT,rd)}else if(c==="bottom-left"){spaExL=Math.max(spaExL,rd);spaExB=Math.max(spaExB,rd)}else{spaExR=Math.max(spaExR,rd);spaExB=Math.max(spaExB,rd)}}
+  }
+  const totalW=L+spaExL+spaExR,totalH=W+spaExT+spaExB;
+  const scale=Math.min((svgW-pad*2-50)/totalW,(svgH-pad*2)/totalH);
+  const pw=L*scale,ph=W*scale,ox=pad+spaExL*scale,oy=pad+spaExT*scale;
   const cmW=pw*0.1,cmH=ph*0.5;
   const casaP=customPos["casa"]||(invertSide?{x:-0.15,y:0.5}:{x:1.12,y:0.5});
   const cmX=ox+casaP.x*pw,cmY=oy+casaP.y*ph-cmH/2;
@@ -165,7 +171,7 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
   const cutH=80,cutScale=Math.min((svgW-50)/L,(cutH-25)/Math.max(D,dMax));
   const cpw2=L*cutScale,cph2=D*cutScale,cox2=30,coy2=12;
   const hMin2=dMin*cutScale,hMax2=dMax*cutScale;
-  return <div>
+  return <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
     <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>Planta Baixa</div>
     <svg width={svgW} height={svgH} style={{background:dark?"#0f172a":"#f8fafc",borderRadius:"6px",border:"1px solid "+(dark?"#334155":"#e2e8f0"),cursor:dragging?"grabbing":"default",touchAction:"none"}} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onTouchMove={e=>{onMove({currentTarget:e.currentTarget,clientX:e.touches[0].clientX,clientY:e.touches[0].clientY})}} onTouchEnd={onUp}>
       <defs><pattern id="grd" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke={dark?"#1e293b":"#e2e8f0"} strokeWidth="0.3"/></pattern>{stamp&&SWATCH_SLUG[stamp]&&<clipPath id="poolClip2d">{poolFmt==="Oval"||poolFmt==="Feijão"?<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2}/>:poolFmt==="Formato L"?<polygon points={`${ox},${oy} ${ox+pw},${oy} ${ox+pw},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph} ${ox},${oy+ph}`}/>:<rect x={ox} y={oy} width={pw} height={ph}/>}</clipPath>}</defs>
@@ -173,7 +179,12 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
       {(()=>{const fill=dark?"#1e3a5f":"#dbeafe";const stroke="#2563eb";
         if(poolFmt==="Formato L")return<polygon points={`${ox},${oy} ${ox+pw},${oy} ${ox+pw},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph} ${ox},${oy+ph}`} fill={fill} stroke={stroke} strokeWidth="2"/>;
         if(poolFmt==="Oval"||poolFmt==="Feijão")return<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2} fill={fill} stroke={stroke} strokeWidth="2"/>;
-        if(poolFmt==="Com Spa")return<><rect x={ox} y={oy} width={pw} height={ph} rx="1" fill={fill} stroke={stroke} strokeWidth="2"/><rect x={ox+pw*0.65} y={oy} width={pw*0.35} height={ph*0.35} rx="2" fill={dark?"#1e3a5f":"#bfdbfe"} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="4,2"/><text x={ox+pw*0.825} y={oy+ph*0.19} textAnchor="middle" fontSize="6" fill="#1d4ed8" fontWeight="700">SPA</text></>;
+        if(poolFmt==="Com Spa"){const hasQ=spaType.quadrado,hasR=spaType.redondo;const spaFill=dark?"#1e3a5f":"#93c5fd";const spaStroke="#3b82f6";
+          const sqW2=(parseFloat(spaType.qComp)||2)*scale,sqH2=(parseFloat(spaType.qLarg)||2)*scale;
+          const rRad=((parseFloat(spaType.rDiam)||2)/2)*scale;
+          const cornerPos=(canto,w,h)=>{if(canto==="top-left")return{x:ox,y:oy-h};if(canto==="top-right")return{x:ox+pw-w,y:oy-h};if(canto==="bottom-left")return{x:ox,y:oy+ph};return{x:ox+pw-w,y:oy+ph}};
+          const circCenter=(canto)=>{if(canto==="top-left")return{cx:ox,cy:oy,tx:-0.45,ty:-0.45};if(canto==="top-right")return{cx:ox+pw,cy:oy,tx:0.45,ty:-0.45};if(canto==="bottom-left")return{cx:ox,cy:oy+ph,tx:-0.45,ty:0.45};return{cx:ox+pw,cy:oy+ph,tx:0.45,ty:0.45}};
+          return<>{hasR&&(()=>{const c=circCenter(spaType.rCanto);return<><circle cx={c.cx} cy={c.cy} r={rRad} fill={spaFill} stroke={spaStroke} strokeWidth="1.5" strokeDasharray="4,2"/><text x={c.cx+rRad*c.tx} y={c.cy+rRad*c.ty+2} textAnchor="middle" fontSize="6" fill="#1d4ed8" fontWeight="700">SPA R</text></>})()}{hasQ&&(()=>{const p=cornerPos(spaType.qCanto,sqW2,sqH2);return<><rect x={p.x} y={p.y} width={sqW2} height={sqH2} rx="2" fill={spaFill} stroke={spaStroke} strokeWidth="1.5" strokeDasharray="4,2"/><text x={p.x+sqW2/2} y={p.y+sqH2/2+3} textAnchor="middle" fontSize="6" fill="#1d4ed8" fontWeight="700">SPA Q</text></>})()}<rect x={ox} y={oy} width={pw} height={ph} rx="1" fill={fill} stroke={stroke} strokeWidth="2"/></>};
         if(wMode==="irregular"&&walls.length>=2){const w0=parseFloat(walls[0]?.l)||L,w1=parseFloat(walls[1]?.l)||W,w2=parseFloat(walls[2]?.l)||L,w3=parseFloat(walls[3]?.l)||W;const topW=Math.min(w0/L,1.2)*pw,botW=Math.min(w2/L,1.2)*pw,leftH=Math.min(w3/W,1.2)*ph,rightH=Math.min(w1/W,1.2)*ph;const offT=(pw-topW)/2,offB=(pw-botW)/2;const pts=`${ox+offT},${oy} ${ox+offT+topW},${oy} ${ox+offB+botW},${oy+Math.max(leftH,rightH)} ${ox+offB},${oy+Math.max(leftH,rightH)}`;return<><polygon points={pts} fill={fill} stroke={stroke} strokeWidth="2" strokeDasharray="6,2"/><text x={ox+pw/2} y={oy-7} textAnchor="middle" fontSize="7" fill="#f59e0b" fontWeight="700">⚠ Fora de esquadro</text></>;};
         return<rect x={ox} y={oy} width={pw} height={ph} rx="1" fill={fill} stroke={stroke} strokeWidth="2"/>;
       })()}
@@ -576,7 +587,7 @@ const IPAY={pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
 const fmt=v=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(v);
 
 // ═══ AREA CALCULATION ═══
-const calcA=(pool,spa,wMode,walls,poolFmt,extras)=>{
+const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType)=>{
   const L=parseFloat(pool.length)||0,W=parseFloat(pool.width)||0;
   const dMin=parseFloat(pool.depthMin)||0,dMax=parseFloat(pool.depthMax)||0;
   const D=(dMin>0&&dMax>0)?(dMin+dMax)/2:parseFloat(pool.depth)||0;
@@ -611,9 +622,16 @@ const calcA=(pool,spa,wMode,walls,poolFmt,extras)=>{
   const sL=parseFloat(spa.length)||0,sW=parseFloat(spa.width)||0,sD=parseFloat(spa.depth)||0;
   const sChao=spa.on?sL*sW:0,sPar=spa.on?(2*sL*sD+2*sW*sD):0;
   const sPerim=spa.on?(2*sL+2*sW):0;
-  const vol=(isOval?(Math.PI*a*b):L*W)*D+(spa.on?sL*sW*sD:0);
+  // Spa do formato "Com Spa"
+  const st=spaType||{};
+  const sqC=parseFloat(st.qComp)||0,sqL=parseFloat(st.qLarg)||0,sqP=parseFloat(st.qProf)||0;
+  const sqChao=st.quadrado?sqC*sqL:0,sqPar=st.quadrado?(2*sqC*sqP+2*sqL*sqP):0;
+  const srR=(parseFloat(st.rDiam)||0)/2,srP=parseFloat(st.rProf)||0;
+  const srChao=st.redondo?Math.PI*srR*srR:0,srPar=st.redondo?Math.PI*(srR*2)*srP:0;
+  const fmtSpaChao=sqChao+srChao,fmtSpaPar=sqPar+srPar;
+  const vol=(isOval?(Math.PI*a*b):L*W)*D+(spa.on?sL*sW*sD:0)+(st.quadrado?sqC*sqL*sqP:0)+(st.redondo?Math.PI*srR*srR*srP:0);
   const depthInfo={avg:D,min:realDMin,max:realDMax,sloped:dMin>0&&dMax>0&&dMin!==dMax};
-  return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:sChao.toFixed(1),sPar:sPar.toFixed(1),tot:(chao+par+sChao+sPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao).toFixed(1),depthInfo,extraChao:extraChao.toFixed(1),extraPar:extraPar.toFixed(1)};
+  return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:(sChao+fmtSpaChao).toFixed(1),sPar:(sPar+fmtSpaPar).toFixed(1),tot:(chao+par+sChao+sPar+fmtSpaChao+fmtSpaPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao+fmtSpaChao).toFixed(1),depthInfo,extraChao:extraChao.toFixed(1),extraPar:extraPar.toFixed(1),sqChao:sqChao.toFixed(1),sqPar:sqPar.toFixed(1),srChao:srChao.toFixed(1),srPar:srPar.toFixed(1)};
 };
 
 // ═══ CRM CONSTANTS ═══
@@ -684,7 +702,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
   const pool=d.pool||{length:"0",width:"0",depth:"0"};
   const spa=d.spa||{on:false,length:"0",width:"0",depth:"0"};
   const pay=d.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
-  const ar=calcA(pool,spa,d.wMode||"regular",d.walls||[],d.poolFmt,d.extras||[]);
+  const ar=calcA(pool,spa,d.wMode||"regular",d.walls||[],d.poolFmt,d.extras||[],d.spaType);
   const effQ=(i)=>{
     if(i.un==="m²")return parseFloat(ar.tot)||0;
     if(i.un==="chao")return parseFloat(ar.chaoTot)||0;
@@ -795,7 +813,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
               {[{v:pool.length+"m",l:"Comp."},{v:pool.width+"m",l:"Larg."},{v:pool.depth+"m",l:"Prof."},{v:ar.tot+"m²",l:"Área Total"},{v:ar.perim+"m",l:"Perímetro"},{v:ar.vol+"m³",l:"Volume"}].map((p,i)=><div key={i} style={{textAlign:"center",minWidth:"50px"}}><div style={{fontSize:"16px",fontWeight:"800",color:i===3?navy:blue}}>{p.v}</div><div style={{fontSize:"6.5px",textTransform:"uppercase",letterSpacing:".5px",color:"#777",fontWeight:"600"}}>{p.l}</div></div>)}
             </div>
             <div style={{display:"flex",justifyContent:"center",gap:"8px",flexWrap:"wrap",fontSize:"8.5px"}}>
-              <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Formato:</b> {d.poolFmt}</span>
+              <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Formato:</b> {d.poolFmt}{d.poolFmt==="Com Spa"&&d.spaType?` (${[d.spaType.quadrado&&"Quadrado",d.spaType.redondo&&"Redondo"].filter(Boolean).join(" + ")||"—"})`:""}</span>
               <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Vinil:</b> ACQUALINER {d.vinilT} · Resist. até 32°C</span>
               <span style={{background:goldL,padding:"2px 7px",borderRadius:"10px",border:`1px solid ${gold}`}}><b>Estampa:</b> {d.stamp||"À escolha"}</span>
               <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Chão:</b> {ar.chao}m² <b>Paredes:</b> {ar.par}m²</span>
@@ -825,7 +843,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
           <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"10px"}}><div style={{width:"3px",height:"14px",background:gold,borderRadius:"2px"}}/><div style={{fontSize:"11px",fontWeight:"700",color:navy,textTransform:"uppercase",letterSpacing:".5px"}}>Planta Hidráulica</div></div>
           {d.isoView
             ?<IsometricView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} dark={false} t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc"}} poolFmt={d.poolFmt||"Retangular"} clientName={d.client?.name||""} autoPositions={autoPositions} customPos={d.customPos||{}} invertSide={d.invertSide||false}/>
-            :<PlantaView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} customPos={d.customPos||{}} setCustomPos={()=>{}} dragging={null} setDragging={()=>{}} dark={false} poolFmt={d.poolFmt||"Retangular"} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc",stampBg:"#e2e8f0"}} invertSide={d.invertSide||false} wMode={d.wMode||"regular"} walls={d.walls||[]}/>}
+            :<PlantaView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} customPos={d.customPos||{}} setCustomPos={()=>{}} dragging={null} setDragging={()=>{}} dark={false} poolFmt={d.poolFmt||"Retangular"} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc",stampBg:"#e2e8f0"}} invertSide={d.invertSide||false} wMode={d.wMode||"regular"} walls={d.walls||[]} spaType={d.spaType||{redondo:false,quadrado:true}}/>}
         </div>}
         <div style={{background:navy,padding:"12px 28px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap"}}><div><div style={{fontSize:"8.5px",fontWeight:"700",color:gold}}>Válido por 15 dias</div><div style={{fontSize:"7px",color:"rgba(255,255,255,.5)"}}>{CO.name}</div></div><div style={{textAlign:"right",fontSize:"7.5px",color:"rgba(255,255,255,.6)"}}><div>{CO.ph1} / {CO.ph2}</div><div>{CO.email} | {CO.insta}</div></div></div>
       </div>
@@ -946,6 +964,8 @@ export default function App(){
   // SPA
   const [spa,setSpa]=useState({on:false,length:"2.00",width:"2.00",depth:"0.80",side:"top"});
   const uSpa=f=>v=>setSpa(p=>({...p,[f]:v}));
+  const [spaType,setSpaType]=useState({redondo:false,quadrado:false,qComp:"2.00",qLarg:"2.00",qProf:"0.80",qCanto:"top-right",rDiam:"2.00",rProf:"0.80",rCanto:"top-left"});
+  const uSpaT=f=>v=>setSpaType(p=>({...p,[f]:v}));
 
   // WALLS irregular
   const [wMode,setWM]=useState("regular"); // "regular" | "irregular"
@@ -1647,7 +1667,7 @@ export default function App(){
 
   const inc=items.filter(i=>i.on);
   // Calculate effective quantity based on unit type
-  const ar=calcA(pool,spa,wMode,walls,poolFmt,extras);
+  const ar=calcA(pool,spa,wMode,walls,poolFmt,extras,spaType);
   const lowStockCount=Object.entries(stk).filter(([,s])=>s.qty>0&&s.qty<=(s.minQty||2)).length;
   const alertasFinCount=(()=>{const today=new Date().toISOString().split("T")[0];const d3=new Date();d3.setDate(d3.getDate()+3);const d3s=d3.toISOString().split("T")[0];return[...contasReceber,...contasPagar].filter(c=>c.status==="pendente"&&c.venc&&(c.venc<today||c.venc<=d3s)).length;})();
 
@@ -1668,7 +1688,7 @@ export default function App(){
   const addM=()=>setItems(p=>[...p,{id:Date.now(),n:"Novo item",q:1,c:0,m:gM,nt:"",on:true,un:"un"}]);
   const apM=()=>{setItems(p=>p.map(i=>({...i,m:gM})));setFbMsg("Margem aplicada!");setTimeout(()=>setFbMsg(""),1500)};
 
-  const gData=()=>({client,pool,items,guar,ci,pay,totOv:String(total),vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,wMode,walls,extras,includePlanta,disps,customPos,isoView,invertSide,devHeights});
+  const gData=()=>({client,pool,items,guar,ci,pay,totOv:String(total),vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,disps,customPos,isoView,invertSide,devHeights});
   const save=()=>{
     const errs={};
     if(!client.name||client.name.trim()==="")errs.clientName="Nome obrigatório";
@@ -1695,7 +1715,7 @@ export default function App(){
   };
   const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);autoStockOut(item);autoSyncReceber(item);}setFbMsg("✅ Cliente fechado e lançado no financeiro!");setTimeout(()=>setFbMsg(""),3000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
-  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
+  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
   const movePipe=(id,stage)=>{const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);if(["fechou","execucao","concluido"].includes(stage))autoSyncReceber(item);}setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
   const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const fullNum=num.startsWith("55")?num:`55${num}`;const conv=waConvs.find(c=>c.phone===fullNum||c.phone===num);if(conv){setTab("whatsapp");setWaChat(conv.phone);if(msg)setWaMsg(msg)}else{setTab("whatsapp");setFbMsg("📱 Conversa não encontrada no sistema. Inicie pelo WhatsApp.");setTimeout(()=>setFbMsg(""),3000)}};
@@ -1834,6 +1854,20 @@ export default function App(){
             :<div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Comp. (m) *" value={pool.length} onChange={up("length")} t={t} error={fieldErrors.length}/><Inp label="Larg. (m) *" value={pool.width} onChange={up("width")} t={t} error={fieldErrors.width}/><Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
           }
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Formato" value={poolFmt} onChange={setPF} options={PFMT} t={t}/></div>
+          {poolFmt==="Com Spa"&&<div style={{marginTop:"10px",background:"#fef9e7",borderRadius:"8px",padding:"12px",border:`1px solid #e8b10055`}}>
+            <div style={{fontSize:"10px",fontWeight:"700",color:blue,marginBottom:"8px"}}>🌊 Configuração dos Spas</div>
+            {/* SPA QUADRADO */}
+            <div style={{marginBottom:"10px",background:spaType.quadrado?"#fff":"transparent",borderRadius:"6px",padding:"8px",border:`1px solid ${spaType.quadrado?blue+"44":"#e2e8f0"}`}}>
+              <label style={{display:"flex",alignItems:"center",gap:"6px",cursor:"pointer",fontSize:"11px",fontWeight:"600",color:spaType.quadrado?blue:t.textMuted,marginBottom:spaType.quadrado?"8px":"0"}}><button onClick={()=>setSpaType(p=>({...p,quadrado:!p.quadrado}))} style={{width:"18px",height:"18px",borderRadius:"4px",border:`2px solid ${spaType.quadrado?blue:"#cbd5e1"}`,background:spaType.quadrado?blue:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>{spaType.quadrado&&<span style={{color:"#fff",fontSize:"12px",lineHeight:1}}>✓</span>}</button>◻️ Spa Quadrado</label>
+              {spaType.quadrado&&<><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"6px",marginBottom:"6px"}}><Inp label="Comp. (m)" value={spaType.qComp} onChange={uSpaT("qComp")} t={t}/><Inp label="Larg. (m)" value={spaType.qLarg} onChange={uSpaT("qLarg")} t={t}/><Inp label="Prof. (m)" value={spaType.qProf} onChange={uSpaT("qProf")} t={t}/></div><div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,marginBottom:"4px",textTransform:"uppercase",letterSpacing:".4px"}}>Canto:</div><div style={{display:"flex",gap:"4px",flexWrap:"wrap"}}>{[["top-left","↖ Sup. Esq."],["top-right","↗ Sup. Dir."],["bottom-left","↙ Inf. Esq."],["bottom-right","↘ Inf. Dir."]].map(([c,lb])=><button key={c} onClick={()=>uSpaT("qCanto")(c)} style={{padding:"4px 8px",borderRadius:"12px",border:`1.5px solid ${spaType.qCanto===c?blue:"#cbd5e1"}`,background:spaType.qCanto===c?blue:"#fff",color:spaType.qCanto===c?"#fff":"#64748b",fontSize:"9px",fontWeight:"600",cursor:"pointer"}}>{lb}</button>)}</div><div style={{fontSize:"9px",color:t.textSec,marginTop:"4px"}}>Chão: {ar.sqChao}m² | Paredes: {ar.sqPar}m²</div></>}
+            </div>
+            {/* SPA REDONDO */}
+            <div style={{background:spaType.redondo?"#fff":"transparent",borderRadius:"6px",padding:"8px",border:`1px solid ${spaType.redondo?blue+"44":"#e2e8f0"}`}}>
+              <label style={{display:"flex",alignItems:"center",gap:"6px",cursor:"pointer",fontSize:"11px",fontWeight:"600",color:spaType.redondo?blue:t.textMuted,marginBottom:spaType.redondo?"8px":"0"}}><button onClick={()=>setSpaType(p=>({...p,redondo:!p.redondo}))} style={{width:"18px",height:"18px",borderRadius:"4px",border:`2px solid ${spaType.redondo?blue:"#cbd5e1"}`,background:spaType.redondo?blue:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>{spaType.redondo&&<span style={{color:"#fff",fontSize:"12px",lineHeight:1}}>✓</span>}</button>⬭ Spa Redondo</label>
+              {spaType.redondo&&<><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px",marginBottom:"6px"}}><Inp label="Diâmetro (m)" value={spaType.rDiam} onChange={uSpaT("rDiam")} t={t}/><Inp label="Prof. (m)" value={spaType.rProf} onChange={uSpaT("rProf")} t={t}/></div><div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,marginBottom:"4px",textTransform:"uppercase",letterSpacing:".4px"}}>Canto:</div><div style={{display:"flex",gap:"4px",flexWrap:"wrap"}}>{[["top-left","↖ Sup. Esq."],["top-right","↗ Sup. Dir."],["bottom-left","↙ Inf. Esq."],["bottom-right","↘ Inf. Dir."]].map(([c,lb])=><button key={c} onClick={()=>uSpaT("rCanto")(c)} style={{padding:"4px 8px",borderRadius:"12px",border:`1.5px solid ${spaType.rCanto===c?blue:"#cbd5e1"}`,background:spaType.rCanto===c?blue:"#fff",color:spaType.rCanto===c?"#fff":"#64748b",fontSize:"9px",fontWeight:"600",cursor:"pointer"}}>{lb}</button>)}</div><div style={{fontSize:"9px",color:t.textSec,marginTop:"4px"}}>Chão: {ar.srChao}m² | Paredes: {ar.srPar}m²</div></>}
+            </div>
+            {!spaType.quadrado&&!spaType.redondo&&<div style={{fontSize:"9px",color:"#dc2626",marginTop:"6px"}}>⚠ Selecione pelo menos um tipo de spa</div>}
+          </div>}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={v=>{setVT(v);const vo=VOPTS.find(o=>o.t===v);if(vo)setG(prev=>prev.map(g=>g.it==="Vinil (fabricação)"?{...g,y:vo.w}:g));}} options={VOPTS.map(v=>({value:v.t,label:`${v.t} (${v.w}a)`}))} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
           <div style={{marginTop:"10px"}}><CatalogoPicker value={stamp} onChange={setSt} t={t} dark={dark}/></div>
 
@@ -1941,7 +1975,7 @@ export default function App(){
                 <button onClick={()=>{setDisps(p=>({...p,[k]:p[k]+1}));setCustomPos(p=>{const n={...p};Object.keys(n).forEach(key=>{if(key.startsWith(k.substring(0,3)))delete n[key]});return n})}} style={{width:"16px",height:"16px",borderRadius:"3px",border:"none",background:"#dcfce7",color:"#16a34a",fontSize:"10px",cursor:"pointer",fontWeight:"700"}}>+</button>
               </div>)}
             </div>
-            <PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls}/>
+            <PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} spaType={spaType}/>
           </div>
         </Card>}
 
@@ -2929,7 +2963,7 @@ export default function App(){
             ?<Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights} stamp={stamp}/></Suspense>
             :isoView
               ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide} devHeights={devHeights} stamp={stamp}/>
-              :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} stamp={stamp}/>}
+              :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} stamp={stamp} spaType={spaType}/>}
         </Card>}
 
         {/* CONTRATOS */}
