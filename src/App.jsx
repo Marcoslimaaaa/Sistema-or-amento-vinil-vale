@@ -724,6 +724,19 @@ const QP=({d,onBack,onSave,autoPositions})=>{
   const ent=total*(pay.entPct||50)/100,bal=total*(pay.balPct||50)/100,inst=total/(pay.noFee||1);
 
   const [pdfStatus,setPdfStatus]=useState("");
+  const [enviadoStatus,setEnviadoStatus]=useState("");
+
+  const marcarEnviado=async()=>{
+    const raw=d.client.phone||"";
+    const phone=raw.replace(/\D/g,"");
+    if(!phone){setEnviadoStatus("⚠️ Sem telefone");setTimeout(()=>setEnviadoStatus(""),3000);return}
+    const full=phone.length<=11?"55"+phone:phone;
+    try{
+      const r=await fetch(`https://vinil-vale-whatsapp-bot-production.up.railway.app/api/quote-sent/${full}`,{method:"POST"});
+      if(r.ok){setEnviadoStatus("✅ Marcado!")}else{setEnviadoStatus("⚠️ Erro")}
+    }catch(e){setEnviadoStatus("⚠️ Erro de conexão")}
+    setTimeout(()=>setEnviadoStatus(""),3000);
+  };
 
   const getHTML=()=>{
     const el=document.getElementById("pq");if(!el)return null;
@@ -837,7 +850,9 @@ const QP=({d,onBack,onSave,autoPositions})=>{
         <Btn onClick={onBack}>← Voltar</Btn>
         <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
           {pdfStatus&&<span style={{fontSize:"11px",fontWeight:"600",color:pdfStatus.includes("Erro")?"#ef4444":"#16a34a",background:pdfStatus.includes("Erro")?"#fef2f2":"#f0fdf4",padding:"4px 10px",borderRadius:"6px"}}>{pdfStatus}</span>}
+          {enviadoStatus&&<span style={{fontSize:"11px",fontWeight:"600",color:enviadoStatus.includes("⚠")?"#ef4444":"#16a34a",background:enviadoStatus.includes("⚠")?"#fef2f2":"#f0fdf4",padding:"4px 10px",borderRadius:"6px"}}>{enviadoStatus}</span>}
           <Btn onClick={gerarPDF} style={{background:`linear-gradient(135deg,#16a34a,#15803d)`,color:"#fff",border:"none",padding:"10px 24px",fontSize:"13px",fontWeight:"700",boxShadow:"0 2px 8px rgba(22,163,74,.3)",display:"flex",alignItems:"center",gap:"6px"}}><DownloadIcon size={16} color="#fff"/>Baixar PDF</Btn>
+          <Btn onClick={marcarEnviado} style={{background:`linear-gradient(135deg,${blue},${navy})`,color:"#fff",border:"none",padding:"10px 24px",fontSize:"13px",fontWeight:"700",boxShadow:`0 2px 8px rgba(26,26,46,.3)`}}>📩 Orçamento Enviado</Btn>
         </div>
       </div>
       <div style={{textAlign:"center",fontSize:"9.5px",color:"#64748b",marginBottom:"10px",background:"#fff",padding:"8px 14px",borderRadius:"8px",border:"1px solid #e2e8f0"}}>💡 <b>Celular:</b> toca em "Baixar PDF" → compartilha ou salva diretamente o PDF</div>
