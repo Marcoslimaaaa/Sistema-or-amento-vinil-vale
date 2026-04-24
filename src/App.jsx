@@ -741,23 +741,31 @@ const QP=({d,onBack,onSave,autoPositions})=>{
       const hiddenEls=el.querySelectorAll(".no-pdf");
       hiddenEls.forEach(e=>e.style.display="none");
 
-      // Forçar largura fixa para consistência entre desktop e mobile
+      // Salvar estilos originais
       const origW=el.style.width;
       const origMaxW=el.style.maxWidth;
+      const origOverflow=el.style.overflow;
+      const origHeight=el.style.height;
+
+      // Forçar largura fixa e overflow visível para captura completa
       el.style.width="780px";
       el.style.maxWidth="780px";
+      el.style.overflow="visible";
+      el.style.height="auto";
 
       // Aguardar re-render
-      await new Promise(r=>setTimeout(r,200));
+      await new Promise(r=>setTimeout(r,300));
 
       // Capturar o elemento como imagem com alta qualidade
-      const canvas=await html2canvas(el,{scale:3,useCORS:true,backgroundColor:"#ffffff",logging:false,windowWidth:820});
+      const canvas=await html2canvas(el,{scale:3,useCORS:true,backgroundColor:"#ffffff",logging:false,windowWidth:820,scrollY:0,scrollX:0,height:el.scrollHeight,width:el.scrollWidth});
       const imgData=canvas.toDataURL("image/jpeg",0.95);
 
-      // Restaurar elementos
+      // Restaurar estilos originais
       hiddenEls.forEach(e=>e.style.display="");
       el.style.width=origW;
       el.style.maxWidth=origMaxW;
+      el.style.overflow=origOverflow;
+      el.style.height=origHeight;
 
       // Criar PDF A4
       const pdfW=210,pdfH=297; // mm
