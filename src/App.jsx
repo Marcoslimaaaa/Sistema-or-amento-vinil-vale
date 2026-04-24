@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, Suspense, lazy } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { MessageCircleIcon, FileTextIcon, CheckIcon, DownloadIcon, SendIcon } from "./AnimatedIcons.jsx";
 import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 const Pool3DView = lazy(() => import('./Pool3DView'));
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
@@ -722,47 +723,69 @@ const QP=({d,onBack,onSave,autoPositions})=>{
   };
 
   const gerarPDF=async()=>{
-    setPdfStatus("Gerando...");
+    setPdfStatus("Gerando PDF...");
     try{
-      const html=getHTML();if(!html){setPdfStatus("Erro");return}
+      const el=document.getElementById("pq");if(!el){setPdfStatus("Erro");return}
       const clientName=(d.client.name||"Cliente").replace(/\s+/g,"_").replace(/[^\w\-]/g,"");
-      const blob=new Blob([html],{type:"text/html;charset=utf-8"});
-      const fileName=`Orcamento_VinilVale_${clientName}.html`;
+      const fileName=`Orcamento_VinilVale_${clientName}.pdf`;
 
-      // Detectar mobile
+      // Capturar o elemento como imagem
+      const canvas=await html2canvas(el,{scale:2,useCORS:true,backgroundColor:"#ffffff",logging:false});
+      const imgData=canvas.toDataURL("image/jpeg",0.92);
+
+      // Criar PDF A4
+      const pdfW=210,pdfH=297; // mm
+      const imgW=canvas.width,imgH=canvas.height;
+      const ratio=imgW/imgH;
+      const pageW=pdfW-16,pageH=pageW/ratio; // margem 8mm cada lado
+      const pdf=new jsPDF({orientation:pageH>pdfH?"l":"p",unit:"mm",format:"a4"});
+
+      // Se conteúdo é maior que uma página, dividir em múltiplas
+      if(pageH<=pdfH-16){
+        pdf.addImage(imgData,"JPEG",8,8,pageW,pageH);
+      }else{
+        const totalPages=Math.ceil(pageH/(pdfH-16));
+        const sliceH=Math.floor(imgH/totalPages);
+        for(let i=0;i<totalPages;i++){
+          if(i>0)pdf.addPage();
+          const srcY=i*sliceH;
+          const srcH=Math.min(sliceH,imgH-srcY);
+          const c2=document.createElement("canvas");c2.width=imgW;c2.height=srcH;
+          const ctx=c2.getContext("2d");ctx.drawImage(canvas,0,srcY,imgW,srcH,0,0,imgW,srcH);
+          const sliceData=c2.toDataURL("image/jpeg",0.92);
+          const slicePageH=pageW*(srcH/imgW);
+          pdf.addImage(sliceData,"JPEG",8,8,pageW,slicePageH);
+        }
+      }
+
+      const pdfBlob=pdf.output("blob");
       const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-      // Mobile: tentar Web Share API
+      // Mobile: tentar Web Share API com PDF real
       if(isMobile&&navigator.canShare){
         try{
-          const file=new File([blob],fileName,{type:"text/html"});
+          const file=new File([pdfBlob],fileName,{type:"application/pdf"});
           if(navigator.canShare({files:[file]})){
             await navigator.share({files:[file],title:"Orçamento Vinil Vale",text:`Orçamento - ${d.client.name||"Cliente"}`});
-            setPdfStatus("✅ Compartilhado!");
+            setPdfStatus("✅ PDF compartilhado!");
             if(onSave)onSave();
             setTimeout(()=>setPdfStatus(""),3000);
             return;
           }
-        }catch{}
+        }catch(shareErr){if(shareErr.name==="AbortError"){setPdfStatus("");return}}
       }
 
       // Desktop e fallback: download direto
-      const url=URL.createObjectURL(blob);
+      const url=URL.createObjectURL(pdfBlob);
       const a=document.createElement("a");
       a.href=url;a.download=fileName;a.style.display="none";
       document.body.appendChild(a);a.click();
       setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url)},1000);
-      setPdfStatus("✅ Baixado! Abra e salve como PDF");
+      setPdfStatus("✅ PDF baixado!");
       if(onSave)onSave();
       setTimeout(()=>setPdfStatus(""),5000);
     }catch(e){
-      try{
-        const html=getHTML();
-        const w=window.open("","_blank");
-        if(w){w.document.write(html);w.document.close();setPdfStatus("✅ Aberto! Use Ctrl+P");}
-        else{setPdfStatus("❌ Popup bloqueado");}
-        setTimeout(()=>setPdfStatus(""),5000);
-      }catch{setPdfStatus("❌ Erro: "+String(e));setTimeout(()=>setPdfStatus(""),5000)}
+      setPdfStatus("❌ Erro: "+String(e));setTimeout(()=>setPdfStatus(""),5000);
     }
   };
 
@@ -777,7 +800,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
           <Btn onClick={gerarPDF} style={{background:`linear-gradient(135deg,#16a34a,#15803d)`,color:"#fff",border:"none",padding:"10px 24px",fontSize:"13px",fontWeight:"700",boxShadow:"0 2px 8px rgba(22,163,74,.3)",display:"flex",alignItems:"center",gap:"6px"}}><DownloadIcon size={16} color="#fff"/>Baixar PDF</Btn>
         </div>
       </div>
-      <div style={{textAlign:"center",fontSize:"9.5px",color:"#64748b",marginBottom:"10px",background:"#fff",padding:"8px 14px",borderRadius:"8px",border:"1px solid #e2e8f0"}}>💡 <b>Celular:</b> toca em "Baixar PDF" → compartilha ou salva → abre no navegador → salva como PDF</div>
+      <div style={{textAlign:"center",fontSize:"9.5px",color:"#64748b",marginBottom:"10px",background:"#fff",padding:"8px 14px",borderRadius:"8px",border:"1px solid #e2e8f0"}}>💡 <b>Celular:</b> toca em "Baixar PDF" → compartilha ou salva diretamente o PDF</div>
 
       <div id="pq" style={{fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif",color:"#1a1a2e",fontSize:"10px",lineHeight:"1.5",maxWidth:"780px",margin:"0 auto",background:"#fff",borderRadius:"8px",boxShadow:"0 4px 20px rgba(0,0,0,.1)",overflow:"hidden"}}>
         {/* Header */}
@@ -1719,7 +1742,7 @@ export default function App(){
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
   const movePipe=(id,stage)=>{const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);if(["fechou","execucao","concluido"].includes(stage))autoSyncReceber(item);}setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
   const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const fullNum=num.startsWith("55")?num:`55${num}`;const conv=waConvs.find(c=>c.phone===fullNum||c.phone===num);if(conv){setTab("whatsapp");setWaChat(conv.phone);if(msg)setWaMsg(msg)}else{setTab("whatsapp");setFbMsg("📱 Conversa não encontrada no sistema. Inicie pelo WhatsApp.");setTimeout(()=>setFbMsg(""),3000)}};
-  const sendOrcWA=(q)=>{
+  const sendOrcWA=async(q)=>{
     const d=q.data;const c=d?.client||{};const inc=(d?.items||[]).filter(i=>i.on);
     const p=d?.pool||{};const pay2=d?.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
     const tot=parseFloat(q.tot)||0;
@@ -1736,12 +1759,49 @@ export default function App(){
 <div style="margin-top:12px;font-size:12px"><b>Prazo de execução:</b> ${escHtml(d?.execDays||"20")} dias úteis${d?.svcType==="revestimento"?" após a medição detalhada":""}</div>
 <div class="ft">${escHtml(CO.name)}<br>${escHtml(CO.addr)} · ${escHtml(CO.ph1)} / ${escHtml(CO.ph2)}<br>${escHtml(CO.email)} · ${escHtml(CO.insta)}</div>
 <script>window.onload=function(){setTimeout(function(){window.print()},800)}<\/script></body></html>`;
-    const blob=new Blob([html],{type:"text/html;charset=utf-8"});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");a.href=url;a.download=`Orcamento_VinilVale_${clientName}.html`;a.style.display="none";
-    document.body.appendChild(a);a.click();
-    setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url)},1000);
-    setFbMsg("📥 PDF baixado! Agora clique 📱Zap p/ enviar");setTimeout(()=>setFbMsg(""),4000);
+    // Gerar PDF real via iframe oculto + html2canvas + jsPDF
+    const iframe=document.createElement("iframe");
+    iframe.style.cssText="position:fixed;left:-9999px;top:0;width:780px;height:auto;border:none;visibility:hidden";
+    document.body.appendChild(iframe);
+    const idoc=iframe.contentDocument||iframe.contentWindow.document;
+    idoc.open();idoc.write(html.replace(/<script[\s\S]*?<\/script>/gi,""));idoc.close();
+    await new Promise(r=>setTimeout(r,500));
+    try{
+      const canvas=await html2canvas(idoc.body,{scale:2,useCORS:true,backgroundColor:"#ffffff",logging:false});
+      const imgData=canvas.toDataURL("image/jpeg",0.92);
+      const pdfW=210,pageW=pdfW-16;
+      const imgW=canvas.width,imgH=canvas.height;
+      const pageH=pageW*(imgH/imgW);
+      const pdfH=297;
+      const pdf=new jsPDF({orientation:"p",unit:"mm",format:"a4"});
+      if(pageH<=pdfH-16){
+        pdf.addImage(imgData,"JPEG",8,8,pageW,pageH);
+      }else{
+        const totalPages=Math.ceil(pageH/(pdfH-16));
+        const sliceH=Math.floor(imgH/totalPages);
+        for(let i=0;i<totalPages;i++){
+          if(i>0)pdf.addPage();
+          const srcY=i*sliceH;const srcHh=Math.min(sliceH,imgH-srcY);
+          const c2=document.createElement("canvas");c2.width=imgW;c2.height=srcHh;
+          c2.getContext("2d").drawImage(canvas,0,srcY,imgW,srcHh,0,0,imgW,srcHh);
+          pdf.addImage(c2.toDataURL("image/jpeg",0.92),"JPEG",8,8,pageW,pageW*(srcHh/imgW));
+        }
+      }
+      const pdfBlob=pdf.output("blob");
+      const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if(isMobile&&navigator.canShare){
+        try{
+          const file=new File([pdfBlob],`Orcamento_VinilVale_${clientName}.pdf`,{type:"application/pdf"});
+          if(navigator.canShare({files:[file]})){await navigator.share({files:[file],title:"Orçamento Vinil Vale"});document.body.removeChild(iframe);setFbMsg("✅ PDF compartilhado!");setTimeout(()=>setFbMsg(""),4000);return}
+        }catch{}
+      }
+      const url=URL.createObjectURL(pdfBlob);
+      const a=document.createElement("a");a.href=url;a.download=`Orcamento_VinilVale_${clientName}.pdf`;a.style.display="none";
+      document.body.appendChild(a);a.click();
+      setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url)},1000);
+      setFbMsg("📥 PDF baixado!");setTimeout(()=>setFbMsg(""),4000);
+    }catch(err){setFbMsg("❌ Erro ao gerar PDF");setTimeout(()=>setFbMsg(""),4000)}
+    document.body.removeChild(iframe);
   };
   const msgWA=(q)=>{
     const c=q.data?.client||{};const tot=parseFloat(q.tot)||0;
