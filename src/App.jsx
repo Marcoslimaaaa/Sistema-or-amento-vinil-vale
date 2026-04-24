@@ -752,18 +752,31 @@ const QP=({d,onBack,onSave,autoPositions})=>{
       await new Promise(r=>setTimeout(r,300));
 
       const plantaEl=el.querySelector('[data-pdf-section="planta"]');
-      const footerEl=el.querySelector('[data-pdf-section="footer"]');
       const h2cOpts={scale:3,useCORS:true,backgroundColor:"#ffffff",logging:false,windowWidth:820,scrollY:0,scrollX:0};
-      const pdfW=210,pdfH=297,pageW=pdfW-16; // A4 mm, margem 8mm
+      const pdfW=210,pdfH=297,pageW=pdfW-16,usableH=pdfH-16; // A4 mm, margem 8mm
       const pdf=new jsPDF({orientation:"p",unit:"mm",format:"a4"});
 
+      // Função para adicionar imagem escalada que cabe na página A4
+      const addPageFit=(canvas,pdfDoc,isNewPage)=>{
+        if(isNewPage)pdfDoc.addPage();
+        const imgData=canvas.toDataURL("image/jpeg",0.95);
+        let w=pageW, h=pageW*(canvas.height/canvas.width);
+        // Se a altura ultrapassa a página, escalar proporcionalmente para caber
+        if(h>usableH){
+          h=usableH;
+          w=usableH*(canvas.width/canvas.height);
+        }
+        // Centralizar horizontalmente
+        const x=(pdfW-w)/2;
+        pdfDoc.addImage(imgData,"JPEG",x,8,w,h);
+      };
+
       if(plantaEl){
-        // === PÁGINA 1: Orçamento (esconde planta) ===
+        // === PÁGINA 1: Orçamento completo (esconde planta) ===
         plantaEl.style.display="none";
         await new Promise(r=>setTimeout(r,100));
         const c1=await html2canvas(el,{...h2cOpts,height:el.scrollHeight});
-        const h1=pageW*(c1.height/c1.width);
-        pdf.addImage(c1.toDataURL("image/jpeg",0.95),"JPEG",8,8,pageW,h1);
+        addPageFit(c1,pdf,false);
 
         // === PÁGINA 2: Planta Hidráulica (esconde conteúdo, mostra planta) ===
         plantaEl.style.display="";
@@ -771,17 +784,14 @@ const QP=({d,onBack,onSave,autoPositions})=>{
         if(contentEl)contentEl.style.display="none";
         await new Promise(r=>setTimeout(r,100));
         const c2=await html2canvas(el,{...h2cOpts,height:el.scrollHeight});
-        const h2=pageW*(c2.height/c2.width);
-        pdf.addPage();
-        pdf.addImage(c2.toDataURL("image/jpeg",0.95),"JPEG",8,8,pageW,h2);
+        addPageFit(c2,pdf,true);
 
         // Restaurar tudo
         if(contentEl)contentEl.style.display="";
       }else{
         // Sem planta: página única
         const c1=await html2canvas(el,{...h2cOpts,height:el.scrollHeight});
-        const h1=pageW*(c1.height/c1.width);
-        pdf.addImage(c1.toDataURL("image/jpeg",0.95),"JPEG",8,8,pageW,h1);
+        addPageFit(c1,pdf,false);
       }
 
       // Restaurar estilos originais
