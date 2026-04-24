@@ -771,15 +771,19 @@ const QP=({d,onBack,onSave,autoPositions})=>{
         pdfDoc.addImage(imgData,"JPEG",x,8,w,h);
       };
 
+      const pricingEls=el.querySelectorAll('[data-pdf-section="pricing"]');
+
       if(plantaEl){
-        // === PÁGINA 1: Orçamento completo (esconde planta) ===
+        // === PÁGINA 1: Dados + Serviços + Garantias (sem valor/pagamento/planta) ===
         plantaEl.style.display="none";
+        pricingEls.forEach(e=>e.style.display="none");
         await new Promise(r=>setTimeout(r,100));
         const c1=await html2canvas(el,{...h2cOpts,height:el.scrollHeight});
         addPageFit(c1,pdf,false);
 
-        // === PÁGINA 2: Planta Hidráulica (esconde conteúdo, mostra planta) ===
+        // === PÁGINA 2: Valor Total + Pagamento + Planta Hidráulica ===
         plantaEl.style.display="";
+        pricingEls.forEach(e=>e.style.display="");
         const contentEl=el.querySelector('[data-pdf-section="content"]');
         if(contentEl)contentEl.style.display="none";
         await new Promise(r=>setTimeout(r,100));
@@ -789,7 +793,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
         // Restaurar tudo
         if(contentEl)contentEl.style.display="";
       }else{
-        // Sem planta: página única
+        // Sem planta: página única com tudo
         const c1=await html2canvas(el,{...h2cOpts,height:el.scrollHeight});
         addPageFit(c1,pdf,false);
       }
@@ -894,14 +898,14 @@ const QP=({d,onBack,onSave,autoPositions})=>{
 
           <Sec title="Por Conta do Cliente"><div style={{background:goldL,borderRadius:"8px",padding:"8px 12px",border:`1px solid ${gold}44`}}>{(d.ci||[]).map((c,i)=><div key={i} style={{padding:"1px 0",fontSize:"9.5px"}}><span style={{color:gold,fontWeight:"800"}}>▸</span> <span style={{color:navy}}>{c}</span></div>)}</div></Sec>
 
-          <div style={{background:`linear-gradient(135deg,${navy},${blue})`,borderRadius:"12px",padding:"18px",textAlign:"center",margin:"14px 0",position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:"-20px",right:"-20px",width:"70px",height:"70px",borderRadius:"50%",background:"rgba(232,177,0,.15)"}}/><div style={{fontSize:"7.5px",textTransform:"uppercase",letterSpacing:"3px",color:"rgba(255,255,255,.6)"}}>Valor Total</div><div style={{fontSize:"30px",fontWeight:"800",color:"#fff"}}>{fmt(total)}</div><div style={{width:"36px",height:"3px",background:gold,margin:"6px auto 0",borderRadius:"2px"}}/></div>
+          <div data-pdf-section="pricing" style={{background:`linear-gradient(135deg,${navy},${blue})`,borderRadius:"12px",padding:"18px",textAlign:"center",margin:"14px 0",position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:"-20px",right:"-20px",width:"70px",height:"70px",borderRadius:"50%",background:"rgba(232,177,0,.15)"}}/><div style={{fontSize:"7.5px",textTransform:"uppercase",letterSpacing:"3px",color:"rgba(255,255,255,.6)"}}>Valor Total</div><div style={{fontSize:"30px",fontWeight:"800",color:"#fff"}}>{fmt(total)}</div><div style={{width:"36px",height:"3px",background:gold,margin:"6px auto 0",borderRadius:"2px"}}/></div>
 
-          <Sec title="Condições de Pagamento"><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px"}}>
+          <div data-pdf-section="pricing"><Sec title="Condições de Pagamento"><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px"}}>
             <div style={{background:lBg,borderRadius:"8px",padding:"10px",borderLeft:"3px solid #22c55e"}}><div style={{fontSize:"9.5px",fontWeight:"700",color:navy}}>💰 Pix / Dinheiro</div><div style={{fontSize:"8.5px",color:"#666"}}>{pay.pixD}% desc.</div><div style={{fontSize:"15px",fontWeight:"800",color:"#16a34a",marginTop:"2px"}}>{fmt(pix)}</div></div>
             <div style={{background:lBg,borderRadius:"8px",padding:"10px",borderLeft:`3px solid ${gold}`}}><div style={{fontSize:"9.5px",fontWeight:"700",color:navy}}>📋 Parcelado</div><div style={{fontSize:"8.5px",color:"#666"}}>{pay.entPct}% + {pay.balPct}%</div><div style={{fontSize:"12px",fontWeight:"700",color:navy,marginTop:"2px"}}>{fmt(ent)} + {fmt(bal)}</div></div>
             <div style={{background:lBg,borderRadius:"8px",padding:"10px",borderLeft:`3px solid ${blue}`}}><div style={{fontSize:"9.5px",fontWeight:"700",color:navy}}>💳 Cartão</div><div style={{fontSize:"8.5px",color:"#666"}}>Até {pay.noFee}x s/juros</div><div style={{fontSize:"12px",fontWeight:"700",color:blue,marginTop:"2px"}}>{pay.noFee}x {fmt(inst)}</div><div style={{fontSize:"7.5px",color:"#999"}}>Ou {pay.wFee}x c/juros</div></div>
             <div style={{background:lBg,borderRadius:"8px",padding:"10px",borderLeft:"3px solid #f59e0b"}}><div style={{fontSize:"9.5px",fontWeight:"700",color:navy}}>₿ Bitcoin</div><div style={{fontSize:"8.5px",color:"#666"}}>{pay.btcD}% desc.</div><div style={{fontSize:"15px",fontWeight:"800",color:"#d97706",marginTop:"2px"}}>{fmt(btc)}</div></div>
-          </div></Sec>
+          </div></Sec></div>
         </div>
 
         {d.includePlanta&&autoPositions&&<div data-pdf-section="planta" style={{padding:"14px 28px",borderTop:"2px solid #e2e8f0"}}>
