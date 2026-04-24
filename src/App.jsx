@@ -745,54 +745,50 @@ const QP=({d,onBack,onSave,autoPositions})=>{
       const origW=el.style.width;
       const origMaxW=el.style.maxWidth;
       const origOverflow=el.style.overflow;
-      const origHeight=el.style.height;
-
-      // Forçar largura fixa e overflow visível para captura completa
       el.style.width="780px";
       el.style.maxWidth="780px";
       el.style.overflow="visible";
-      el.style.height="auto";
 
-      // Aguardar re-render
       await new Promise(r=>setTimeout(r,300));
 
-      // Capturar o elemento como imagem com alta qualidade
-      const canvas=await html2canvas(el,{scale:3,useCORS:true,backgroundColor:"#ffffff",logging:false,windowWidth:820,scrollY:0,scrollX:0,height:el.scrollHeight,width:el.scrollWidth});
-      const imgData=canvas.toDataURL("image/jpeg",0.95);
+      const plantaEl=el.querySelector('[data-pdf-section="planta"]');
+      const footerEl=el.querySelector('[data-pdf-section="footer"]');
+      const h2cOpts={scale:3,useCORS:true,backgroundColor:"#ffffff",logging:false,windowWidth:820,scrollY:0,scrollX:0};
+      const pdfW=210,pdfH=297,pageW=pdfW-16; // A4 mm, margem 8mm
+      const pdf=new jsPDF({orientation:"p",unit:"mm",format:"a4"});
+
+      if(plantaEl){
+        // === PÁGINA 1: Orçamento (esconde planta) ===
+        plantaEl.style.display="none";
+        await new Promise(r=>setTimeout(r,100));
+        const c1=await html2canvas(el,{...h2cOpts,height:el.scrollHeight});
+        const h1=pageW*(c1.height/c1.width);
+        pdf.addImage(c1.toDataURL("image/jpeg",0.95),"JPEG",8,8,pageW,h1);
+
+        // === PÁGINA 2: Planta Hidráulica (esconde conteúdo, mostra planta) ===
+        plantaEl.style.display="";
+        const contentEl=el.querySelector('[data-pdf-section="content"]');
+        if(contentEl)contentEl.style.display="none";
+        await new Promise(r=>setTimeout(r,100));
+        const c2=await html2canvas(el,{...h2cOpts,height:el.scrollHeight});
+        const h2=pageW*(c2.height/c2.width);
+        pdf.addPage();
+        pdf.addImage(c2.toDataURL("image/jpeg",0.95),"JPEG",8,8,pageW,h2);
+
+        // Restaurar tudo
+        if(contentEl)contentEl.style.display="";
+      }else{
+        // Sem planta: página única
+        const c1=await html2canvas(el,{...h2cOpts,height:el.scrollHeight});
+        const h1=pageW*(c1.height/c1.width);
+        pdf.addImage(c1.toDataURL("image/jpeg",0.95),"JPEG",8,8,pageW,h1);
+      }
 
       // Restaurar estilos originais
       hiddenEls.forEach(e=>e.style.display="");
       el.style.width=origW;
       el.style.maxWidth=origMaxW;
       el.style.overflow=origOverflow;
-      el.style.height=origHeight;
-
-      // Criar PDF A4
-      const pdfW=210,pdfH=297; // mm
-      const imgW=canvas.width,imgH=canvas.height;
-      const pageW=pdfW-16; // margem 8mm cada lado
-      const totalH=pageW*(imgH/imgW); // altura total em mm
-
-      const pdf=new jsPDF({orientation:"p",unit:"mm",format:"a4"});
-      const usableH=pdfH-16; // margem 8mm topo e fundo
-
-      if(totalH<=usableH){
-        pdf.addImage(imgData,"JPEG",8,8,pageW,totalH);
-      }else{
-        // Dividir em páginas com corte proporcional preciso
-        const totalPages=Math.ceil(totalH/usableH);
-        const sliceH=Math.ceil(imgH/totalPages);
-        for(let i=0;i<totalPages;i++){
-          if(i>0)pdf.addPage();
-          const srcY=i*sliceH;
-          const srcH=Math.min(sliceH,imgH-srcY);
-          const c2=document.createElement("canvas");c2.width=imgW;c2.height=srcH;
-          const ctx=c2.getContext("2d");ctx.drawImage(canvas,0,srcY,imgW,srcH,0,0,imgW,srcH);
-          const sliceData=c2.toDataURL("image/jpeg",0.95);
-          const slicePageH=pageW*(srcH/imgW);
-          pdf.addImage(sliceData,"JPEG",8,8,pageW,slicePageH);
-        }
-      }
 
       const pdfBlob=pdf.output("blob");
       const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -862,7 +858,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
         </div>
         <div style={{background:gold,padding:"5px 28px",display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:"3px",fontSize:"7.5px",color:navy,fontWeight:"600"}}><span>CNPJ: {CO.cnpj}</span><span>IE: {CO.ie}</span><span>{CO.ph1} / {CO.ph2}</span><span>{CO.email}</span><span>{CO.insta}</span></div>
 
-        <div style={{padding:"20px 28px"}}>
+        <div data-pdf-section="content" style={{padding:"20px 28px"}}>
           <div style={{display:"flex",justifyContent:"center",marginBottom:"14px"}}><div style={{background:lBg,border:`1.5px solid ${blue}`,borderRadius:"20px",padding:"4px 16px",fontSize:"9.5px",fontWeight:"700",color:blue,textTransform:"uppercase",letterSpacing:"1px"}}>{SVC.find(sv=>sv.id===d.svcType)?.icon} {SVC.find(sv=>sv.id===d.svcType)?.label}</div></div>
 
           <Sec title="Dados do Cliente"><div style={{background:lBg,borderRadius:"8px",padding:"10px 12px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:"3px 14px",fontSize:"9.5px",border:"1px solid #e8ecf3"}}><div><span style={{color:"#888",fontWeight:"600"}}>Nome:</span> <b>{d.client.name||"—"}</b></div><div><span style={{color:"#888",fontWeight:"600"}}>Tel:</span> {d.client.phone||"—"}</div><div><span style={{color:"#888",fontWeight:"600"}}>End:</span> {d.client.address||"—"}</div><div><span style={{color:"#888",fontWeight:"600"}}>Cidade:</span> {d.client.city||"—"}</div><div><span style={{color:"#888",fontWeight:"600"}}>CPF:</span> {d.client.cpf||"—"}</div><div><span style={{color:"#888",fontWeight:"600"}}>Email:</span> {d.client.email||"—"}</div></div></Sec>
@@ -898,13 +894,13 @@ const QP=({d,onBack,onSave,autoPositions})=>{
           </div></Sec>
         </div>
 
-        {d.includePlanta&&autoPositions&&<div style={{padding:"14px 28px",borderTop:"2px solid #e2e8f0"}}>
+        {d.includePlanta&&autoPositions&&<div data-pdf-section="planta" style={{padding:"14px 28px",borderTop:"2px solid #e2e8f0"}}>
           <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"10px"}}><div style={{width:"3px",height:"14px",background:gold,borderRadius:"2px"}}/><div style={{fontSize:"11px",fontWeight:"700",color:navy,textTransform:"uppercase",letterSpacing:".5px"}}>Planta Hidráulica</div></div>
           {d.isoView
             ?<IsometricView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} dark={false} t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc"}} poolFmt={d.poolFmt||"Retangular"} clientName={d.client?.name||""} autoPositions={autoPositions} customPos={d.customPos||{}} invertSide={d.invertSide||false}/>
             :<PlantaView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} customPos={d.customPos||{}} setCustomPos={()=>{}} dragging={null} setDragging={()=>{}} dark={false} poolFmt={d.poolFmt||"Retangular"} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc",stampBg:"#e2e8f0"}} invertSide={d.invertSide||false} wMode={d.wMode||"regular"} walls={d.walls||[]} spaType={d.spaType||{redondo:false,quadrado:true}}/>}
         </div>}
-        <div style={{background:navy,padding:"12px 28px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap"}}><div><div style={{fontSize:"8.5px",fontWeight:"700",color:gold}}>Válido por 15 dias</div><div style={{fontSize:"7px",color:"rgba(255,255,255,.5)"}}>{CO.name}</div></div><div style={{textAlign:"right",fontSize:"7.5px",color:"rgba(255,255,255,.6)"}}><div>{CO.ph1} / {CO.ph2}</div><div>{CO.email} | {CO.insta}</div></div></div>
+        <div data-pdf-section="footer" style={{background:navy,padding:"12px 28px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap"}}><div><div style={{fontSize:"8.5px",fontWeight:"700",color:gold}}>Válido por 15 dias</div><div style={{fontSize:"7px",color:"rgba(255,255,255,.5)"}}>{CO.name}</div></div><div style={{textAlign:"right",fontSize:"7.5px",color:"rgba(255,255,255,.6)"}}><div>{CO.ph1} / {CO.ph2}</div><div>{CO.email} | {CO.insta}</div></div></div>
       </div>
     </div>
   );
