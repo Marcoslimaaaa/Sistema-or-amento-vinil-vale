@@ -276,7 +276,7 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
     </svg>
     <div style={{display:"flex",gap:"6px",marginTop:"6px",flexWrap:"wrap"}}>
       {[["R","Retorno","#ef4444"],["A","Asp.","#ec4899"],["D","Dreno","#8b5cf6"],["SK","Skim.","#f59e0b"],["L","LED","#f97316"],["N","Niv.","#06b6d4"],["H","Hidro","#14b8a6"],["CM","Casa M.","#475569"]].map(([s,lb,c])=><div key={s} style={{display:"flex",alignItems:"center",gap:"2px"}}><div style={{width:"8px",height:"3px",borderRadius:"1px",background:c}}/><span style={{fontSize:"6px",color:t.textMuted}}>{lb}</span></div>)}
-      <button onClick={()=>{setCustomPos({});setTubeOffsets({})}} style={{fontSize:"6px",padding:"1px 4px",borderRadius:"3px",border:"1px solid "+(dark?"#334155":"#e2e8f0"),background:"transparent",color:t.textMuted,cursor:"pointer",marginLeft:"auto"}}>Reset</button>
+      <button className="no-pdf" onClick={()=>{setCustomPos({});setTubeOffsets({})}} style={{fontSize:"6px",padding:"1px 4px",borderRadius:"3px",border:"1px solid "+(dark?"#334155":"#e2e8f0"),background:"transparent",color:t.textMuted,cursor:"pointer",marginLeft:"auto"}}>Reset</button>
     </div>
     <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginTop:"10px",marginBottom:"4px"}}>Corte Lateral</div>
     <svg width={svgW} height={cutH} style={{background:dark?"#0f172a":"#f8fafc",borderRadius:"6px",border:"1px solid "+(dark?"#334155":"#e2e8f0")}}>
@@ -737,30 +737,50 @@ const QP=({d,onBack,onSave,autoPositions})=>{
       const clientName=(d.client.name||"Cliente").replace(/\s+/g,"_").replace(/[^\w\-]/g,"");
       const fileName=`Orcamento_VinilVale_${clientName}.pdf`;
 
-      // Capturar o elemento como imagem
-      const canvas=await html2canvas(el,{scale:2,useCORS:true,backgroundColor:"#ffffff",logging:false});
-      const imgData=canvas.toDataURL("image/jpeg",0.92);
+      // Esconder elementos interativos antes da captura
+      const hiddenEls=el.querySelectorAll(".no-pdf");
+      hiddenEls.forEach(e=>e.style.display="none");
+
+      // Forçar largura fixa para consistência entre desktop e mobile
+      const origW=el.style.width;
+      const origMaxW=el.style.maxWidth;
+      el.style.width="780px";
+      el.style.maxWidth="780px";
+
+      // Aguardar re-render
+      await new Promise(r=>setTimeout(r,200));
+
+      // Capturar o elemento como imagem com alta qualidade
+      const canvas=await html2canvas(el,{scale:3,useCORS:true,backgroundColor:"#ffffff",logging:false,windowWidth:820});
+      const imgData=canvas.toDataURL("image/jpeg",0.95);
+
+      // Restaurar elementos
+      hiddenEls.forEach(e=>e.style.display="");
+      el.style.width=origW;
+      el.style.maxWidth=origMaxW;
 
       // Criar PDF A4
       const pdfW=210,pdfH=297; // mm
       const imgW=canvas.width,imgH=canvas.height;
-      const ratio=imgW/imgH;
-      const pageW=pdfW-16,pageH=pageW/ratio; // margem 8mm cada lado
-      const pdf=new jsPDF({orientation:pageH>pdfH?"l":"p",unit:"mm",format:"a4"});
+      const pageW=pdfW-16; // margem 8mm cada lado
+      const totalH=pageW*(imgH/imgW); // altura total em mm
 
-      // Se conteúdo é maior que uma página, dividir em múltiplas
-      if(pageH<=pdfH-16){
-        pdf.addImage(imgData,"JPEG",8,8,pageW,pageH);
+      const pdf=new jsPDF({orientation:"p",unit:"mm",format:"a4"});
+      const usableH=pdfH-16; // margem 8mm topo e fundo
+
+      if(totalH<=usableH){
+        pdf.addImage(imgData,"JPEG",8,8,pageW,totalH);
       }else{
-        const totalPages=Math.ceil(pageH/(pdfH-16));
-        const sliceH=Math.floor(imgH/totalPages);
+        // Dividir em páginas com corte proporcional preciso
+        const totalPages=Math.ceil(totalH/usableH);
+        const sliceH=Math.ceil(imgH/totalPages);
         for(let i=0;i<totalPages;i++){
           if(i>0)pdf.addPage();
           const srcY=i*sliceH;
           const srcH=Math.min(sliceH,imgH-srcY);
           const c2=document.createElement("canvas");c2.width=imgW;c2.height=srcH;
           const ctx=c2.getContext("2d");ctx.drawImage(canvas,0,srcY,imgW,srcH,0,0,imgW,srcH);
-          const sliceData=c2.toDataURL("image/jpeg",0.92);
+          const sliceData=c2.toDataURL("image/jpeg",0.95);
           const slicePageH=pageW*(srcH/imgW);
           pdf.addImage(sliceData,"JPEG",8,8,pageW,slicePageH);
         }
