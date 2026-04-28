@@ -134,7 +134,7 @@ const CAT=[
 // un: "m²" = custo por m² (usa área total), "ml" = custo por metro linear (usa perímetro), "un" = custo unitário
 
 const SYSTEMS=["dreno","aspiracao","skimmer","retorno","hidro"];
-const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,dark,poolFmt,ar,autoPositions,blue,t,tubeOffsets={},setTubeOffsets=()=>{},invertSide=false,wMode="regular",walls=[],stamp="",spaType={redondo:false,quadrado:true}})=>{
+const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,dark,poolFmt,ar,autoPositions,blue,t,tubeOffsets={},setTubeOffsets=()=>{},invertSide=false,wMode="regular",walls=[],stamp="",spaType={redondo:false,quadrado:true},extras=[]})=>{
     // const SYSTEMS=["retorno","hidro","aspiracao","dreno","skimmer","nivelador"];
   const L=parseFloat(pool.length)||6,W=parseFloat(pool.width)||3,D=parseFloat(pool.depth)||1.4;
   const svgW=340,svgH=200,pad=30;
@@ -195,6 +195,7 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
       })()}
       {stamp&&SWATCH_SLUG[stamp]&&<image href={`/swatches/${SWATCH_SLUG[stamp]}.png`} x={ox} y={oy} width={pw} height={ph} preserveAspectRatio="xMidYMid slice" clipPath="url(#poolClip2d)" opacity="0.85"/>}
       {poolFmt==="Com prainha"&&<rect x={ox} y={oy} width={pw*0.25} height={ph} rx="1" fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#2563eb" strokeWidth="0.5"/>}
+      {extras.length>0&&extras.map((e,i)=>{const pf=v=>parseFloat(String(v||"").replace(",","."))||0;const el=pf(e.l),ew=pf(e.w);if(el<=0||ew<=0)return null;const ePw=el*scale,ePh=ew*scale;const desc=(e.desc||"").toLowerCase();const isBank=desc.includes("banco");const isPrainha=desc.includes("prainha");const isDegrau=desc.includes("degrau");const eColor=isPrainha?(dark?"#1e4d7a":"#bfdbfe"):isBank?(dark?"#2d3a4a":"#c7d2fe"):(dark?"#1e3a5f":"#ddd6fe");const eX=isPrainha?ox:isBank?ox:(ox+pw-ePw);const eY=isPrainha?oy:(oy+ph-ePh);return<g key={`ext${i}`}><rect x={eX} y={eY} width={ePw} height={ePh} rx="2" fill={eColor} stroke={dark?"#475569":"#6366f1"} strokeWidth="0.8" strokeDasharray="3,2" opacity="0.7"/><text x={eX+ePw/2} y={eY+ePh/2+3} textAnchor="middle" fontSize="5.5" fill={dark?"#94a3b8":"#4f46e5"} fontWeight="600">{e.desc||"Extra"}</text></g>})}
       {hasSpa2&&(()=>{const side=spa.side||"top";let sx,sy,sw2,sh;if(side==="bottom"){sx=ox+pw-sL;sy=oy+ph;sw2=sL;sh=sW;}else if(side==="left"){sx=ox-sW;sy=oy+ph-sL;sw2=sW;sh=sL;}else if(side==="right"){sx=ox+pw;sy=oy+ph-sL;sw2=sW;sh=sL;}else{sx=ox+pw-sL;sy=oy-sW;sw2=sL;sh=sW;}return<><rect x={sx} y={sy} width={sw2} height={sh} rx="3" fill={dark?"#1e3a5f":"#93c5fd"} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="4,2"/><text x={sx+sw2/2} y={sy+sh/2+3} textAnchor="middle" fontSize="7" fill="#1d4ed8" fontWeight="700">SPA</text></>;})()}
       <text x={ox+pw/2} y={oy+ph/2-3} textAnchor="middle" fontSize="8" fill={dark?"#94a3b8":"#64748b"} fontWeight="600">PISCINA</text>
       <text x={ox+pw/2} y={oy+ph/2+7} textAnchor="middle" fontSize="7" fill={dark?"#94a3b8":"#64748b"}>A= {ar.total}m2</text>
@@ -308,7 +309,7 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
 };
 
 // ═══ ISOMETRIC VIEW ═══
-const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,autoPositions,customPos={},invertSide=false,devHeights={},stamp=""},ref)=>{
+const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,autoPositions,customPos={},invertSide=false,devHeights={},stamp="",spaType={redondo:false,quadrado:true},extras=[]},ref)=>{
   const L=parseFloat(pool.length)||6,W=parseFloat(pool.width)||3,D=parseFloat(pool.depth)||1.4;
   const svgW=640,svgH=440,cos30=Math.cos(Math.PI/6),sin30=0.5;
   const mX=28,mYt=54,mYb=90;
@@ -379,6 +380,62 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
     if(swSlug){const pL0=iso(L,0,0),pLW=iso(L,W,0),pLD=iso(L,0,D);els.push(isoImg("rwImg",pL0,pLW,pLD,"isoRwClip","0.70"));}
     els.push(<polygon key="rim" points={pts([[0,0,D],[L,0,D],[L,W,D],[0,W,D]])} fill="none" stroke="#2563eb" strokeWidth="2.5"/>);
     [[0,0],[L,0],[L,W],[0,W]].forEach(([x,y],i)=>{const a=iso(x,y,0),b=iso(x,y,D);els.push(<line key={`cv${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#2563eb" strokeWidth="1" opacity="0.35"/>);});
+  }
+  // "Com prainha" — plataforma rasa no lado esquerdo
+  if(poolFmt==="Com prainha"){
+    const pW=L*0.25,pH=D*0.4;
+    els.push(<polygon key="prainha_top" points={pts([[0,0,pH],[pW,0,pH],[pW,W,pH],[0,W,pH]])} fill={dk?"#1e4d7a":"#bfdbfe"} opacity="0.6"/>);
+    els.push(<polygon key="prainha_f" points={pts([[0,0,0],[pW,0,0],[pW,0,pH],[0,0,pH]])} fill={dk?"#2563a0":"#93c5fd"} stroke="#2563eb" strokeWidth="0.5" opacity="0.5"/>);
+    els.push(<polygon key="prainha_r" points={pts([[pW,0,0],[pW,W,0],[pW,W,pH],[pW,0,pH]])} fill={dk?"#1e4080":"#7dd3fc"} stroke="#2563eb" strokeWidth="0.5" opacity="0.5"/>);
+    const pp=iso(pW/2,W/2,pH);els.push(<text key="prainha_lbl" x={pp.x} y={pp.y-3} textAnchor="middle" fontSize="6" fontWeight="700" fill={dk?"#93c5fd":"#1d4ed8"} opacity="0.8">PRAINHA</text>);
+  }
+  // "Com Spa" — spa(s) nos cantos da piscina
+  if(poolFmt==="Com Spa"){
+    const spaFill=dk?"#1e3a5f":"#93c5fd",spaStroke="#3b82f6";
+    if(spaType.quadrado){
+      const sc=parseFloat(spaType.qComp)||2,sl=parseFloat(spaType.qLarg)||2,sp=parseFloat(spaType.qProf)||D;
+      const c=spaType.qCanto||"bottom-right";
+      const sx=c.includes("left")?0:(L-sc),sy=c.includes("top")?-sl:W;
+      els.push(<polygon key="spaq_top" points={pts([[sx,sy,sp],[sx+sc,sy,sp],[sx+sc,sy+sl,sp],[sx,sy+sl,sp]])} fill={spaFill} opacity="0.5" stroke={spaStroke} strokeWidth="1" strokeDasharray="4,2"/>);
+      els.push(<polygon key="spaq_f" points={pts([[sx,sy,0],[sx+sc,sy,0],[sx+sc,sy,sp],[sx,sy,sp]])} fill={spaFill} opacity="0.35" stroke={spaStroke} strokeWidth="0.5"/>);
+      els.push(<polygon key="spaq_r" points={pts([[sx+sc,sy,0],[sx+sc,sy+sl,0],[sx+sc,sy+sl,sp],[sx+sc,sy,sp]])} fill={spaFill} opacity="0.3" stroke={spaStroke} strokeWidth="0.5"/>);
+      const slbl=iso(sx+sc/2,sy+sl/2,sp);els.push(<text key="spaq_lbl" x={slbl.x} y={slbl.y-2} textAnchor="middle" fontSize="6" fontWeight="700" fill="#1d4ed8">SPA Q</text>);
+    }
+    if(spaType.redondo){
+      const isRSq=spaType.rFormato==="quadrado";
+      const rc=isRSq?(parseFloat(spaType.rComp)||2):parseFloat(spaType.rDiam)||2;
+      const rl=isRSq?(parseFloat(spaType.rLarg)||2):rc;
+      const rp=parseFloat(spaType.rProf)||D;
+      const c=spaType.rCanto||"bottom-right";
+      const sx=c.includes("left")?-rc/2:L-rc/2,sy=c.includes("top")?-rl/2:W-rl/2;
+      if(isRSq){
+        els.push(<polygon key="spar_top" points={pts([[sx,sy,rp],[sx+rc,sy,rp],[sx+rc,sy+rl,rp],[sx,sy+rl,rp]])} fill={spaFill} opacity="0.5" stroke={spaStroke} strokeWidth="1" strokeDasharray="4,2"/>);
+        els.push(<polygon key="spar_f" points={pts([[sx,sy,0],[sx+rc,sy,0],[sx+rc,sy,rp],[sx,sy,rp]])} fill={spaFill} opacity="0.35" stroke={spaStroke} strokeWidth="0.5"/>);
+      }else{
+        const N2=16;for(let i=0;i<N2;i++){const a1=i/N2*2*Math.PI,a2=(i+1)/N2*2*Math.PI;const cx=sx+rc/2,cy=sy+rl/2;
+          els.push(<polygon key={`spar${i}`} points={pts([[cx,cy,rp],[cx+rc/2*Math.cos(a1),cy+rl/2*Math.sin(a1),rp],[cx+rc/2*Math.cos(a2),cy+rl/2*Math.sin(a2),rp]])} fill={spaFill} opacity="0.5" stroke={spaStroke} strokeWidth="0.3"/>);
+        }
+      }
+      const slbl=iso(sx+rc/2,sy+rl/2,rp);els.push(<text key="spar_lbl" x={slbl.x} y={slbl.y-2} textAnchor="middle" fontSize="6" fontWeight="700" fill="#1d4ed8">SPA</text>);
+    }
+  }
+  // Extras (prainha, banco, degrau) como plataformas dentro da piscina
+  if(extras.length>0){
+    extras.forEach((e,i)=>{
+      const pf=v=>parseFloat(String(v||"").replace(",","."))||0;
+      const el=pf(e.l),ew=pf(e.w),eh=pf(e.h);
+      if(el<=0||ew<=0)return;
+      const desc=(e.desc||"").toLowerCase();
+      const isPrainha=desc.includes("prainha"),isBank=desc.includes("banco"),isDegrau=desc.includes("degrau");
+      const eColor=isPrainha?(dk?"#1e4d7a":"#bfdbfe"):isBank?(dk?"#2d3a4a":"#c7d2fe"):(dk?"#1e3a5f":"#ddd6fe");
+      // Posicionar: prainha no canto esquerdo, banco na parede traseira, degrau no canto direito
+      const ex=isPrainha?0:isBank?0:(L-el),ey=isPrainha?0:isBank?(W-ew):0;
+      const eH=eh>0?eh:D*0.4;
+      els.push(<polygon key={`ext_top${i}`} points={pts([[ex,ey,eH],[ex+el,ey,eH],[ex+el,ey+ew,eH],[ex,ey+ew,eH]])} fill={eColor} opacity="0.55" stroke="#6366f1" strokeWidth="0.5" strokeDasharray="3,2"/>);
+      els.push(<polygon key={`ext_f${i}`} points={pts([[ex,ey,0],[ex+el,ey,0],[ex+el,ey,eH],[ex,ey,eH]])} fill={eColor} opacity="0.35" stroke="#6366f1" strokeWidth="0.3"/>);
+      els.push(<polygon key={`ext_r${i}`} points={pts([[ex+el,ey,0],[ex+el,ey+ew,0],[ex+el,ey+ew,eH],[ex+el,ey,eH]])} fill={eColor} opacity="0.3" stroke="#6366f1" strokeWidth="0.3"/>);
+      const lp=iso(ex+el/2,ey+ew/2,eH);els.push(<text key={`ext_lbl${i}`} x={lp.x} y={lp.y-2} textAnchor="middle" fontSize="5.5" fontWeight="700" fill={dk?"#a5b4fc":"#4f46e5"}>{e.desc||"Extra"}</text>);
+    });
   }
   // Pool labels
   const pm=iso(L/2,W/2,wZ*0.5);els.push(<text key="plbl" x={pm.x} y={pm.y} textAnchor="middle" fontSize="9" fontWeight="700" fill={dk?"#93c5fd":"#1d4ed8"} opacity="0.85">PISCINA</text>);
@@ -921,8 +978,8 @@ const QP=({d,onBack,onSave,autoPositions})=>{
           <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"4px"}}><div style={{width:"3px",height:"14px",background:gold,borderRadius:"2px"}}/><div style={{fontSize:"11px",fontWeight:"700",color:navy,textTransform:"uppercase",letterSpacing:".5px"}}>Planta Hidráulica</div></div>
           <div style={{fontSize:"8px",color:"#999",fontStyle:"italic",marginBottom:"10px",marginLeft:"9px"}}>* Planta meramente ilustrativa, podendo sofrer alterações na execução.</div>
           {d.isoView
-            ?<IsometricView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} dark={false} t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc"}} poolFmt={d.poolFmt||"Retangular"} clientName={d.client?.name||""} autoPositions={autoPositions} customPos={d.customPos||{}} invertSide={d.invertSide||false}/>
-            :<PlantaView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} customPos={d.customPos||{}} setCustomPos={()=>{}} dragging={null} setDragging={()=>{}} dark={false} poolFmt={d.poolFmt||"Retangular"} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc",stampBg:"#e2e8f0"}} invertSide={d.invertSide||false} wMode={d.wMode||"regular"} walls={d.walls||[]} spaType={d.spaType||{redondo:false,quadrado:true}}/>}
+            ?<IsometricView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} dark={false} t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc"}} poolFmt={d.poolFmt||"Retangular"} clientName={d.client?.name||""} autoPositions={autoPositions} customPos={d.customPos||{}} invertSide={d.invertSide||false} devHeights={d.devHeights||{}} spaType={d.spaType||{redondo:false,quadrado:true}} extras={d.extras||[]}/>
+            :<PlantaView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} customPos={d.customPos||{}} setCustomPos={()=>{}} dragging={null} setDragging={()=>{}} dark={false} poolFmt={d.poolFmt||"Retangular"} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc",stampBg:"#e2e8f0"}} invertSide={d.invertSide||false} wMode={d.wMode||"regular"} walls={d.walls||[]} spaType={d.spaType||{redondo:false,quadrado:true}} extras={d.extras||[]}/>}
         </div>}
         <div data-pdf-section="footer" style={{background:navy,padding:"12px 28px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap"}}><div><div style={{fontSize:"8.5px",fontWeight:"700",color:gold}}>Válido por 15 dias</div><div style={{fontSize:"7px",color:"rgba(255,255,255,.5)"}}>{CO.name}</div></div><div style={{textAlign:"right",fontSize:"7.5px",color:"rgba(255,255,255,.6)"}}><div>{CO.ph1} / {CO.ph2}</div><div>{CO.email} | {CO.insta}</div></div></div>
       </div>
@@ -3079,10 +3136,10 @@ export default function App(){
             <span style={{fontSize:"8px",color:t.textMuted}}>(vazio = padrão {((parseFloat(pool?.depth)||1.4)*0.55).toFixed(2)}m)</span>
           </div>}
           {show3D
-            ?<Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights} stamp={stamp}/></Suspense>
+            ?<Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights} stamp={stamp} spaType={spaType} extras={extras}/></Suspense>
             :isoView
-              ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide} devHeights={devHeights} stamp={stamp}/>
-              :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} stamp={stamp} spaType={spaType}/>}
+              ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide} devHeights={devHeights} stamp={stamp} spaType={spaType} extras={extras}/>
+              :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} stamp={stamp} spaType={spaType} extras={extras}/>}
         </Card>}
 
         {/* CONTRATOS */}

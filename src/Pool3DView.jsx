@@ -2,6 +2,7 @@ import React, { Suspense, useRef, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Line, GizmoHelper, GizmoViewcube, useTexture } from '@react-three/drei';
 import * as THREE from 'three';
+import { getEstampaByNome, swatchSizeMeters } from './data/estampas';
 
 const SWATCH_SLUG={"Marmo Carrara Azul":"marmo-carrara-azul","Marmo Carrara Verde":"marmo-carrara-verde","Marmo Carrara Cinza":"marmo-carrara-cinza","Travertino":"travertino","Travertino Gris":"travertino-gris","Travertino Verde":"travertino-verde","Travertino Azul":"travertino-azul","Bali Hijau":"bali-hijau","Bali Blue":"bali-blue","Santorini":"santorini","Malibu Azul":"malibu-azul","Malibu Verde":"malibu-verde","Punta Cana":"punta-cana","Porto Vecchio Azul":"porto-vecchio-azul","Porto Vecchio Verde":"porto-vecchio-verde","Batu Blue":"batu-blue","Batu Vert":"batu-vert","Sukabumi Azul":"sukabumi-azul","Sukabumi Verde":"sukabumi-verde","Petra Natural Azul":"petra-natural-azul","Petra Natural Verde":"petra-natural-verde","Montblanc":"montblanc","Montblanc Block":"montblanc-block","Mid Blue Liso":"mid-blue-liso","Aquática Azul":"aquatica-azul"};
 const STAMP_COLOR={"Marmo Carrara Azul":"#a8cce8","Marmo Carrara Verde":"#a8d4c0","Marmo Carrara Cinza":"#b0bcc8","Travertino":"#c8b89a","Travertino Gris":"#b0a898","Travertino Verde":"#98b4a0","Travertino Azul":"#8ab0c8","Bali Hijau":"#5aaa88","Bali Blue":"#5090c0","Santorini":"#6aaccc","Malibu Azul":"#4a98d8","Malibu Verde":"#4aac7a","Porto Vecchio Azul":"#3d8fc0","Porto Vecchio Verde":"#3da878","Batu Blue":"#4a90c0","Batu Vert":"#4aa880","Sukabumi Azul":"#3aa8d0","Sukabumi Verde":"#3ab080","Petra Natural Azul":"#6aa8c0","Petra Natural Verde":"#6ab090","Montblanc":"#7ab8e0","Montblanc Block":"#5aa0c8","Mid Blue Liso":"#3a96d0","Aquática Azul":"#3aacdc","Punta Cana":"#50c0b0"};
@@ -246,26 +247,29 @@ function PoolWalls({ L, W, D, poolFmt }) {
 }
 
 // ── Vinyl interior (stamp texture on floor + walls) ──────────────────────────
-function VinylInterior({ L, W, D, texUrl, poolFmt }) {
+function VinylInterior({ L, W, D, texUrl, poolFmt, swatchM }) {
+  // swatchM = tamanho real em metros que uma cópia do swatch representa.
+  // repeat = dimensão da parede / swatchM  → escala 1:1 real.
+  const sm = swatchM > 0 ? swatchM : 0.5;
   const base = useTexture(texUrl);
   const texFloor = useMemo(() => {
     const t = base.clone(); t.needsUpdate = true;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(Math.max(1, Math.round(L)), Math.max(1, Math.round(W)));
+    t.repeat.set(L / sm, W / sm);
     return t;
-  }, [base, L, W]);
+  }, [base, L, W, sm]);
   const texHwall = useMemo(() => {
     const t = base.clone(); t.needsUpdate = true;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(Math.max(1, Math.round(L)), Math.max(1, Math.round(D * 2)));
+    t.repeat.set(L / sm, D / sm);
     return t;
-  }, [base, L, D]);
+  }, [base, L, D, sm]);
   const texVwall = useMemo(() => {
     const t = base.clone(); t.needsUpdate = true;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(Math.max(1, Math.round(W)), Math.max(1, Math.round(D * 2)));
+    t.repeat.set(W / sm, D / sm);
     return t;
-  }, [base, W, D]);
+  }, [base, W, D, sm]);
   const isOval = poolFmt === 'Oval' || poolFmt === 'Feijão';
   if (isOval) return (
     <group>
@@ -373,7 +377,7 @@ function Ground({ L, W }) {
 }
 
 // ── Main scene ───────────────────────────────────────────────────────────────
-function Scene({ pool, disps, customPos, poolFmt, autoPositions, invertSide, devHeights, stamp="" }) {
+function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide, devHeights, stamp="", spaType={}, extras=[] }) {
   const L = parseFloat(pool?.length) || 6;
   const W = parseFloat(pool?.width)  || 3;
   const D = parseFloat(pool?.depth)  || 1.4;
@@ -398,8 +402,61 @@ function Scene({ pool, disps, customPos, poolFmt, autoPositions, invertSide, dev
 
       <Ground L={L} W={W} />
       <PoolWalls L={L} W={W} D={D} poolFmt={poolFmt} />
-      {SWATCH_SLUG[stamp] && <VinylInterior L={L} W={W} D={D} texUrl={`/swatches/${SWATCH_SLUG[stamp]}.png`} poolFmt={poolFmt} />}
+      {SWATCH_SLUG[stamp] && <VinylInterior L={L} W={W} D={D} texUrl={`/swatches/${SWATCH_SLUG[stamp]}.png`} poolFmt={poolFmt} swatchM={swatchSizeMeters(getEstampaByNome(stamp))} />}
       <Water L={L} W={W} D={D} poolFmt={poolFmt} color={STAMP_COLOR[stamp]||"#38bdf8"} />
+
+      {/* Prainha — plataforma rasa */}
+      {poolFmt==="Com prainha"&&<mesh position={[-L/2+L*0.125, D*0.2, 0]}>
+        <boxGeometry args={[L*0.25, D*0.4, W-0.1]} />
+        <meshStandardMaterial color="#7dd3fc" roughness={0.8} transparent opacity={0.6} />
+      </mesh>}
+
+      {/* Spa do formato "Com Spa" */}
+      {poolFmt==="Com Spa"&&spaType.quadrado&&(()=>{
+        const sc=parseFloat(spaType.qComp)||2,sl=parseFloat(spaType.qLarg)||2,sp=parseFloat(spaType.qProf)||D;
+        const c=spaType.qCanto||"bottom-right";
+        const sx=(c.includes("left")?(-L/2+sc/2):(L/2-sc/2));
+        const sz=(c.includes("top")?(-W/2-sl/2):(W/2+sl/2));
+        return<group>
+          <mesh position={[sx,sp/2,sz]}><boxGeometry args={[sc,sp,sl]}/><meshStandardMaterial color="#7dd3fc" roughness={0.8} transparent opacity={0.35} side={2}/></mesh>
+          <mesh position={[sx,-0.07,sz]}><boxGeometry args={[sc,0.14,sl]}/><meshStandardMaterial color="#64748b" roughness={0.95}/></mesh>
+        </group>
+      })()}
+      {poolFmt==="Com Spa"&&spaType.redondo&&(()=>{
+        const isRSq=spaType.rFormato==="quadrado";
+        const rc=isRSq?(parseFloat(spaType.rComp)||2):(parseFloat(spaType.rDiam)||2);
+        const rl=isRSq?(parseFloat(spaType.rLarg)||2):rc;
+        const rp=parseFloat(spaType.rProf)||D;
+        const c=spaType.rCanto||"bottom-right";
+        const sx=(c.includes("left")?(-L/2):(L/2));
+        const sz=(c.includes("top")?(-W/2):(W/2));
+        if(isRSq)return<group>
+          <mesh position={[sx,rp/2,sz]}><boxGeometry args={[rc,rp,rl]}/><meshStandardMaterial color="#7dd3fc" roughness={0.8} transparent opacity={0.35} side={2}/></mesh>
+          <mesh position={[sx,-0.07,sz]}><boxGeometry args={[rc,0.14,rl]}/><meshStandardMaterial color="#64748b" roughness={0.95}/></mesh>
+        </group>;
+        return<group>
+          <mesh position={[sx,rp/2,sz]}><cylinderGeometry args={[rc/2,rc/2,rp,24]}/><meshStandardMaterial color="#7dd3fc" roughness={0.8} transparent opacity={0.35} side={2}/></mesh>
+          <mesh position={[sx,-0.07,sz]}><cylinderGeometry args={[rc/2,rc/2,0.14,24]}/><meshStandardMaterial color="#64748b" roughness={0.95}/></mesh>
+        </group>
+      })()}
+
+      {/* Extras (prainha, banco, degrau) */}
+      {extras.map((e,i)=>{
+        const pf=v=>parseFloat(String(v||"").replace(",","."))||0;
+        const el=pf(e.l),ew=pf(e.w),eh=pf(e.h);
+        if(el<=0||ew<=0)return null;
+        const desc=(e.desc||"").toLowerCase();
+        const isPrainha=desc.includes("prainha"),isBank=desc.includes("banco");
+        const eH=eh>0?eh:D*0.4;
+        const ex=isPrainha?(-L/2+el/2):isBank?(-L/2+el/2):(L/2-el/2);
+        const ez=isPrainha?0:isBank?(W/2-ew/2):(-W/2+ew/2);
+        const color=isPrainha?"#7dd3fc":isBank?"#a5b4fc":"#c4b5fd";
+        return<mesh key={`ext3d${i}`} position={[ex,eH/2,ez]}>
+          <boxGeometry args={[el,eH,ew]}/>
+          <meshStandardMaterial color={color} roughness={0.8} transparent opacity={0.55}/>
+        </mesh>
+      })}
+
       <MachineRoom pos={cmPos3} cmWw={cmWw} cmWd={cmWd} />
 
       {devices.map(d => (
@@ -441,7 +498,7 @@ function Legend({ disps }) {
 }
 
 // ── Export ───────────────────────────────────────────────────────────────────
-export default function Pool3DView({ pool, disps, customPos, poolFmt, autoPositions, invertSide, dark, devHeights, stamp="" }) {
+export default function Pool3DView({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide, dark, devHeights, stamp="", spaType={}, extras=[] }) {
   const L  = parseFloat(pool?.length) || 6;
   const D  = parseFloat(pool?.depth)  || 1.4;
   const bg = dark ? '#0f172a' : '#bfdbfe';
@@ -453,6 +510,7 @@ export default function Pool3DView({ pool, disps, customPos, poolFmt, autoPositi
         <Suspense fallback={null}>
           <Scene
             pool={pool}
+            spa={spa}
             disps={disps}
             customPos={customPos}
             poolFmt={poolFmt}
@@ -460,6 +518,8 @@ export default function Pool3DView({ pool, disps, customPos, poolFmt, autoPositi
             invertSide={invertSide}
             devHeights={devHeights}
             stamp={stamp}
+            spaType={spaType}
+            extras={extras}
           />
         </Suspense>
       </Canvas>
