@@ -1824,7 +1824,7 @@ export default function App(){
   const addM=()=>setItems(p=>[...p,{id:Date.now(),n:"Novo item",q:1,c:0,m:gM,nt:"",on:true,un:"un"}]);
   const apM=()=>{setItems(p=>p.map(i=>({...i,m:gM})));setFbMsg("Margem aplicada!");setTimeout(()=>setFbMsg(""),1500)};
 
-  const gData=()=>({client,pool,items,guar,ci,pay,totOv:String(total),vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,disps,customPos,isoView,invertSide,devHeights});
+  const gData=()=>({client,pool,items,guar,ci,pay,totOv:totOv,vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,disps,customPos,isoView,invertSide,devHeights});
   const save=()=>{
     const errs={};
     if(!client.name||client.name.trim()==="")errs.clientName="Nome obrigatório";
