@@ -117,8 +117,8 @@ const SWATCH_SLUG={"Marmo Carrara Azul":"marmo-carrara-azul","Marmo Carrara Verd
 const SWATCH_SOON=new Set(["Travertino Verde","Travertino Azul"]);
 const STAMP_COLOR={"Marmo Carrara Azul":"#a8cce8","Marmo Carrara Verde":"#a8d4c0","Marmo Carrara Cinza":"#b0bcc8","Travertino":"#c8b89a","Travertino Gris":"#b0a898","Travertino Verde":"#98b4a0","Travertino Azul":"#8ab0c8","Bali Hijau":"#5aaa88","Bali Blue":"#5090c0","Santorini":"#6aaccc","Malibu Azul":"#4a98d8","Malibu Verde":"#4aac7a","Porto Vecchio Azul":"#3d8fc0","Porto Vecchio Verde":"#3da878","Batu Blue":"#4a90c0","Batu Vert":"#4aa880","Sukabumi Azul":"#3aa8d0","Sukabumi Verde":"#3ab080","Petra Natural Azul":"#6aa8c0","Petra Natural Verde":"#6ab090","Montblanc":"#7ab8e0","Montblanc Block":"#5aa0c8","Mid Blue Liso":"#3a96d0","Aquática Azul":"#3aacdc","Punta Cana":"#50c0b0"};
 const CAT=[
-  {id:"m06",c:"Mantas",n:"Manta Acrílica 0,6mm",s:"R$4,65/m² (só chão)",p:4.65,un:"chao"},{id:"m04",c:"Mantas",n:"Manta Acrílica 0,4mm",s:"R$3,50/m² (só chão)",p:3.50,un:"chao"},{id:"eva",c:"Mantas",n:"Bobina EVA 0,30mm",s:"R$11,88/m² (só chão)",p:11.88,un:"chao"},
-  {id:"pR",c:"Perfis",n:"Perfil Rígido",s:"R$379/60m = R$6,32/m",p:6.32,un:"ml"},{id:"pF",c:"Perfis",n:"Perfil Flangeamento",s:"R$119/3m = R$39,67/m",p:39.67,un:"ml"},
+  {id:"m06",c:"Mantas",n:"Manta Acrílica 0,6mm",s:"R$20,00/m² (só chão)",p:20,un:"chao"},{id:"m04",c:"Mantas",n:"Manta Acrílica 0,4mm",s:"R$3,50/m² (só chão)",p:3.50,un:"chao"},{id:"eva",c:"Mantas",n:"Bobina EVA 0,30mm",s:"R$11,88/m² (só chão)",p:11.88,un:"chao"},
+  {id:"pR",c:"Perfis",n:"Perfil Rígido",s:"R$20,00/ml",p:20,un:"ml"},{id:"pF",c:"Perfis",n:"Perfil Flangeamento",s:"R$119/3m = R$39,67/m",p:39.67,un:"ml"},
   {id:"ip20",c:"Filtros",n:"Filtro Império IP20",s:"1/3CV,28m³",p:890,un:"un"},{id:"ip30",c:"Filtros",n:"Filtro Império IP30",s:"1/3CV,28m³",p:920,un:"un"},{id:"ip40",c:"Filtros",n:"Filtro Império IP40",s:"1/2CV,44m³",p:990,un:"un"},{id:"ip50",c:"Filtros",n:"Filtro Império IP50",s:"3/4CV,68m³",p:1307,un:"un"},{id:"ip60",c:"Filtros",n:"Filtro Império IP60",s:"1.0CV,104m³",p:1586,un:"un"},
   {id:"f35",c:"Filtros",n:"Filtro Nautilus F350P",s:"1/3CV,29m³",p:1298.47,un:"un"},{id:"f45",c:"Filtros",n:"Filtro Nautilus F450P",s:"1/2CV,52m³",p:1388.07,un:"un"},{id:"f55",c:"Filtros",n:"Filtro Nautilus F550P",s:"3/4CV,76m³",p:1689.99,un:"un"},{id:"f65",c:"Filtros",n:"Filtro Nautilus F650P",s:"1.0CV,100m³",p:1990.41,un:"un"},{id:"v70",c:"Filtros",n:"Filtro Veico V70",s:"1.25CV,112m³",p:2298,un:"un"},
   {id:"asp",c:"Dispositivos",n:"Disp. Aspiração 2pol",s:"50/60mm",p:22.90,un:"un"},{id:"niv",c:"Dispositivos",n:"Disp. Nível 2pol",s:"50/60mm",p:22.90,un:"un"},{id:"ret",c:"Dispositivos",n:"Disp. Retorno 2pol",s:"6m³/h",p:22.90,un:"un"},{id:"hid",c:"Dispositivos",n:"Disp. Hidro 2pol",s:"3m³/h",p:39.90,un:"un"},
@@ -602,15 +602,15 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
 const mkItems=(tipo)=>{
   if(tipo==="revestimento")return[
     {id:1,n:"Vinil ACQUALINER",q:1,c:0,m:0,nt:"Resistência até 32°C · Estampa à escolha",on:true,un:"m²"},
-    {id:2,n:"Manta Acrílica 0,6mm",q:1,c:4.65,m:0,nt:"só chão",on:true,un:"chao"},
-    {id:3,n:"Perfil Rígido",q:1,c:6.32,m:0,nt:"",on:true,un:"ml"},
+    {id:2,n:"Manta Acrílica 0,6mm",q:1,c:20,m:0,nt:"só chão",on:true,un:"chao"},
+    {id:3,n:"Perfil Rígido",q:1,c:20,m:0,nt:"",on:true,un:"ml"},
     {id:15,n:"Kit Flangeamento",q:1,c:39.67,m:0,nt:"Perfil p/ dispositivos",on:true,un:"un"},
     {id:14,n:"Mão de obra completa",q:1,c:0,m:0,nt:"Revestimento vinílico",on:true,un:"un"},
   ];
   if(tipo==="reforma")return[
     {id:1,n:"Vinil ACQUALINER",q:1,c:0,m:0,nt:"Resistência até 32°C · Estampa à escolha",on:true,un:"m²"},
-    {id:2,n:"Manta Acrílica 0,6mm",q:1,c:4.65,m:0,nt:"só chão",on:true,un:"chao"},
-    {id:3,n:"Perfil Rígido",q:1,c:6.32,m:0,nt:"",on:true,un:"ml"},
+    {id:2,n:"Manta Acrílica 0,6mm",q:1,c:20,m:0,nt:"só chão",on:true,un:"chao"},
+    {id:3,n:"Perfil Rígido",q:1,c:20,m:0,nt:"",on:true,un:"ml"},
     {id:15,n:"Kit Flangeamento",q:1,c:39.67,m:0,nt:"Perfil p/ dispositivos",on:true,un:"un"},
     {id:4,n:"Filtro Império IP60",q:1,c:1586,m:0,nt:"1.0CV",on:true,un:"un"},
     {id:5,n:"Dreno Fundo",q:2,c:74.90,m:0,nt:"Sibrape",on:true,un:"un"},
@@ -621,8 +621,8 @@ const mkItems=(tipo)=>{
   // construcao (default)
   return[
     {id:1,n:"Vinil ACQUALINER",q:1,c:0,m:0,nt:"Resistência até 32°C · Estampa à escolha",on:true,un:"m²"},
-    {id:2,n:"Manta Acrílica 0,6mm",q:1,c:4.65,m:0,nt:"só chão",on:true,un:"chao"},
-    {id:3,n:"Perfil Rígido",q:1,c:6.32,m:0,nt:"",on:true,un:"ml"},
+    {id:2,n:"Manta Acrílica 0,6mm",q:1,c:20,m:0,nt:"só chão",on:true,un:"chao"},
+    {id:3,n:"Perfil Rígido",q:1,c:20,m:0,nt:"",on:true,un:"ml"},
     {id:15,n:"Kit Flangeamento",q:1,c:39.67,m:0,nt:"Perfil p/ dispositivos",on:true,un:"un"},
     {id:4,n:"Filtro Império IP60",q:1,c:1586,m:0,nt:"1.0CV",on:true,un:"un"},
     {id:5,n:"Dreno Fundo",q:2,c:74.90,m:0,nt:"Sibrape",on:true,un:"un"},
@@ -1809,6 +1809,7 @@ export default function App(){
 
   const effQ=(i)=>{
     if(i.un==="m²")return parseFloat(ar.tot)||0; // area total m²
+    if(i.un==="chao")return parseFloat(ar.chaoTot)||0; // area chao
     if(i.un==="ml")return parseFloat(ar.perim)||0; // perimetro linear
     return i.q||0; // unidade
   };
