@@ -109,7 +109,7 @@ const PIPE=[
 ];
 const CO={name:"Vinil Vale Revestimentos e Capas para Piscinas Ltda",short:"Vinil Vale",addr:"Rodovia SP 139, KM 3, s/n, Jardim Hatori II, Registro-SP",cnpj:"42.749.688/0001-57",ie:"574.128.060.119",ph1:"(13) 99730-5949",ph2:"(13) 99678-1966",email:"vinilvale@hotmail.com",insta:"@vinilvaleoficial"};
 const SVC=[{id:"construcao",label:"Construção de Piscina",icon:"🏗️"},{id:"revestimento",label:"Revestimento em Vinil",icon:"🎨"},{id:"reforma",label:"Reforma de Piscina",icon:"🔧"}];
-const PFMT=["Retangular","Retangular irregular","Formato L","Oval","Feijão","Com prainha","Com Spa","Personalizado"];
+const PFMT=["Retangular","Retangular irregular","Formato L","Oval","Feijão","Oitavada","Com prainha","Com Spa","Personalizado"];
 const VOPTS=[{t:"0,7mm",w:3},{t:"0,8mm",w:4}];
 const STAMPS=[{c:"Marmo Carrara",i:["Marmo Carrara Azul","Marmo Carrara Verde","Marmo Carrara Cinza"]},{c:"Travertino",i:["Travertino","Travertino Gris","Travertino Verde","Travertino Azul"]},{c:"Bali",i:["Bali Hijau","Bali Blue"]},{c:"Malibu",i:["Malibu Azul","Malibu Verde"]},{c:"Porto Vecchio",i:["Porto Vecchio Azul","Porto Vecchio Verde"]},{c:"Batu",i:["Batu Blue","Batu Vert"]},{c:"Sukabumi",i:["Sukabumi Azul","Sukabumi Verde"]},{c:"Petra Natural",i:["Petra Natural Azul","Petra Natural Verde"]},{c:"Montblanc",i:["Montblanc","Montblanc Block"]},{c:"Liso",i:["Mid Blue Liso"]},{c:"Aquática",i:["Aquática Azul"]},{c:"Santorini",i:["Santorini"]},{c:"Punta Cana",i:["Punta Cana"]}];
 const ALLST=STAMPS.flatMap(s=>s.i);
@@ -175,11 +175,12 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
   return <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
     <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>Planta Baixa</div>
     <svg width={svgW} height={svgH} style={{background:dark?"#0f172a":"#f8fafc",borderRadius:"6px",border:"1px solid "+(dark?"#334155":"#e2e8f0"),cursor:dragging?"grabbing":"default",touchAction:"none"}} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onTouchMove={e=>{onMove({currentTarget:e.currentTarget,clientX:e.touches[0].clientX,clientY:e.touches[0].clientY})}} onTouchEnd={onUp}>
-      <defs><pattern id="grd" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke={dark?"#1e293b":"#e2e8f0"} strokeWidth="0.3"/></pattern>{stamp&&SWATCH_SLUG[stamp]&&<clipPath id="poolClip2d">{poolFmt==="Oval"||poolFmt==="Feijão"?<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2}/>:poolFmt==="Formato L"?<polygon points={`${ox},${oy} ${ox+pw},${oy} ${ox+pw},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph} ${ox},${oy+ph}`}/>:<rect x={ox} y={oy} width={pw} height={ph}/>}</clipPath>}</defs>
+      <defs><pattern id="grd" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke={dark?"#1e293b":"#e2e8f0"} strokeWidth="0.3"/></pattern>{stamp&&SWATCH_SLUG[stamp]&&<clipPath id="poolClip2d">{poolFmt==="Oval"||poolFmt==="Feijão"?<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2}/>:poolFmt==="Formato L"?<polygon points={`${ox},${oy} ${ox+pw},${oy} ${ox+pw},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph} ${ox},${oy+ph}`}/>:poolFmt==="Oitavada"?(()=>{const c=(parseFloat(pool.chanfro)||1)/L*pw;const cY=(parseFloat(pool.chanfro)||1)/W*ph;return<polygon points={`${ox+c},${oy} ${ox+pw-c},${oy} ${ox+pw},${oy+cY} ${ox+pw},${oy+ph-cY} ${ox+pw-c},${oy+ph} ${ox+c},${oy+ph} ${ox},${oy+ph-cY} ${ox},${oy+cY}`}/>})():<rect x={ox} y={oy} width={pw} height={ph}/>}</clipPath>}</defs>
       <rect width={svgW} height={svgH} fill="url(#grd)"/>
       {(()=>{const fill=dark?"#1e3a5f":"#dbeafe";const stroke="#2563eb";
         if(poolFmt==="Formato L")return<polygon points={`${ox},${oy} ${ox+pw},${oy} ${ox+pw},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph} ${ox},${oy+ph}`} fill={fill} stroke={stroke} strokeWidth="2"/>;
         if(poolFmt==="Oval"||poolFmt==="Feijão")return<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2} fill={fill} stroke={stroke} strokeWidth="2"/>;
+        if(poolFmt==="Oitavada"){const c=(parseFloat(pool.chanfro)||1)/L*pw;const cY=(parseFloat(pool.chanfro)||1)/W*ph;return<polygon points={`${ox+c},${oy} ${ox+pw-c},${oy} ${ox+pw},${oy+cY} ${ox+pw},${oy+ph-cY} ${ox+pw-c},${oy+ph} ${ox+c},${oy+ph} ${ox},${oy+ph-cY} ${ox},${oy+cY}`} fill={fill} stroke={stroke} strokeWidth="2"/>}
         if(poolFmt==="Com Spa"){const hasQ=spaType.quadrado,hasR=spaType.redondo;const spaFill=dark?"#1e3a5f":"#93c5fd";const spaStroke="#3b82f6";
           const sqW2=(parseFloat(spaType.qComp)||2)*scale,sqH2=(parseFloat(spaType.qLarg)||2)*scale;
           const rRad=((parseFloat(spaType.rDiam)||2)/2)*scale;
@@ -332,8 +333,29 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   const wZ=D*0.91;
   const isOval=poolFmt==="Oval"||poolFmt==="Feijão";
   const isLFmt=poolFmt==="Formato L";
+  const isOitavada=poolFmt==="Oitavada";
   const N=24;
-  if(isOval){
+  if(isOitavada){
+    const ch=parseFloat(pool.chanfro)||1;
+    // 8 vértices do octógono (sentido horário visto de cima)
+    const v=[[ch,0],[L-ch,0],[L,ch],[L,W-ch],[L-ch,W],[ch,W],[0,W-ch],[0,ch]];
+    // Chão
+    const flPts=v.map(([x,y])=>pt(x,y,0)).join(' ');
+    els.push(<polygon key="fl" points={flPts} fill={floorFill} opacity="0.7"/>);
+    if(swSlug){const p00=iso(0,0,0),pL0=iso(L,0,0),p0W=iso(0,W,0);els.push(<defs key="defsOit"><clipPath id="isoFlClip"><polygon points={flPts}/></clipPath></defs>);els.push(isoImg("flImg",p00,pL0,p0W,"isoFlClip","0.85"));}
+    // Paredes traseiras (índices 5,6,7 — faces de trás)
+    for(let i=4;i<8;i++){const j=(i+1)%8;const[x1,y1]=v[i],[x2,y2]=v[j];els.push(<polygon key={`wl${i}`} points={pts([[x1,y1,0],[x2,y2,0],[x2,y2,D],[x1,y1,D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);}
+    // Água
+    const wtPts=v.map(([x,y])=>pt(x,y,wZ)).join(' ');
+    els.push(<polygon key="wtr" points={wtPts} fill={dk?"#1d4ed8":"#3b82f6"} opacity="0.22"/>);
+    [0.25,0.5,0.75].forEach((f,i)=>els.push(<line key={`sh${i}`} x1={iso(L*0.1,W*f,wZ).x} y1={iso(L*0.1,W*f,wZ).y} x2={iso(L*0.9,W*f,wZ).x} y2={iso(L*0.9,W*f,wZ).y} stroke="#93c5fd" strokeWidth="0.5" opacity="0.45" strokeDasharray="5,4"/>));
+    // Paredes da frente (índices 0,1,2,3)
+    for(let i=0;i<4;i++){const j=(i+1)%8;const[x1,y1]=v[i],[x2,y2]=v[j];els.push(<polygon key={`wf${i}`} points={pts([[x1,y1,0],[x2,y2,0],[x2,y2,D],[x1,y1,D]])} fill={dk?"#1e4080":"#93c5fd"} stroke="#2563eb" strokeWidth="1"/>);}
+    // Borda
+    const rimPts=v.map(([x,y])=>pt(x,y,D)).join(' ');
+    els.push(<polygon key="rim" points={rimPts} fill="none" stroke="#2563eb" strokeWidth="2.5"/>);
+    v.forEach(([x,y],i)=>{const a2=iso(x,y,0),b2=iso(x,y,D);els.push(<line key={`cv${i}`} x1={a2.x} y1={a2.y} x2={b2.x} y2={b2.y} stroke="#2563eb" strokeWidth="1" opacity="0.35"/>);});
+  } else if(isOval){
     // Elipse: chão, paredes, água e borda como fatias triangulares
     for(let i=0;i<N;i++){const a1=i/N*2*Math.PI,a2=(i+1)/N*2*Math.PI;const x1=L/2+L/2*Math.cos(a1),y1=W/2+W/2*Math.sin(a1),x2=L/2+L/2*Math.cos(a2),y2=W/2+W/2*Math.sin(a2);
       els.push(<polygon key={`fl${i}`} points={pts([[L/2,W/2,0],[x1,y1,0],[x2,y2,0]])} fill={floorFill} opacity="0.7"/>);
@@ -655,18 +677,24 @@ const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType)=>{
   const D=(dMin>0&&dMax>0)?(dMin+dMax)/2:parseFloat(pool.depth)||0;
   const realDMin=(dMin>0)?dMin:D,realDMax=(dMax>0)?dMax:D;
   const isOval=poolFmt==="Oval";
+  const isOitavada=poolFmt==="Oitavada";
   const a=L/2,b=W/2;
+  const ch=isOitavada?(parseFloat(pool.chanfro)||1):0;
   // Se raso+fundo preenchidos e diferentes, usa comprimento inclinado real da rampa (√(L² + (dMax−dMin)²))
   const sloped=dMin>0&&dMax>0&&dMin!==dMax;
   const Linc=sloped?Math.sqrt(L*L+(dMax-dMin)*(dMax-dMin)):L;
-  let chao=isOval?(Math.PI*a*b):Linc*W;
+  // Oitavada: retângulo - 4 triângulos dos cantos + 4 chanfros diagonais
+  const chanfroDiag=Math.sqrt(ch*ch+ch*ch); // diagonal do chanfro (hipotenusa)
+  const oitChao=isOitavada?(Linc*W-4*(ch*ch/2)):0; // retângulo - 4 triângulos
+  const oitPerim=isOitavada?(2*(L-2*ch)+2*(W-2*ch)+4*chanfroDiag):0;
+  let chao=isOval?(Math.PI*a*b):isOitavada?oitChao:Linc*W;
   const ovalPerim=isOval?(Math.PI*(3*(a+b)-Math.sqrt((3*a+b)*(a+3*b)))):0;
   let par=wMode==="irregular"&&walls.length>0
     ?walls.reduce((s,w)=>s+(parseFloat(w.l)||0)*(parseFloat(w.h)||D),0)
-    :(isOval?(ovalPerim*D):(L*realDMin+L*realDMax+2*W*D));
+    :(isOval?(ovalPerim*D):isOitavada?(oitPerim*D):(L*realDMin+L*realDMax+2*W*D));
   let perim=wMode==="irregular"&&walls.length>0
     ?walls.reduce((s,w)=>s+(parseFloat(w.l)||0),0)
-    :(isOval?ovalPerim:(2*L+2*W));
+    :(isOval?ovalPerim:isOitavada?oitPerim:(2*L+2*W));
   // Extras (prainha, degrau, banco — cada peça: topo=L×W, face=L×H)
   const pf=v=>parseFloat(String(v||"").replace(",","."))||0;
   let extraChao=0,extraPar=0;
@@ -695,7 +723,7 @@ const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType)=>{
   const srPar=st.redondo?(isRndSq?(2*srC2*srP+2*srL2*srP):Math.PI*(srR*2)*srP):0;
   const fmtSpaChao=sqChao+srChao,fmtSpaPar=sqPar+srPar;
   const srVol=st.redondo?(isRndSq?srC2*srL2*srP:Math.PI*srR*srR*srP):0;
-  const vol=(isOval?(Math.PI*a*b):L*W)*D+(spa.on?sL*sW*sD:0)+(st.quadrado?sqC*sqL*sqP:0)+srVol;
+  const vol=(isOval?(Math.PI*a*b):isOitavada?(L*W-4*(ch*ch/2)):L*W)*D+(spa.on?sL*sW*sD:0)+(st.quadrado?sqC*sqL*sqP:0)+srVol;
   const depthInfo={avg:D,min:realDMin,max:realDMax,sloped:dMin>0&&dMax>0&&dMin!==dMax};
   return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:(sChao+fmtSpaChao).toFixed(1),sPar:(sPar+fmtSpaPar).toFixed(1),tot:(chao+par+sChao+sPar+fmtSpaChao+fmtSpaPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao+fmtSpaChao).toFixed(1),depthInfo,extraChao:extraChao.toFixed(1),extraPar:extraPar.toFixed(1),sqChao:sqChao.toFixed(1),sqPar:sqPar.toFixed(1),srChao:srChao.toFixed(1),srPar:srPar.toFixed(1)};
 };
@@ -1038,7 +1066,7 @@ export default function App(){
   const [gM,setGM]=useState(0);
   const [client,setCl]=useState({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});
   const uc=f=>v=>setCl(p=>({...p,[f]:v}));
-  const [pool,setPool]=useState({length:"10.00",width:"4.00",depth:"1.40",depthMin:"",depthMax:""});
+  const [pool,setPool]=useState({length:"10.00",width:"4.00",depth:"1.40",depthMin:"",depthMax:"",chanfro:"1.00"});
   const [fieldErrors,setFieldErrors]=useState({});
   const up=f=>v=>{setPool(p=>({...p,[f]:v}));if(parseFloat(v)>0)setFieldErrors(e=>({...e,[f]:false}));};
 
@@ -2022,6 +2050,15 @@ export default function App(){
             ?<div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}>
                 <Inp label="Diâm. maior (m) *" value={pool.length} onChange={up("length")} t={t} error={fieldErrors.length}/>
                 <Inp label="Diâm. menor (m) *" value={pool.width} onChange={up("width")} t={t} error={fieldErrors.width}/>
+                <Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/>
+                <Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/>
+                <Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/>
+              </div>
+            :poolFmt==="Oitavada"
+            ?<div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}>
+                <Inp label="Comp. total (m) *" value={pool.length} onChange={up("length")} t={t} error={fieldErrors.length}/>
+                <Inp label="Larg. total (m) *" value={pool.width} onChange={up("width")} t={t} error={fieldErrors.width}/>
+                <Inp label="Chanfro (m) *" value={pool.chanfro||""} onChange={up("chanfro")} t={t}/>
                 <Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/>
                 <Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/>
                 <Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/>
