@@ -1272,6 +1272,8 @@ export default function App(){
   const [crmDetail,setCrmDetail]=useState(null);
   const [crmChatPhone,setCrmChatPhone]=useState(null);
   const [showManualOrc,setShowManualOrc]=useState(false);
+  const [histTab,setHistTab]=useState("construcao");
+  const [histSearch,setHistSearch]=useState("");
   const [manualForm,setManualForm]=useState({nome:"",cidade:"",tel:"",tipo:"vinil",ps:"",valor:"",data:new Date().toLocaleDateString("pt-BR"),status:"lead"});
   const [newNote,setNewNote]=useState("");
   const [crmView,setCrmView]=useState("pipeline");
@@ -2245,46 +2247,72 @@ export default function App(){
           </div>
         </Card>}
 
-        {/* HISTÓRICO - LEADS vs CLIENTES */}
-        {tab==="historico"&&<Card t={t}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}><ST icon="📋">Orçamentos</ST><div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}><Btn onClick={()=>setShowManualOrc(true)} style={{fontSize:"9px",padding:"4px 10px",background:"#7c3aed",color:"#fff",border:"none"}}>+ Registrar Manual</Btn>{hist.length>0&&<Btn onClick={exportCSV} style={{fontSize:"9px",padding:"4px 10px",background:"#16a34a",color:"#fff",border:"none"}}>📊 Exportar CSV</Btn>}<Btn onClick={exportarDados} style={{fontSize:"9px",padding:"4px 10px",background:"#0369a1",color:"#fff",border:"none"}}>⬇️ Backup</Btn><label style={{fontSize:"9px",padding:"4px 10px",background:"#b45309",color:"#fff",borderRadius:"6px",cursor:"pointer",fontWeight:"600"}}>⬆️ Restaurar<input type="file" accept=".json" onChange={importarDados} style={{display:"none"}}/></label></div></div>
-          {hist.length===0?<div style={{textAlign:"center",padding:"24px",color:t.textMuted}}><div style={{fontSize:"28px"}}>📭</div><div style={{fontSize:"11px"}}>Nenhum salvo.</div></div>:<>
-          {/* LEADS */}
-          <div style={{marginBottom:"16px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"8px"}}><span style={{fontSize:"16px"}}>📊</span><span style={{fontSize:"12px",fontWeight:"700",color:"#f59e0b"}}>Leads / Orçamentos ({hist.filter(q=>!["cliente","fechou","execucao","concluido"].includes(q.status)).length})</span></div>
-            {hist.filter(q=>!["cliente","fechou","execucao","concluido"].includes(q.status)).length===0?<div style={{fontSize:"10px",color:t.textMuted,padding:"8px",textAlign:"center"}}>Nenhum lead</div>:
-            <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>{hist.filter(q=>!["cliente","fechou","execucao","concluido"].includes(q.status)).map(q=>(
-              <div key={q.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:t.sectionBg,borderRadius:"7px",border:`1.5px solid ${t.cardBorder}`,borderLeft:"3px solid #f59e0b"}}>
-                <div onClick={()=>load(q)} style={{flex:1,cursor:"pointer"}}><div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{q.cN||"Sem nome"} {q.stamp?`· ${q.stamp}`:""}</div><div style={{fontSize:"8.5px",color:t.textMuted}}>{q.date} · {SVC.find(s=>s.id===q.type)?.label} · {q.ps}m · {q.cC}</div></div>
-                <div style={{display:"flex",alignItems:"center",gap:"5px"}}><div style={{fontSize:"13px",fontWeight:"800",color:blue}}>{fmt(parseFloat(q.tot)||0)}</div>
-                  <Btn onClick={()=>sendOrcWA(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#128c7e",color:"#fff",border:"none",display:"flex",alignItems:"center",gap:"3px"}}><FileTextIcon size={12} color="#fff"/>PDF</Btn>
+        {/* HISTÓRICO - POR TIPO + FECHADOS */}
+        {tab==="historico"&&<Card t={t}>{(()=>{
+          const isFechado=q=>["cliente","fechou","execucao","concluido"].includes(q.status);
+          const searchLower=histSearch.toLowerCase();
+          const matchSearch=q=>!histSearch||[q.cN,q.ps,q.cC,q.stamp].filter(Boolean).some(v=>v.toLowerCase().includes(searchLower));
+          const histTabs=[
+            {id:"construcao",icon:"🏗️",label:"Construção",color:"#0369a1"},
+            {id:"revestimento",icon:"🎨",label:"Revestimento",color:"#7c3aed"},
+            {id:"reforma",icon:"🔧",label:"Reforma",color:"#b45309"},
+            {id:"fechados",icon:"🤝",label:"Fechados",color:"#16a34a"},
+          ];
+          const getList=()=>{
+            if(histTab==="fechados") return hist.filter(q=>isFechado(q)&&matchSearch(q));
+            return hist.filter(q=>!isFechado(q)&&q.type===histTab&&matchSearch(q));
+          };
+          const filtered=getList();
+          const countFor=id=>{
+            if(id==="fechados") return hist.filter(isFechado).length;
+            return hist.filter(q=>!isFechado(q)&&q.type===id).length;
+          };
+          return <>
+          {/* HEADER */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px",flexWrap:"wrap",gap:"6px"}}>
+            <ST icon="📋">Orçamentos</ST>
+            <div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>
+              <Btn onClick={()=>setShowManualOrc(true)} style={{fontSize:"9px",padding:"4px 10px",background:"#7c3aed",color:"#fff",border:"none"}}>+ Registrar Manual</Btn>
+              {hist.length>0&&<Btn onClick={exportCSV} style={{fontSize:"9px",padding:"4px 10px",background:"#16a34a",color:"#fff",border:"none"}}>📊 Exportar CSV</Btn>}
+              <Btn onClick={exportarDados} style={{fontSize:"9px",padding:"4px 10px",background:"#0369a1",color:"#fff",border:"none"}}>⬇️ Backup</Btn>
+              <label style={{fontSize:"9px",padding:"4px 10px",background:"#b45309",color:"#fff",borderRadius:"6px",cursor:"pointer",fontWeight:"600"}}>⬆️ Restaurar<input type="file" accept=".json" onChange={importarDados} style={{display:"none"}}/></label>
+            </div>
+          </div>
+          {/* BUSCA */}
+          <input value={histSearch} onChange={e=>setHistSearch(e.target.value)} placeholder="🔍 Buscar por nome, dimensões (10x5), cidade, identificador..." style={{width:"100%",padding:"8px 12px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"8px",fontSize:"11px",background:t.inputBg,color:t.text,outline:"none",marginBottom:"10px",boxSizing:"border-box"}}/>
+          {/* SUB-ABAS */}
+          <div style={{display:"flex",gap:"4px",marginBottom:"12px",flexWrap:"wrap"}}>
+            {histTabs.map(ht=>{const cnt=countFor(ht.id);return <button key={ht.id} onClick={()=>setHistTab(ht.id)} style={{padding:"6px 12px",borderRadius:"8px",border:`1.5px solid ${histTab===ht.id?ht.color:"#e2e8f0"}`,background:histTab===ht.id?ht.color+"15":"transparent",color:histTab===ht.id?ht.color:t.textSec,fontSize:"10px",fontWeight:"700",cursor:"pointer",display:"flex",alignItems:"center",gap:"4px"}}>{ht.icon} {ht.label} <span style={{background:histTab===ht.id?ht.color+"22":t.cardBorder,padding:"1px 6px",borderRadius:"10px",fontSize:"9px",fontWeight:"800",color:histTab===ht.id?ht.color:t.textMuted}}>{cnt}</span></button>})}
+          </div>
+          {/* LISTA */}
+          {hist.length===0?<div style={{textAlign:"center",padding:"24px",color:t.textMuted}}><div style={{fontSize:"28px"}}>📭</div><div style={{fontSize:"11px"}}>Nenhum salvo.</div></div>:
+          filtered.length===0?<div style={{textAlign:"center",padding:"20px",color:t.textMuted}}><div style={{fontSize:"24px"}}>{histSearch?"🔍":"📭"}</div><div style={{fontSize:"11px",marginTop:"4px"}}>{histSearch?"Nenhum resultado para a busca":"Nenhum orçamento nesta categoria"}</div></div>:
+          <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+            {filtered.map(q=>{
+              const fechado=isFechado(q);
+              const borderColor=fechado?"#16a34a":histTabs.find(h=>h.id===q.type)?.color||"#f59e0b";
+              return <div key={q.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:t.sectionBg,borderRadius:"7px",border:`1.5px solid ${t.cardBorder}`,borderLeft:`3px solid ${borderColor}`}}>
+                <div onClick={()=>load(q)} style={{flex:1,cursor:"pointer",minWidth:0}}>
+                  <div style={{fontSize:"11px",fontWeight:"700",color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fechado?"🤝 ":""}{q.cN||"Sem nome"} {q.stamp?`· ${q.stamp}`:""}</div>
+                  <div style={{fontSize:"8.5px",color:t.textMuted}}>{q.date} · {SVC.find(s=>s.id===q.type)?.label} · {q.ps}m · {q.cC}</div>
+                  {fechado&&<div style={{fontSize:"8px",color:t.textMuted}}>Fechou: {q.closedDate||"—"} · CPF: {q.data?.client?.cpf||"—"} · Tel: {q.data?.client?.phone||"—"}</div>}
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:"5px",flexShrink:0}}>
+                  <div style={{fontSize:"13px",fontWeight:"800",color:borderColor}}>{fmt(parseFloat(q.tot)||0)}</div>
+                  {!fechado&&<><Btn onClick={()=>sendOrcWA(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#128c7e",color:"#fff",border:"none",display:"flex",alignItems:"center",gap:"3px"}}><FileTextIcon size={12} color="#fff"/>PDF</Btn>
                   <Btn onClick={()=>msgWA(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#25d366",color:"#fff",border:"none",display:"flex",alignItems:"center",gap:"3px"}}><MessageCircleIcon size={12} color="#fff"/>Zap</Btn>
-                  <Btn onClick={()=>toClient(q.id)} style={{fontSize:"8px",padding:"3px 7px",background:"#16a34a",color:"#fff",border:"none",display:"flex",alignItems:"center",gap:"3px"}}><CheckIcon size={12} color="#fff"/>Fechou</Btn>
+                  <Btn onClick={()=>toClient(q.id)} style={{fontSize:"8px",padding:"3px 7px",background:"#16a34a",color:"#fff",border:"none",display:"flex",alignItems:"center",gap:"3px"}}><CheckIcon size={12} color="#fff"/>Fechou</Btn></>}
+                  {fechado&&<><Btn onClick={()=>{setVC(q);initCE(q);setTab("contratos")}} style={{fontSize:"8px",padding:"3px 7px",background:"#7c3aed",color:"#fff",border:"none"}}>📝 Contrato</Btn>
+                  <Btn onClick={()=>toBack(q.id)} style={{fontSize:"8px",padding:"3px 5px",background:"#f59e0b",color:"#fff",border:"none"}}>↩ Lead</Btn></>}
                   <Btn onClick={()=>load(q)} style={{fontSize:"8px",padding:"3px 5px",background:blue,color:"#fff",border:"none"}}>Abrir</Btn>
                   <Btn onClick={()=>cloneQ(q)} style={{fontSize:"8px",padding:"3px 5px",background:"#8b5cf6",color:"#fff",border:"none"}}>Clonar</Btn>
                   <button onClick={e=>{e.stopPropagation();delQ(q.id)}} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>🗑</button>
                 </div>
-              </div>
-            ))}</div>}
-          </div>
-          {/* CLIENTES */}
-          <div>
-            <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"8px"}}><span style={{fontSize:"16px"}}>🤝</span><span style={{fontSize:"12px",fontWeight:"700",color:"#16a34a"}}>Clientes Fechados ({hist.filter(q=>["cliente","fechou","execucao","concluido"].includes(q.status)).length})</span></div>
-            {hist.filter(q=>["cliente","fechou","execucao","concluido"].includes(q.status)).length===0?<div style={{fontSize:"10px",color:t.textMuted,padding:"8px",textAlign:"center"}}>Nenhum cliente fechado</div>:
-            <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>{hist.filter(q=>["cliente","fechou","execucao","concluido"].includes(q.status)).map(q=>(
-              <div key={q.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:t.sectionBg,borderRadius:"7px",border:`1.5px solid ${t.cardBorder}`,borderLeft:"3px solid #16a34a"}}>
-                <div onClick={()=>load(q)} style={{flex:1,cursor:"pointer"}}><div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>🤝 {q.cN||"Sem nome"} {q.stamp?`· ${q.stamp}`:""}</div><div style={{fontSize:"8.5px",color:t.textMuted}}>{q.date} · Fechou: {q.closedDate||"—"} · {q.ps}m · {q.cC}</div><div style={{fontSize:"8px",color:t.textMuted}}>CPF: {q.data?.client?.cpf||"—"} · RG: {q.data?.client?.rg||"—"} · Tel: {q.data?.client?.phone||"—"}</div></div>
-                <div style={{display:"flex",alignItems:"center",gap:"5px"}}><div style={{fontSize:"13px",fontWeight:"800",color:"#16a34a"}}>{fmt(parseFloat(q.tot)||0)}</div>
-                  <Btn onClick={()=>{setVC(q);initCE(q);setTab("contratos")}} style={{fontSize:"8px",padding:"3px 7px",background:"#7c3aed",color:"#fff",border:"none"}}>📝 Contrato</Btn>
-                  <Btn onClick={()=>toBack(q.id)} style={{fontSize:"8px",padding:"3px 5px",background:"#f59e0b",color:"#fff",border:"none"}}>↩ Lead</Btn>
-                  <Btn onClick={()=>load(q)} style={{fontSize:"8px",padding:"3px 5px",background:blue,color:"#fff",border:"none"}}>Abrir</Btn>
-                  <Btn onClick={()=>cloneQ(q)} style={{fontSize:"8px",padding:"3px 5px",background:"#8b5cf6",color:"#fff",border:"none"}}>Clonar</Btn>
-                  <button onClick={e=>{e.stopPropagation();delQ(q.id)}} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>🗑</button>
-                </div>
-              </div>
-            ))}</div>}
-          </div>
-          </>}
-        </Card>}
+              </div>;
+            })}
+          </div>}
+          </>;
+        })()}</Card>}
 
         {/* CRM */}
         {tab==="crm"&&<Card t={t}>{(()=>{
