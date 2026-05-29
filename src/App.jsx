@@ -4,6 +4,11 @@ import { MessageCircleIcon, FileTextIcon, CheckIcon, DownloadIcon, SendIcon } fr
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 const Pool3DView = lazy(() => import('./Pool3DView'));
+import RescueModal from "./components/rescue/RescueModal";
+import LostReasonModal from "./components/rescue/LostReasonModal";
+import RescueButton, { getRescuePriority } from "./components/rescue/RescueButton";
+import { useRescueAutomation } from "./components/rescue/useRescueAutomation";
+import LossAnalysis from "./components/dashboard/LossAnalysis";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
 const FB_CFG = {
@@ -1052,7 +1057,7 @@ const NotePanel=({q,t,crmNoteType,setCrmNoteType,noteInputRef,newNote,setNewNote
 // ═══ MAIN ═══
 export default function App(){
   const [view,setView]=useState("editor");
-  const [dark,setDark]=useState(false);
+  const [dark,setDark]=useState(true);
   const t=themes[dark?"dark":"light"];
   const [tab,setTab]=useState("cliente");
   const [sidebarOpen,setSidebarOpen]=useState(false);
@@ -1277,6 +1282,8 @@ export default function App(){
   const [manualForm,setManualForm]=useState({nome:"",cidade:"",tel:"",tipo:"vinil",ps:"",valor:"",data:new Date().toLocaleDateString("pt-BR"),status:"lead"});
   const [newNote,setNewNote]=useState("");
   const [crmView,setCrmView]=useState("pipeline");
+  const [rescueModal,setRescueModal]=useState(null);
+  const [lostReasonModal,setLostReasonModal]=useState(null);
   const [syncingContacts,setSyncingContacts]=useState(false);
   const [syncMsg,setSyncMsg]=useState("");
   const [waConvs,setWaConvs]=useState([]);
@@ -1885,7 +1892,11 @@ export default function App(){
   const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
   const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4});setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setDevHeights(d.devHeights||{retorno:"",hidro:""});setEditingId(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
-  const movePipe=(id,stage)=>{const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);if(["fechou","execucao","concluido"].includes(stage))autoSyncReceber(item);}setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
+  const movePipe=(id,stage)=>{
+    if(stage==="perdido"){const q=hist.find(h=>h.id===id);if(q){setLostReasonModal({q,days:getDaysSince(q.id),auto:false});return;}}
+    const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);if(["fechou","execucao","concluido"].includes(stage))autoSyncReceber(item);}setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
+  const salvarMotivoPerda=async(q,motivo)=>{const nh=hist.map(h=>h.id===q.id?{...h,status:"perdido",...motivo}:h);setHist(nh);saveLS(nh);const item=nh.find(h=>h.id===q.id);if(item)saveFS(item);addInteracao(q.id,"perda",`Marcado como perdido: ${motivo.motivoLabel}`);setFbMsg("❌ Marcado como perdido");setTimeout(()=>setFbMsg(""),2000)};
+  useRescueAutomation({hist,crmTags,crmNextContact,getDaysSince,saveCrmMeta,onSugerirPerda:(q,days)=>setLostReasonModal({q,days,auto:true})});
   const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const fullNum=num.startsWith("55")?num:`55${num}`;const conv=waConvs.find(c=>c.phone===fullNum||c.phone===num);if(conv){setTab("whatsapp");setWaChat(conv.phone);if(msg)setWaMsg(msg)}else{setTab("whatsapp");setFbMsg("📱 Conversa não encontrada no sistema. Inicie pelo WhatsApp.");setTimeout(()=>setFbMsg(""),3000)}};
   const sendOrcWA=async(q)=>{
     const d=q.data;const c=d?.client||{};const inc=(d?.items||[]).filter(i=>i.on);
@@ -2317,13 +2328,16 @@ export default function App(){
         {/* CRM */}
         {tab==="crm"&&<Card t={t}>{(()=>{
           const activePipe=PIPE.filter(p=>p.id!=="perdido");
+          // Cache getDaysSince per lead to avoid repeated date parsing
+          const daysCache={};
+          const getCachedDays=(qId)=>{if(daysCache[qId]===undefined)daysCache[qId]=getDaysSince(qId);return daysCache[qId]};
           const fechados=hist.filter(q=>["fechou","execucao","concluido"].includes(q.status));
           const ativos=hist.filter(q=>!["concluido","perdido"].includes(q.status));
           const perdidos=hist.filter(q=>q.status==="perdido");
           const receita=fechados.reduce((s,q)=>s+(parseFloat(q.tot)||0),0);
           const txConv=hist.length>0?Math.round((fechados.length/hist.length)*100):0;
           const ticketMedio=fechados.length>0?receita/fechados.length:0;
-          const followUps=hist.filter(q=>needsFollowUp(q.id,q.status||"lead"));
+          const followUps=hist.filter(q=>{const s=q.status||"lead";if(!["lead","negociacao"].includes(s))return false;return getCachedDays(q.id)>=5});
           const overdueNC=Object.keys(crmNextContact).filter(id=>isNextContactOverdue(id)&&hist.find(q=>q.id==id&&!["concluido","perdido"].includes(q.status)));
 
           const filteredHist=hist.filter(q=>{
@@ -2342,7 +2356,7 @@ export default function App(){
             <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
               <button onClick={syncGoogleContacts} disabled={syncingContacts} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${t.cardBorder}`,background:"transparent",color:t.textSec,fontSize:"9px",fontWeight:"700",cursor:syncingContacts?"wait":"pointer",opacity:syncingContacts?0.6:1}}>{syncingContacts?"⏳ Sincronizando...":"🔄 Contatos Google"}</button>
               {syncMsg&&<span style={{fontSize:"9px",color:syncMsg.includes("Erro")?"#e74c3c":"#27ae60"}}>{syncMsg}</span>}
-              {[["pipeline","🗂️","Pipeline"],["funil","🔻","Funil"],["lista","☰","Lista"],["dashboard","📊","Analytics"]].map(([k,ic,lb])=><button key={k} onClick={()=>setCrmView(k)} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${crmView===k?blue:t.cardBorder}`,background:crmView===k?blue:"transparent",color:crmView===k?"#fff":t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>{ic} {lb}</button>)}
+              {[["pipeline","🗂️","Pipeline"],["funil","🔻","Funil"],["lista","☰","Lista"],["dashboard","📊","Analytics"],["perdas","🔍","Perdas"]].map(([k,ic,lb])=><button key={k} onClick={()=>setCrmView(k)} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${crmView===k?(k==="perdas"?"#dc2626":blue):t.cardBorder}`,background:crmView===k?(k==="perdas"?"#fef2f2":blue):"transparent",color:crmView===k?(k==="perdas"?"#dc2626":"#fff"):t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>{ic} {lb}</button>)}
             </div>
           </div>
 
@@ -2440,10 +2454,11 @@ export default function App(){
                   <div style={{background:t.sectionBg,borderRadius:"0 0 8px 8px",padding:"6px",minHeight:"80px",border:`1px solid ${t.cardBorder}`,borderTop:"none",display:"flex",flexDirection:"column",gap:"5px"}}>
                     {items.length===0?<div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",padding:"16px"}}>—</div>:
                     items.map(q=>{
-                      const temp=getTemp(q.id,q.status||"lead");
+                      const days=getCachedDays(q.id);
+                      const temp=["concluido","perdido"].includes(q.status)?null:days<=2?{icon:"🔥",label:"Quente",color:"#ef4444",bg:"#fef2f2"}:days<=7?{icon:"🌡️",label:"Morno",color:"#f97316",bg:"#fff7ed"}:days<=14?{icon:"❄️",label:"Frio",color:"#06b6d4",bg:"#ecfeff"}:{icon:"🧊",label:"Gelado",color:"#64748b",bg:"#f1f5f9"};
                       const overdue=isNextContactOverdue(q.id);
                       const tags=crmTags[q.id]||[];
-                      const days=getDaysSince(q.id);
+                      const isFollowUp=["lead","negociacao"].includes(q.status||"lead")&&days>=5;
                       return <div key={q.id} style={{background:t.card,borderRadius:"8px",padding:"8px",border:`1px solid ${overdue?"#fca5a5":t.cardBorder}`,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"3px"}}>
                           <div style={{flex:1,minWidth:0}}>
@@ -2454,7 +2469,7 @@ export default function App(){
                             <div style={{fontSize:"12px",fontWeight:"800",color:stage.color}}>{fmt(parseFloat(q.tot)||0)}</div>
                             <div style={{display:"flex",gap:"2px",justifyContent:"flex-end",marginTop:"1px"}}>
                               {temp&&<span style={{fontSize:"10px"}}>{temp.icon}</span>}
-                              {needsFollowUp(q.id,q.status)&&<span style={{fontSize:"6px",background:"#fef2f2",color:"#dc2626",padding:"1px 3px",borderRadius:"3px",fontWeight:"700"}}>UP</span>}
+                              {isFollowUp&&<span style={{fontSize:"6px",background:"#fef2f2",color:"#dc2626",padding:"1px 3px",borderRadius:"3px",fontWeight:"700"}}>UP</span>}
                               {overdue&&<span style={{fontSize:"6px",background:"#fef2f2",color:"#dc2626",padding:"1px 3px",borderRadius:"3px",fontWeight:"700"}}>⏰</span>}
                             </div>
                           </div>
@@ -2463,7 +2478,8 @@ export default function App(){
                         {crmNextContact[q.id]&&<div style={{fontSize:"7px",marginBottom:"4px",color:overdue?"#dc2626":"#16a34a",fontWeight:"600"}}>📅 {overdue?"Atrasado":"Próx"}: {new Date(crmNextContact[q.id]+"T12:00").toLocaleDateString("pt-BR")}</div>}
                         <div style={{display:"flex",gap:"2px",marginTop:"4px"}}>
                           <button title="Abrir Chat WhatsApp" onClick={()=>{const ph=(q.data?.client?.phone||"").replace(/\D/g,"");const fullPh=ph.startsWith("55")?ph:`55${ph}`;const conv=waConvs.find(c=>c.phone===fullPh||c.phone===ph);if(conv){setCrmChatPhone(conv.phone)}else{msgWA(q)}addInteracao(q.id,"whatsapp","Chat WhatsApp aberto")}} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><MessageCircleIcon size={13} color="#fff"/></button>
-                          <button title="PDF" onClick={()=>{sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado via WhatsApp")}} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><FileTextIcon size={13} color="#fff"/></button>
+                          <button title="PDF" onClick={()=>{sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado via WhatsApp");if((q.status||"lead")==="lead")movePipe(q.id,"orcamento")}} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><FileTextIcon size={13} color="#fff"/></button>
+                          <RescueButton q={q} daysSince={days} onClick={(q)=>setRescueModal({q,days:getCachedDays(q.id)})} compact={true}/>
                           {!["concluido","perdido"].includes(stage.id)&&<select title="Mover" value="" onChange={e=>{if(e.target.value)movePipe(q.id,e.target.value);e.target.value=""}} style={{flex:2,fontSize:"7px",padding:"2px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer"}}>
                             <option value="">→ Mover</option>
                             {PIPE.filter(p=>p.id!==(q.status||"lead")).map(p=><option key={p.id} value={p.id}>{p.icon} {p.label}</option>)}
@@ -2553,14 +2569,15 @@ export default function App(){
               {[...filteredHist].sort((a,b)=>{
                 if(crmSort==="valor")return (parseFloat(b.tot)||0)-(parseFloat(a.tot)||0);
                 if(crmSort==="nome")return (a.cN||"").localeCompare(b.cN||"");
-                if(crmSort==="followup")return getDaysSince(a.id)-getDaysSince(b.id);
+                if(crmSort==="followup")return getCachedDays(a.id)-getCachedDays(b.id);
                 return b.id-a.id;
               }).map(q=>{
                 const stage=PIPE.find(p=>p.id===(q.status||"lead"))||PIPE[0];
-                const temp=getTemp(q.id,q.status||"lead");
-                const days=getDaysSince(q.id);
+                const days=getCachedDays(q.id);
+                const temp=["concluido","perdido"].includes(q.status)?null:days<=2?{icon:"🔥",label:"Quente",color:"#ef4444",bg:"#fef2f2"}:days<=7?{icon:"🌡️",label:"Morno",color:"#f97316",bg:"#fff7ed"}:days<=14?{icon:"❄️",label:"Frio",color:"#06b6d4",bg:"#ecfeff"}:{icon:"🧊",label:"Gelado",color:"#64748b",bg:"#f1f5f9"};
                 const tags=crmTags[q.id]||[];
                 const overdue=isNextContactOverdue(q.id);
+                const isFollowUp=["lead","negociacao"].includes(q.status||"lead")&&days>=5;
                 return <div key={q.id}>
                   <div onClick={()=>setCrmDetail(crmDetail===q.id?null:q.id)} style={{display:"flex",alignItems:"center",gap:"8px",padding:"8px 10px",background:t.card,borderRadius:crmDetail===q.id?"8px 8px 0 0":"8px",border:`1px solid ${overdue?"#fca5a5":t.cardBorder}`,cursor:"pointer"}}>
                     <div style={{width:"8px",height:"8px",borderRadius:"50%",background:stage.color,flexShrink:0}}/>
@@ -2568,7 +2585,7 @@ export default function App(){
                       <div style={{display:"flex",alignItems:"center",gap:"4px"}}>
                         <span style={{fontSize:"11px",fontWeight:"700",color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.cN||"Sem nome"}</span>
                         {temp&&<span style={{fontSize:"10px"}}>{temp.icon}</span>}
-                        {needsFollowUp(q.id,q.status)&&<span style={{fontSize:"6px",background:"#fef2f2",color:"#dc2626",padding:"1px 3px",borderRadius:"3px",fontWeight:"700"}}>UP</span>}
+                        {isFollowUp&&<span style={{fontSize:"6px",background:"#fef2f2",color:"#dc2626",padding:"1px 3px",borderRadius:"3px",fontWeight:"700"}}>UP</span>}
                       </div>
                       <div style={{fontSize:"8px",color:t.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[q.data?.client?.city,SVC.find(s=>s.id===q.type)?.label,q.ps&&q.ps+"m"].filter(Boolean).join(" · ")}</div>
                       {tags.length>0&&<div style={{display:"flex",gap:"2px",marginTop:"2px",flexWrap:"wrap"}}>{tags.map(tg=><span key={tg} style={{fontSize:"6px",padding:"1px 4px",borderRadius:"8px",background:blue+"15",color:blue,fontWeight:"700"}}>{tg}</span>)}</div>}
@@ -2580,7 +2597,8 @@ export default function App(){
                     <div style={{fontSize:"10px",fontWeight:"700",color:days<=5?"#16a34a":days<=10?"#f59e0b":"#dc2626",flexShrink:0,minWidth:"26px",textAlign:"right"}}>{days<999?days+"d":"—"}</div>
                     <div style={{display:"flex",gap:"3px",flexShrink:0}}>
                       <button title="Abrir Chat WhatsApp" onClick={e=>{e.stopPropagation();const ph=(q.data?.client?.phone||"").replace(/\D/g,"");const fullPh=ph.startsWith("55")?ph:`55${ph}`;const conv=waConvs.find(c=>c.phone===fullPh||c.phone===ph);if(conv){setCrmChatPhone(conv.phone)}else{msgWA(q)}addInteracao(q.id,"whatsapp","Chat WhatsApp aberto")}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><MessageCircleIcon size={14} color="#fff"/></button>
-                      <button title="PDF" onClick={e=>{e.stopPropagation();sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado")}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><FileTextIcon size={14} color="#fff"/></button>
+                      <button title="PDF" onClick={e=>{e.stopPropagation();sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado");if((q.status||"lead")==="lead")movePipe(q.id,"orcamento")}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><FileTextIcon size={14} color="#fff"/></button>
+                      <RescueButton q={q} daysSince={days} onClick={(q)=>setRescueModal({q,days:getCachedDays(q.id)})} compact={false}/>
                     </div>
                   </div>
                   {crmDetail===q.id&&<div style={{padding:"8px 10px",background:t.card,borderRadius:"0 0 8px 8px",border:`1px solid ${t.cardBorder}`,borderTop:`1px dashed ${t.cardBorder}`,marginTop:"-1px"}}><NotePanel q={q} {...notePanelProps}/></div>}
@@ -2589,6 +2607,9 @@ export default function App(){
               {filteredHist.length===0&&<div style={{textAlign:"center",padding:"24px",color:t.textMuted,fontSize:"11px"}}>Nenhum lead encontrado</div>}
             </div>
           </>}
+
+          {/* ── ANÁLISE DE PERDAS ── */}
+          {crmView==="perdas"&&<LossAnalysis hist={hist} interacoes={interacoes} t={t} blue={blue}/>}
 
           </>}
 
@@ -4274,6 +4295,8 @@ ${pendPag.length===0?"<p style='color:#888;font-size:12px'>Nenhuma</p>":`<table 
 
       </div>{/* end vv-content */}
       </div>{/* end vv-main */}
+      {rescueModal&&<RescueModal q={rescueModal.q} t={t} daysSince={rescueModal.days} onClose={()=>setRescueModal(null)} openWA={openWA} addInteracao={addInteracao} setLeadTag={setLeadTag} crmTags={crmTags}/>}
+      {lostReasonModal&&<LostReasonModal q={lostReasonModal.q} t={t} daysSince={lostReasonModal.days} sugestaoAutomatica={lostReasonModal.auto} onClose={()=>setLostReasonModal(null)} onConfirm={(motivo)=>{salvarMotivoPerda(lostReasonModal.q,motivo);setLostReasonModal(null)}}/>}
     </div>
   );
 }
