@@ -142,15 +142,20 @@ const SYSTEMS=["dreno","aspiracao","skimmer","retorno","hidro"];
 const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,dark,poolFmt,ar,autoPositions,blue,t,tubeOffsets={},setTubeOffsets=()=>{},invertSide=false,wMode="regular",walls=[],stamp="",spaType={redondo:false,quadrado:true},extras=[]})=>{
     // const SYSTEMS=["retorno","hidro","aspiracao","dreno","skimmer","nivelador"];
   const L=parseFloat(pool.length)||6,W=parseFloat(pool.width)||3,D=parseFloat(pool.depth)||1.4;
-  const svgW=340,svgH=200,pad=30;
+  const svgW=700,svgH=420,pad=50;
   let spaExL=0,spaExR=0,spaExT=0,spaExB=0;
   if(poolFmt==="Com Spa"){
     if(spaType.quadrado){const ql=parseFloat(spaType.qLarg)||2;const c=spaType.qCanto;if(c==="top-left"||c==="top-right")spaExT=Math.max(spaExT,ql);else spaExB=Math.max(spaExB,ql)}
     if(spaType.redondo){const isRSq=spaType.rFormato==="quadrado";const rdX=isRSq?(parseFloat(spaType.rComp)||2)/2:(parseFloat(spaType.rDiam)||2)/2;const rdY=isRSq?(parseFloat(spaType.rLarg)||2)/2:(parseFloat(spaType.rDiam)||2)/2;const c=spaType.rCanto;if(c==="top-left"){spaExL=Math.max(spaExL,rdX);spaExT=Math.max(spaExT,rdY)}else if(c==="top-right"){spaExR=Math.max(spaExR,rdX);spaExT=Math.max(spaExT,rdY)}else if(c==="bottom-left"){spaExL=Math.max(spaExL,rdX);spaExB=Math.max(spaExB,rdY)}else{spaExR=Math.max(spaExR,rdX);spaExB=Math.max(spaExB,rdY)}}
   }
-  const totalW=L+spaExL+spaExR,totalH=W+spaExT+spaExB;
-  const scale=Math.min((svgW-pad*2-50)/totalW,(svgH-pad*2)/totalH);
-  const pw=L*scale,ph=W*scale,ox=pad+spaExL*scale,oy=pad+spaExT*scale;
+  // Spa externo (toggle) — incluir na área total
+  if(spa?.on){const sw2=parseFloat(spa.width||2),sd=customPos?.spaExt?.side||spa.side||"top";if(sd==="top")spaExT=Math.max(spaExT,sw2);else if(sd==="bottom")spaExB=Math.max(spaExB,sw2);else if(sd==="left")spaExL=Math.max(spaExL,sw2);else spaExR=Math.max(spaExR,sw2)}
+  const cmExtra=L*0.3;
+  const totalW=L+spaExL+spaExR+cmExtra,totalH=W+spaExT+spaExB;
+  const scale=Math.min((svgW-pad*2)/totalW,(svgH-pad*2)/totalH);
+  const totalPxH=totalH*scale;
+  const pw=L*scale,ph=W*scale;
+  const ox=pad+spaExL*scale+cmExtra*scale*0.5,oy=(svgH-totalPxH)/2+spaExT*scale;
   const cmW=pw*0.1,cmH=ph*0.5;
   const casaP=customPos["casa"]||(invertSide?{x:-0.15,y:0.5}:{x:1.12,y:0.5});
   const cmX=ox+casaP.x*pw,cmY=oy+casaP.y*ph-cmH/2;
@@ -158,7 +163,22 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
   const positions={...autoPositions(L,W,disps,invertSide,poolFmt),...customPos};
   const tubeColors={retorno:"#ef4444",aspiracao:"#ec4899",dreno:"#8b5cf6",skimmer:"#f59e0b",refletor:"#f97316",nivelador:"#06b6d4",hidro:"#14b8a6"};
   const onDown=(key,e)=>{e.preventDefault();setDragging(key)};
-  const onMove=(e)=>{if(!dragging)return;const svg=e.currentTarget;const r=svg.getBoundingClientRect();const mx=(e.clientX||e.touches?.[0]?.clientX||0)-r.left;const my=(e.clientY||e.touches?.[0]?.clientY||0)-r.top;const rx=(mx-ox)/pw,ry=(my-oy)/ph;if(dragging==="casa"){setCustomPos(p=>({...p,casa:{x:Math.max(0.3,Math.min(1.8,rx)),y:Math.max(-0.3,Math.min(1.3,ry)),label:"CM",type:"casa",special:true}}))}else{const isOval=poolFmt==="Oval"||poolFmt==="Feijão";let nx=Math.max(0.01,Math.min(0.99,rx)),ny=Math.max(0.01,Math.min(0.99,ry));if(isOval){const dx=(nx-0.5)/0.5,dy=(ny-0.5)/0.5;const d2=dx*dx+dy*dy;if(d2>0.9){const sc=0.9/Math.sqrt(d2);nx=0.5+dx*0.5*sc;ny=0.5+dy*0.5*sc;}}setCustomPos(p=>({...p,[dragging]:{...positions[dragging],x:nx,y:ny}}))}};
+  const onMove=(e)=>{if(!dragging)return;const svg=e.currentTarget;const r=svg.getBoundingClientRect();const scX=svgW/r.width,scY=svgH/r.height;const mx=((e.clientX||e.touches?.[0]?.clientX||0)-r.left)*scX;const my=((e.clientY||e.touches?.[0]?.clientY||0)-r.top)*scY;const rx=(mx-ox)/pw,ry=(my-oy)/ph;if(dragging==="casa"){setCustomPos(p=>({...p,casa:{x:Math.max(0.3,Math.min(1.8,rx)),y:Math.max(-0.3,Math.min(1.3,ry)),label:"CM",type:"casa",special:true}}))}else if(dragging==="spaExt"){
+    const curSide=customPos?.spaExt?.side||spa.side||"top";
+    const isH=curSide==="top"||curSide==="bottom";let side,pos;
+    if(isH){if(rx<-0.2){side="left";pos=Math.max(0,Math.min(1,ry));}
+      else if(rx>1.2){side="right";pos=Math.max(0,Math.min(1,ry));}
+      else if(curSide==="top"&&ry>0.6){side="bottom";pos=Math.max(0,Math.min(1,rx));}
+      else if(curSide==="bottom"&&ry<0.4){side="top";pos=Math.max(0,Math.min(1,rx));}
+      else{side=curSide;pos=Math.max(0,Math.min(1,rx));}
+    }else{if(ry<-0.2){side="top";pos=Math.max(0,Math.min(1,rx));}
+      else if(ry>1.2){side="bottom";pos=Math.max(0,Math.min(1,rx));}
+      else if(curSide==="left"&&rx>0.6){side="right";pos=Math.max(0,Math.min(1,ry));}
+      else if(curSide==="right"&&rx<0.4){side="left";pos=Math.max(0,Math.min(1,ry));}
+      else{side=curSide;pos=Math.max(0,Math.min(1,ry));}
+    }
+    setCustomPos(p=>({...p,spaExt:{side,pos,special:true}}));
+  }else{const isOval=poolFmt==="Oval"||poolFmt==="Feijão";let nx=Math.max(0.01,Math.min(0.99,rx)),ny=Math.max(0.01,Math.min(0.99,ry));if(isOval){const dx=(nx-0.5)/0.5,dy=(ny-0.5)/0.5;const d2=dx*dx+dy*dy;if(d2>0.9){const sc=0.9/Math.sqrt(d2);nx=0.5+dx*0.5*sc;ny=0.5+dy*0.5*sc;}}setCustomPos(p=>({...p,[dragging]:{...positions[dragging],x:nx,y:ny}}))}};
   const onUp=()=>setDragging(null);
   const dist=L*0.1;
   const retQ=disps.retorno||0,aspQ=disps.aspiracao||0,drQ=disps.dreno||0,skQ=disps.skimmer||0,nivQ=disps.nivelador||0,hidQ=disps.hidro||0;
@@ -174,12 +194,12 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
   const joelhos=Math.ceil(curvas*0.15);
   const dMin=parseFloat(pool.depthMin)||D,dMax=parseFloat(pool.depthMax)||D;
   const sloped=parseFloat(pool.depthMin)>0&&parseFloat(pool.depthMax)>0&&pool.depthMin!==pool.depthMax;
-  const cutH=80,cutScale=Math.min((svgW-50)/L,(cutH-25)/Math.max(D,dMax));
+  const cutH=120,cutScale=Math.min((svgW-80)/L,(cutH-30)/Math.max(D,dMax));
   const cpw2=L*cutScale,cph2=D*cutScale,cox2=30,coy2=12;
   const hMin2=dMin*cutScale,hMax2=dMax*cutScale;
-  return <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
-    <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>Planta Baixa</div>
-    <svg width={svgW} height={svgH} style={{background:dark?"#0f172a":"#f8fafc",borderRadius:"6px",border:"1px solid "+(dark?"#334155":"#e2e8f0"),cursor:dragging?"grabbing":"default",touchAction:"none"}} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onTouchMove={e=>{onMove({currentTarget:e.currentTarget,clientX:e.touches[0].clientX,clientY:e.touches[0].clientY})}} onTouchEnd={onUp}>
+  return <div style={{display:"flex",flexDirection:"column",alignItems:"stretch",width:"100%"}}>
+    <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px",textAlign:"center"}}>Planta Baixa</div>
+    <svg viewBox={`0 0 ${svgW} ${svgH}`} style={{width:"100%",height:"auto",display:"block",background:dark?"#0f172a":"#f8fafc",borderRadius:"6px",border:"1px solid "+(dark?"#334155":"#e2e8f0"),cursor:dragging?"grabbing":"default",touchAction:"none"}} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onTouchMove={e=>{onMove({currentTarget:e.currentTarget,clientX:e.touches[0].clientX,clientY:e.touches[0].clientY})}} onTouchEnd={onUp}>
       <defs><pattern id="grd" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke={dark?"#1e293b":"#e2e8f0"} strokeWidth="0.3"/></pattern>{stamp&&SWATCH_SLUG[stamp]&&<clipPath id="poolClip2d">{poolFmt==="Oval"||poolFmt==="Feijão"?<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2}/>:poolFmt==="Formato L"?<polygon points={`${ox},${oy} ${ox+pw},${oy} ${ox+pw},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph} ${ox},${oy+ph}`}/>:poolFmt==="Oitavada"?(()=>{const c=(parseFloat(pool.chanfro)||1)/L*pw;const cY=(parseFloat(pool.chanfro)||1)/W*ph;return<polygon points={`${ox+c},${oy} ${ox+pw-c},${oy} ${ox+pw},${oy+cY} ${ox+pw},${oy+ph-cY} ${ox+pw-c},${oy+ph} ${ox+c},${oy+ph} ${ox},${oy+ph-cY} ${ox},${oy+cY}`}/>})():<rect x={ox} y={oy} width={pw} height={ph}/>}</clipPath>}</defs>
       <rect width={svgW} height={svgH} fill="url(#grd)"/>
       {(()=>{const fill=dark?"#1e3a5f":"#dbeafe";const stroke="#2563eb";
@@ -202,7 +222,7 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
       {stamp&&SWATCH_SLUG[stamp]&&<image href={`/swatches/${SWATCH_SLUG[stamp]}.png`} x={ox} y={oy} width={pw} height={ph} preserveAspectRatio="xMidYMid slice" clipPath="url(#poolClip2d)" opacity="0.85"/>}
       {poolFmt==="Com prainha"&&<rect x={ox} y={oy} width={pw*0.25} height={ph} rx="1" fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#2563eb" strokeWidth="0.5"/>}
       {extras.length>0&&extras.map((e,i)=>{const pf=v=>parseFloat(String(v||"").replace(",","."))||0;const el=pf(e.l),ew=pf(e.w);if(el<=0||ew<=0)return null;const ePw=el*scale,ePh=ew*scale;const desc=(e.desc||"").toLowerCase();const isBank=desc.includes("banco");const isPrainha=desc.includes("prainha");const isDegrau=desc.includes("degrau");const eColor=isPrainha?(dark?"#1e4d7a":"#bfdbfe"):isBank?(dark?"#2d3a4a":"#c7d2fe"):(dark?"#1e3a5f":"#ddd6fe");const eX=isPrainha?ox:isBank?ox:(ox+pw-ePw);const eY=isPrainha?oy:(oy+ph-ePh);return<g key={`ext${i}`}><rect x={eX} y={eY} width={ePw} height={ePh} rx="2" fill={eColor} stroke={dark?"#475569":"#6366f1"} strokeWidth="0.8" strokeDasharray="3,2" opacity="0.7"/><text x={eX+ePw/2} y={eY+ePh/2+3} textAnchor="middle" fontSize="5.5" fill={dark?"#94a3b8":"#4f46e5"} fontWeight="600">{e.desc||"Extra"}</text></g>})}
-      {hasSpa2&&(()=>{const side=spa.side||"top";let sx,sy,sw2,sh;if(side==="bottom"){sx=ox+pw-sL;sy=oy+ph;sw2=sL;sh=sW;}else if(side==="left"){sx=ox-sW;sy=oy+ph-sL;sw2=sW;sh=sL;}else if(side==="right"){sx=ox+pw;sy=oy+ph-sL;sw2=sW;sh=sL;}else{sx=ox+pw-sL;sy=oy-sW;sw2=sL;sh=sW;}return<><rect x={sx} y={sy} width={sw2} height={sh} rx="3" fill={dark?"#1e3a5f":"#93c5fd"} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="4,2"/><text x={sx+sw2/2} y={sy+sh/2+3} textAnchor="middle" fontSize="7" fill="#1d4ed8" fontWeight="700">SPA</text></>;})()}
+      {hasSpa2&&(()=>{const sp=customPos["spaExt"];const side=sp?.side||spa.side||"top";const pos=sp?.pos??1;let sx,sy,sw2,sh;if(side==="bottom"){sw2=sL;sh=sW;sx=ox+pos*(pw-sL);sy=oy+ph;}else if(side==="left"){sw2=sW;sh=sL;sx=ox-sW;sy=oy+pos*(ph-sL);}else if(side==="right"){sw2=sW;sh=sL;sx=ox+pw;sy=oy+pos*(ph-sL);}else{sw2=sL;sh=sW;sx=ox+pos*(pw-sL);sy=oy-sW;}return<g style={{cursor:"grab"}} onMouseDown={e=>{e.preventDefault();setDragging("spaExt")}} onTouchStart={e=>{e.preventDefault();setDragging("spaExt")}}><rect x={sx} y={sy} width={sw2} height={sh} rx="3" fill={dark?"#1e3a5f":"#93c5fd"} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="4,2"/><text x={sx+sw2/2} y={sy+sh/2+3} textAnchor="middle" fontSize="7" fill="#1d4ed8" fontWeight="700">SPA</text></g>;})()}
       <text x={ox+pw/2} y={oy+ph/2-3} textAnchor="middle" fontSize="8" fill={dark?"#94a3b8":"#64748b"} fontWeight="600">PISCINA</text>
       <text x={ox+pw/2} y={oy+ph/2+7} textAnchor="middle" fontSize="7" fill={dark?"#94a3b8":"#64748b"}>A= {ar.total}m2</text>
       <text x={ox+pw/2} y={oy-10} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{L}m</text>
@@ -285,8 +305,8 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
       {[["R","Retorno","#ef4444"],["A","Asp.","#ec4899"],["D","Dreno","#8b5cf6"],["SK","Skim.","#f59e0b"],["L","LED","#f97316"],["N","Niv.","#06b6d4"],["H","Hidro","#14b8a6"],["CM","Casa M.","#475569"]].map(([s,lb,c])=><div key={s} style={{display:"flex",alignItems:"center",gap:"2px"}}><div style={{width:"8px",height:"3px",borderRadius:"1px",background:c}}/><span style={{fontSize:"6px",color:t.textMuted}}>{lb}</span></div>)}
       <button className="no-pdf" onClick={()=>{setCustomPos({});setTubeOffsets({})}} style={{fontSize:"6px",padding:"1px 4px",borderRadius:"3px",border:"1px solid "+(dark?"#334155":"#e2e8f0"),background:"transparent",color:t.textMuted,cursor:"pointer",marginLeft:"auto"}}>Reset</button>
     </div>
-    <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginTop:"10px",marginBottom:"4px"}}>Corte Lateral</div>
-    <svg width={svgW} height={cutH} style={{background:dark?"#0f172a":"#f8fafc",borderRadius:"6px",border:"1px solid "+(dark?"#334155":"#e2e8f0")}}>
+    <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginTop:"10px",marginBottom:"4px",textAlign:"center"}}>Corte Lateral</div>
+    <svg viewBox={`0 0 ${svgW} ${cutH}`} style={{width:"100%",height:"auto",display:"block",background:dark?"#0f172a":"#f8fafc",borderRadius:"6px",border:"1px solid "+(dark?"#334155":"#e2e8f0")}}>
       <polygon points={sloped?(cox2+","+coy2+" "+(cox2+cpw2)+","+coy2+" "+(cox2+cpw2)+","+(coy2+hMax2)+" "+cox2+","+(coy2+hMin2)):(cox2+","+coy2+" "+(cox2+cpw2)+","+coy2+" "+(cox2+cpw2)+","+(coy2+cph2)+" "+cox2+","+(coy2+cph2))} fill={dark?"#1e3a5f":"#dbeafe"} stroke="#2563eb" strokeWidth="2"/>
       <line x1={cox2+2} y1={coy2+3} x2={cox2+cpw2-2} y2={coy2+3} stroke="#0ea5e9" strokeWidth="0.6" strokeDasharray="4,2"/>
       <text x={cox2+cpw2/2} y={coy2+13} textAnchor="middle" fontSize="6" fill="#0ea5e9">N.A.</text>
@@ -445,6 +465,23 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
       }
       const slbl=iso(sx+rc/2,sy+rl/2,rp);els.push(<text key="spar_lbl" x={slbl.x} y={slbl.y-2} textAnchor="middle" fontSize="6" fontWeight="700" fill="#1d4ed8">SPA</text>);
     }
+  }
+  // SPA Externo (sistema antigo via spa.on, independente do formato)
+  if(spa?.on){
+    const sL2=parseFloat(spa.length||2),sW2=parseFloat(spa.width||2),sD2=parseFloat(spa.depth||0.8);
+    const sp=customPos?.spaExt;const side=sp?.side||spa.side||"top";const spos=sp?.pos??1;
+    let sx,sy;
+    if(side==="bottom"){sx=spos*(L-sL2);sy=W;}
+    else if(side==="left"){sx=-sW2;sy=spos*(W-sL2);}
+    else if(side==="right"){sx=L;sy=spos*(W-sL2);}
+    else{sx=spos*(L-sL2);sy=-sW2;} // top
+    const sw=side==="left"||side==="right"?sW2:sL2;
+    const sh=side==="left"||side==="right"?sL2:sW2;
+    const sFill=dk?"#1e3a5f":"#93c5fd",sStr="#3b82f6";
+    els.push(<polygon key="spaExt_top" points={pts([[sx,sy,sD2],[sx+sw,sy,sD2],[sx+sw,sy+sh,sD2],[sx,sy+sh,sD2]])} fill={sFill} opacity="0.5" stroke={sStr} strokeWidth="1.5" strokeDasharray="4,2"/>);
+    els.push(<polygon key="spaExt_f" points={pts([[sx,sy,0],[sx+sw,sy,0],[sx+sw,sy,sD2],[sx,sy,sD2]])} fill={sFill} opacity="0.35" stroke={sStr} strokeWidth="0.5"/>);
+    els.push(<polygon key="spaExt_r" points={pts([[sx+sw,sy,0],[sx+sw,sy+sh,0],[sx+sw,sy+sh,sD2],[sx+sw,sy,sD2]])} fill={sFill} opacity="0.3" stroke={sStr} strokeWidth="0.5"/>);
+    const slbl2=iso(sx+sw/2,sy+sh/2,sD2);els.push(<text key="spaExt_lbl" x={slbl2.x} y={slbl2.y-2} textAnchor="middle" fontSize="7" fontWeight="700" fill="#1d4ed8">SPA</text>);
   }
   // Extras (prainha, banco, degrau) como plataformas dentro da piscina
   if(extras.length>0){
@@ -2164,7 +2201,7 @@ export default function App(){
               <span style={{fontSize:"11px",fontWeight:"700",color:blue}}>🌊 Spa Externo</span>
               {!spa.on&&<span style={{fontSize:"9px",color:t.textMuted}}>— Clique para adicionar</span>}
             </div>
-            {spa.on&&<><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px"}}><Inp label="Comp. Spa (m)" value={spa.length} onChange={uSpa("length")} t={t}/><Inp label="Larg. Spa (m)" value={spa.width} onChange={uSpa("width")} t={t}/><Inp label="Prof. Spa (m)" value={spa.depth} onChange={uSpa("depth")} t={t}/></div><div style={{marginTop:"8px"}}><div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,marginBottom:"5px",textTransform:"uppercase",letterSpacing:".4px"}}>Lado da piscina:</div><div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>{[["top","⬆ Topo"],["bottom","⬇ Baixo"],["left","⬅ Esquerda"],["right","➡ Direita"]].map(([s,lb])=><button key={s} onClick={()=>setSpa(p=>({...p,side:s}))} style={{padding:"5px 12px",borderRadius:"14px",border:`1.5px solid ${(spa.side||"top")===s?blue:"#cbd5e1"}`,background:(spa.side||"top")===s?blue:"#fff",color:(spa.side||"top")===s?"#fff":"#64748b",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>{lb}</button>)}</div></div></>}
+            {spa.on&&<><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px"}}><Inp label="Comp. Spa (m)" value={spa.length} onChange={uSpa("length")} t={t}/><Inp label="Larg. Spa (m)" value={spa.width} onChange={uSpa("width")} t={t}/><Inp label="Prof. Spa (m)" value={spa.depth} onChange={uSpa("depth")} t={t}/></div><div style={{marginTop:"8px",display:"flex",alignItems:"center",gap:"8px"}}><div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".4px"}}>Posicao:</div><div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>{[["top","⬆ Topo"],["bottom","⬇ Baixo"],["left","⬅ Esquerda"],["right","➡ Direita"]].map(([s,lb])=><button key={s} onClick={()=>{setSpa(p=>({...p,side:s}));setCustomPos(p=>({...p,spaExt:{side:s,pos:0.5,special:true}}))}} style={{padding:"5px 12px",borderRadius:"14px",border:`1.5px solid ${(customPos?.spaExt?.side||spa.side||"top")===s?blue:"#cbd5e1"}`,background:(customPos?.spaExt?.side||spa.side||"top")===s?blue:"#fff",color:(customPos?.spaExt?.side||spa.side||"top")===s?"#fff":"#64748b",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>{lb}</button>)}</div><span style={{fontSize:"8px",color:t.textMuted,fontStyle:"italic"}}>ou arraste na planta</span></div></>}
           </div>
 
           {/* Stamp catalog */}
