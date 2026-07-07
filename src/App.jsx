@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, Suspense, lazy } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { MessageCircleIcon, FileTextIcon, CheckIcon, DownloadIcon, SendIcon } from "./AnimatedIcons.jsx";
+import { User, Waves, ShoppingCart, ShieldCheck, Wallet, Ruler, FolderOpen, TrendingUp, MessageCircle, Package, FileText, Coins, Hammer, Paintbrush, Wrench, Menu, Cloud, RefreshCw, Save, Sun, Moon, Droplets, LogOut } from "lucide-react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 const Pool3DView = lazy(() => import('./Pool3DView'));
@@ -32,6 +33,14 @@ const initFB = async () => {
     const st = await import("firebase/storage");
     // Reutiliza app existente se já inicializado (evita erro duplicate-app)
     const fbApp = app.getApps().length ? app.getApp() : app.initializeApp(FB_CFG);
+    // Persistência offline: gravações feitas sem internet ficam no IndexedDB e
+    // sincronizam sozinhas ao reconectar — mesmo se o app for fechado antes.
+    let db;
+    try {
+      db = fs.initializeFirestore(fbApp, {
+        localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }),
+      });
+    } catch (dbErr) { db = fs.getFirestore(fbApp); }
     // App Check com reCAPTCHA v3 — isolado para não derrubar o Firebase se falhar
     try {
       const ac = await import("firebase/app-check");
@@ -43,37 +52,72 @@ const initFB = async () => {
         });
       }
     } catch (acErr) { console.warn("App Check não inicializado:", acErr); }
-    fb = { ready: true, db: fs.getFirestore(fbApp), auth: au.getAuth(fbApp), storage: st.getStorage(fbApp), GoogleProvider: au.GoogleAuthProvider };
+    fb = { ready: true, db, auth: au.getAuth(fbApp), storage: st.getStorage(fbApp), GoogleProvider: au.GoogleAuthProvider };
     fbFns = { ...fs, ...au, ...st };
     return true;
   } catch (e) { console.error("Firebase init erro:", e); return false; }
 };
 
-const VER="v4.5";
+const VER="v4.6";
+// Fila de sincronização: ids de orçamentos salvos no aparelho que ainda não foram
+// confirmados na nuvem (salvos sem internet ou antes do login carregar no celular)
+const getPending=()=>{try{return new Set(JSON.parse(localStorage.getItem("vv_pending")||"[]"))}catch{return new Set()}};
+const addPending=(id)=>{const p=getPending();p.add(String(id));try{localStorage.setItem("vv_pending",JSON.stringify([...p]))}catch{}};
+const clearPending=(id)=>{const p=getPending();if(p.delete(String(id))){try{localStorage.setItem("vv_pending",JSON.stringify([...p]))}catch{}}};
+// Fila de exclusões feitas antes do Firebase conectar (evita orçamento excluído voltar no sync)
+const getPendingDel=()=>{try{return new Set(JSON.parse(localStorage.getItem("vv_pending_del")||"[]"))}catch{return new Set()}};
+const addPendingDel=(id)=>{const p=getPendingDel();p.add(String(id));try{localStorage.setItem("vv_pending_del",JSON.stringify([...p]))}catch{}};
+const clearPendingDel=(id)=>{const p=getPendingDel();if(p.delete(String(id))){try{localStorage.setItem("vv_pending_del",JSON.stringify([...p]))}catch{}}};
 // Escapa caracteres HTML para prevenir XSS em templates de documentos
 const escHtml=(s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;');
 if(typeof document!=="undefined"&&!document.getElementById("vv-styles")){const s=document.createElement("style");s.id="vv-styles";s.textContent=`
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes vv-spin{to{transform:rotate(360deg)}}
 div:hover>.wa-msg-hover{opacity:1!important}
 *{box-sizing:border-box}
-.vv-layout{display:flex;min-height:100vh;font-family:'Segoe UI',sans-serif}
+:root{--navy:#0a1f44;--navy-deep:#071733;--agua:#0e9c8d;--agua-bright:#2dd4bf;--medida:#e8b100}
+.vv-layout{display:flex;min-height:100vh;font-family:'Inter','Segoe UI',sans-serif;font-variant-numeric:tabular-nums}
+.vv-display{font-family:'Archivo','Inter',sans-serif}
+.vv-mono{font-family:'IBM Plex Mono',monospace}
+/* régua métrica — assinatura visual: ticks menores a cada 6px, maior a cada 30px */
+.vv-ruler{height:7px;background-image:repeating-linear-gradient(90deg,currentColor 0 1px,transparent 1px 30px),repeating-linear-gradient(90deg,currentColor 0 1px,transparent 1px 6px);background-size:100% 7px,100% 4px;background-repeat:no-repeat;background-position:bottom,bottom;opacity:.35}
 .vv-sidebar{width:220px;flex-shrink:0;position:fixed;top:0;left:0;bottom:0;z-index:40;display:flex;flex-direction:column;transition:transform .25s ease}
-.vv-sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:39}
+.vv-sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(7,23,51,.55);z-index:39}
 .vv-main{margin-left:220px;flex:1;display:flex;flex-direction:column;min-height:100vh;transition:margin .25s ease}
-.vv-topbar{position:sticky;top:0;z-index:30;height:52px;display:flex;align-items:center;padding:0 18px;gap:10px;border-bottom:1px solid var(--border)}
+.vv-topbar{position:sticky;top:0;z-index:30;height:54px;display:flex;align-items:center;padding:0 18px;gap:10px;border-bottom:1px solid var(--border)}
 .vv-content{flex:1;padding:18px;max-width:960px;width:100%}
-.vv-nav-item{display:flex;align-items:center;gap:10px;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:500;border:none;width:100%;text-align:left;transition:background .15s}
+.vv-content.pad-taxi{padding-bottom:86px}
+.vv-nav-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:6px;cursor:pointer;font-size:12.5px;font-weight:500;border:none;width:100%;text-align:left;transition:background .15s;position:relative;font-family:inherit}
 .vv-nav-item:hover{opacity:.85}
 .vv-nav-item.active{font-weight:700}
-.vv-nav-group{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:16px 16px 6px;opacity:.5}
-.vv-badge{background:#dc2626;color:#fff;border-radius:9px;padding:0 5px;font-size:8px;font-weight:800;line-height:16px;min-width:16px;text-align:center}
+.vv-nav-item.active::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--agua-bright)}
+.vv-nav-group{font-family:'Archivo',sans-serif;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:1.4px;padding:16px 16px 6px;opacity:.45}
+.vv-badge{background:#dc2626;color:#fff;border-radius:9px;padding:0 5px;font-size:9px;font-weight:800;line-height:16px;min-width:16px;text-align:center}
+.vv-st{font-family:'Archivo',sans-serif;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1.1px;color:var(--accent-strong);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.vv-st::before{content:"";width:14px;height:7px;flex-shrink:0;background-image:repeating-linear-gradient(90deg,currentColor 0 1.5px,transparent 1.5px 5px);background-size:100% 100%;opacity:.9}
+.vv-sync{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;padding:4px 9px;border-radius:99px;white-space:nowrap}
+.vv-stepper{display:flex;gap:2px;margin-bottom:14px;overflow-x:auto;scrollbar-width:none}
+.vv-stepper::-webkit-scrollbar{display:none}
+.vv-step{flex:1;min-width:64px;padding:7px 4px 9px;border:none;background:transparent;cursor:pointer;font-family:'Archivo',sans-serif;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--step-fg);border-bottom:2px solid var(--step-bd);transition:color .15s,border-color .15s}
+.vv-step.active{color:var(--accent-strong);border-bottom-color:var(--agua-bright)}
+.vv-taxi{position:fixed;left:220px;right:0;bottom:0;z-index:35;background:var(--navy-deep);color:#fff;display:flex;align-items:center;gap:14px;padding:10px 18px calc(10px + env(safe-area-inset-bottom))}
+.vv-taxi::before{content:"";position:absolute;left:0;right:0;top:0;height:7px;transform:translateY(-100%);background-image:repeating-linear-gradient(90deg,var(--navy-deep) 0 1px,transparent 1px 30px),repeating-linear-gradient(90deg,var(--navy-deep) 0 1px,transparent 1px 6px);background-size:100% 7px,100% 4px;background-repeat:no-repeat;background-position:bottom,bottom}
+.vv-bottomnav{display:none;position:fixed;left:0;right:0;bottom:0;z-index:38;background:var(--navy-deep);border-top:1px solid rgba(255,255,255,.08);padding:4px 4px calc(4px + env(safe-area-inset-bottom))}
+.vv-bottomnav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;padding:6px 2px;color:rgba(255,255,255,.55);font-family:'Archivo',sans-serif;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;cursor:pointer;position:relative}
+.vv-bottomnav button.active{color:var(--agua-bright)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--agua-bright);outline-offset:1px}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+@media(pointer:coarse){input,select,textarea{font-size:16px!important}}
 @media(max-width:768px){
   .vv-sidebar{transform:translateX(-100%)}
   .vv-sidebar.open{transform:translateX(0)}
   .vv-sidebar-overlay.open{display:block}
   .vv-main{margin-left:0!important}
-  .vv-content{padding:12px}
-  .vv-hamburger{display:block!important}
+  .vv-content{padding:12px 12px 76px}
+  .vv-content.pad-taxi{padding-bottom:142px}
+  .vv-bottomnav{display:flex}
+  .vv-taxi{left:0;bottom:calc(53px + env(safe-area-inset-bottom));padding-bottom:10px}
+  .vv-sync span{display:none}
 }
 @media(max-width:600px){
   .vv-g2{grid-template-columns:1fr!important}
@@ -87,22 +131,23 @@ div:hover>.wa-msg-hover{opacity:1!important}
 `;document.head.appendChild(s)}
 const NAV=[
   {group:"Orçamento",items:[
-    {id:"cliente",icon:"👤",label:"Cliente"},
-    {id:"piscina",icon:"🏊",label:"Piscina"},
-    {id:"itens",icon:"🛒",label:"Custos"},
-    {id:"garantias",icon:"🛡",label:"Garantias"},
-    {id:"pagamento",icon:"💰",label:"Valor"},
-    {id:"planta",icon:"📐",label:"Planta"},
+    {id:"cliente",icon:"👤",lucide:User,label:"Cliente"},
+    {id:"piscina",icon:"🏊",lucide:Waves,label:"Piscina"},
+    {id:"itens",icon:"🛒",lucide:ShoppingCart,label:"Custos"},
+    {id:"garantias",icon:"🛡",lucide:ShieldCheck,label:"Garantias"},
+    {id:"pagamento",icon:"💰",lucide:Wallet,label:"Valor"},
+    {id:"planta",icon:"📐",lucide:Ruler,label:"Planta"},
   ]},
   {group:"Gestão",items:[
-    {id:"historico",icon:"📋",label:"Salvos"},
-    {id:"crm",icon:"📈",label:"Pipeline"},
-    {id:"whatsapp",icon:"💬",label:"WhatsApp"},
-    {id:"estoque",icon:"📦",label:"Estoque"},
-    {id:"contratos",icon:"📝",label:"Contratos"},
-    {id:"financeiro",icon:"💵",label:"Financeiro"},
+    {id:"historico",icon:"📋",lucide:FolderOpen,label:"Salvos"},
+    {id:"crm",icon:"📈",lucide:TrendingUp,label:"Pipeline"},
+    {id:"whatsapp",icon:"💬",lucide:MessageCircle,label:"WhatsApp"},
+    {id:"estoque",icon:"📦",lucide:Package,label:"Estoque"},
+    {id:"contratos",icon:"📝",lucide:FileText,label:"Contratos"},
+    {id:"financeiro",icon:"💵",lucide:Coins,label:"Financeiro"},
   ]},
 ];
+const EDITOR_TABS=NAV[0].items.map(i=>i.id);
 const PIPE=[
   {id:"lead",label:"Lead",icon:"📊",color:"#f59e0b"},
   {id:"orcamento",label:"Orçamento",icon:"📄",color:"#3b82f6"},
@@ -113,7 +158,7 @@ const PIPE=[
   {id:"perdido",label:"Perdido",icon:"❌",color:"#dc2626"},
 ];
 const CO={name:"Vinil Vale Revestimentos e Capas para Piscinas Ltda",short:"Vinil Vale",addr:"Rodovia SP 139, KM 3, s/n, Jardim Hatori II, Registro-SP",cnpj:"42.749.688/0001-57",ie:"574.128.060.119",ph1:"(13) 99730-5949",ph2:"(13) 99678-1966",email:"vinilvale@hotmail.com",insta:"@vinilvaleoficial"};
-const SVC=[{id:"construcao",label:"Construção de Piscina",icon:"🏗️"},{id:"revestimento",label:"Revestimento em Vinil",icon:"🎨"},{id:"reforma",label:"Reforma de Piscina",icon:"🔧"}];
+const SVC=[{id:"construcao",label:"Construção de Piscina",icon:"🏗️",lucide:Hammer},{id:"revestimento",label:"Revestimento em Vinil",icon:"🎨",lucide:Paintbrush},{id:"reforma",label:"Reforma de Piscina",icon:"🔧",lucide:Wrench}];
 const PFMT=["Retangular","Retangular irregular","Formato L","Oval","Feijão","Oitavada","Com prainha","Com Spa","Personalizado"];
 const VOPTS=[{t:"0,7mm",w:3},{t:"0,8mm",w:4}];
 const STAMPS=[{c:"Marmo Carrara",i:["Marmo Carrara Azul","Marmo Carrara Verde","Marmo Carrara Cinza"]},{c:"Travertino",i:["Travertino","Travertino Gris","Travertino Verde","Travertino Azul"]},{c:"Bali",i:["Bali Hijau","Bali Blue"]},{c:"Malibu",i:["Malibu Azul","Malibu Verde"]},{c:"Porto Vecchio",i:["Porto Vecchio Azul","Porto Vecchio Verde"]},{c:"Batu",i:["Batu Blue","Batu Vert"]},{c:"Sukabumi",i:["Sukabumi Azul","Sukabumi Verde"]},{c:"Petra Natural",i:["Petra Natural Azul","Petra Natural Verde"]},{c:"Montblanc",i:["Montblanc","Montblanc Block"]},{c:"Liso",i:["Mid Blue Liso"]},{c:"Aquática",i:["Aquática Azul"]},{c:"Santorini",i:["Santorini"]},{c:"Punta Cana",i:["Punta Cana"]}];
@@ -783,17 +828,19 @@ const TIPO_ICONS={
 
 // ═══ COMPONENTS ═══
 const navy="#0a1f44",blue="#0055a4",gold="#e8b100",goldL="#fdf3d1",lBg="#f4f7fc";
+// Tokens do redesign "ferramenta de bancada" — água = ação; navy = estrutura; gold = medida/total
+const agua="#0e9c8d",aguaBright="#2dd4bf",navyDeep="#071733";
 
 // ═══ THEME ═══
 const themes={
-  light:{bg:"#f1f5f9",card:"#fff",cardBorder:"#e2e8f0",text:"#1e293b",textSec:"#64748b",textMuted:"#94a3b8",inputBg:"#fff",inputBorder:"#e2e8f0",lBg:"#f4f7fc",tabBg:"#fff",tabActive:"rgba(0,85,164,.07)",sectionBg:"#f8fafc",stampBg:"#edf2ff",stampBorder:"#c7d2fe",areaBg:"linear-gradient(135deg,#edf2ff,#f0f4ff)",costRed:"#fef2f2",costGreen:"#f0fdf4",costBlue:"#eff6ff",shadow:"0 1px 3px rgba(0,0,0,.05)"},
-  dark:{bg:"#0f172a",card:"#1e293b",cardBorder:"#334155",text:"#e2e8f0",textSec:"#94a3b8",textMuted:"#64748b",inputBg:"#0f172a",inputBorder:"#475569",lBg:"#1e293b",tabBg:"#1e293b",tabActive:"rgba(0,85,164,.25)",sectionBg:"#1e293b",stampBg:"#1e3a5f",stampBorder:"#2563eb",areaBg:"linear-gradient(135deg,#1e293b,#0f172a)",costRed:"#2d1b1b",costGreen:"#1b2d1b",costBlue:"#1b1b2d",shadow:"0 1px 3px rgba(0,0,0,.3)"}
+  light:{bg:"#eef3f6",card:"#fff",cardBorder:"#d7e0e7",text:"#14263e",textSec:"#51657a",textMuted:"#8399ad",inputBg:"#fff",inputBorder:"#c9d6df",lBg:"#f4f7fc",tabBg:"#fff",tabActive:"rgba(14,156,141,.08)",sectionBg:"#f6f9fb",stampBg:"#edf2ff",stampBorder:"#c7d2fe",areaBg:"linear-gradient(135deg,#e8f4f2,#eef3f6)",costRed:"#fef2f2",costGreen:"#f0fdf4",costBlue:"#eff6ff",shadow:"0 1px 2px rgba(10,31,68,.06)",accentStrong:"#0b7a6e",stepFg:"#8399ad",stepBd:"#d7e0e7",btnBg:"#f2f6f8",btnFg:"#3d5268",btnBd:"#cfdae2"},
+  dark:{bg:"#0b1524",card:"#101f38",cardBorder:"#23375c",text:"#dce7f2",textSec:"#93a8c4",textMuted:"#64789a",inputBg:"#0b1524",inputBorder:"#2c4368",lBg:"#101f38",tabBg:"#101f38",tabActive:"rgba(45,212,191,.12)",sectionBg:"#0e1a2f",stampBg:"#1e3a5f",stampBorder:"#2563eb",areaBg:"linear-gradient(135deg,#102a3a,#0b1524)",costRed:"#2d1b1b",costGreen:"#1b2d1b",costBlue:"#1b1b2d",shadow:"0 1px 3px rgba(0,0,0,.35)",accentStrong:"#2dd4bf",stepFg:"#64789a",stepBd:"#23375c",btnBg:"#16294a",btnFg:"#b9c9de",btnBd:"#2c4368"}
 };
 
-const Tab=({a,onClick,children,icon,badge,t:th})=>{const t=th||themes.light;return <button onClick={onClick} style={{padding:"8px 12px",border:"none",borderBottom:a?"3px solid "+blue:"3px solid transparent",background:a?t.tabActive:"transparent",color:a?blue:t.textSec,fontWeight:a?"700":"500",fontSize:"11px",cursor:"pointer",display:"flex",alignItems:"center",gap:"4px",borderRadius:"6px 6px 0 0",whiteSpace:"nowrap"}}><span style={{fontSize:"13px"}}>{icon}</span>{children}{badge>0&&<span style={{background:"#dc2626",color:"#fff",borderRadius:"9px",padding:"0 4px",fontSize:"8px",fontWeight:"800",lineHeight:"15px",minWidth:"15px",textAlign:"center",marginLeft:"1px"}}>{badge}</span>}</button>};
-const Inp=({label,value,onChange,placeholder,style:sx,t:th,error})=>{const t=th||themes.light;return <div style={{display:"flex",flexDirection:"column",gap:"2px",...sx}}>{label&&<label style={{fontSize:"9px",fontWeight:"600",color:error?"#dc2626":t.textSec,textTransform:"uppercase",letterSpacing:".4px"}}>{label}{error&&<span style={{marginLeft:"4px",fontWeight:"700"}}>⚠</span>}</label>}<input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{padding:"8px 10px",border:`1.5px solid ${error?"#dc2626":t.inputBorder}`,borderRadius:"6px",fontSize:"12px",color:t.text,background:error?"#fef2f2":t.inputBg,outline:"none",width:"100%"}} onFocus={e=>e.target.style.borderColor=error?"#dc2626":blue} onBlur={e=>e.target.style.borderColor=error?"#dc2626":t.inputBorder}/>{error&&<span style={{fontSize:"8px",color:"#dc2626",fontWeight:"600"}}>{error}</span>}</div>};
-const Sel=({label,value,onChange,options,style:sx,t:th})=>{const t=th||themes.light;return <div style={{display:"flex",flexDirection:"column",gap:"2px",...sx}}>{label&&<label style={{fontSize:"9px",fontWeight:"600",color:t.textSec,textTransform:"uppercase",letterSpacing:".4px"}}>{label}</label>}<select value={value} onChange={e=>onChange(e.target.value)} style={{padding:"8px 10px",border:`1.5px solid ${t.inputBorder}`,borderRadius:"6px",fontSize:"12px",color:t.text,background:t.inputBg}}>{options.map(o=><option key={typeof o==="string"?o:o.value} value={typeof o==="string"?o:o.value}>{typeof o==="string"?o:o.label}</option>)}</select></div>};
-const Card=({children,t:th})=>{const t=th||themes.light;return <div style={{background:t.card,borderRadius:"10px",padding:"20px",boxShadow:t.shadow,border:`1px solid ${t.cardBorder}`}}>{children}</div>};
+const Tab=({a,onClick,children,icon,badge,t:th})=>{const t=th||themes.light;return <button onClick={onClick} style={{padding:"8px 12px",border:"none",borderBottom:a?"2px solid "+aguaBright:"2px solid transparent",background:a?t.tabActive:"transparent",color:a?t.accentStrong:t.textSec,fontWeight:a?"700":"500",fontSize:"12px",cursor:"pointer",display:"flex",alignItems:"center",gap:"4px",borderRadius:"6px 6px 0 0",whiteSpace:"nowrap",fontFamily:"inherit"}}><span style={{fontSize:"13px"}}>{icon}</span>{children}{badge>0&&<span style={{background:"#dc2626",color:"#fff",borderRadius:"9px",padding:"0 4px",fontSize:"9px",fontWeight:"800",lineHeight:"15px",minWidth:"15px",textAlign:"center",marginLeft:"1px"}}>{badge}</span>}</button>};
+const Inp=({label,value,onChange,placeholder,style:sx,t:th,error})=>{const t=th||themes.light;return <div style={{display:"flex",flexDirection:"column",gap:"3px",...sx}}>{label&&<label style={{fontFamily:"'Archivo',sans-serif",fontSize:"10px",fontWeight:"700",color:error?"#dc2626":t.textSec,textTransform:"uppercase",letterSpacing:".7px"}}>{label}{error&&<span style={{marginLeft:"4px",fontWeight:"700"}}>⚠</span>}</label>}<input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{padding:"9px 11px",border:`1.5px solid ${error?"#dc2626":t.inputBorder}`,borderRadius:"6px",fontSize:"13px",fontFamily:"inherit",color:t.text,background:error?"#fef2f2":t.inputBg,outline:"none",width:"100%"}} onFocus={e=>e.target.style.borderColor=error?"#dc2626":aguaBright} onBlur={e=>e.target.style.borderColor=error?"#dc2626":t.inputBorder}/>{error&&<span style={{fontSize:"9px",color:"#dc2626",fontWeight:"600"}}>{error}</span>}</div>};
+const Sel=({label,value,onChange,options,style:sx,t:th})=>{const t=th||themes.light;return <div style={{display:"flex",flexDirection:"column",gap:"3px",...sx}}>{label&&<label style={{fontFamily:"'Archivo',sans-serif",fontSize:"10px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".7px"}}>{label}</label>}<select value={value} onChange={e=>onChange(e.target.value)} style={{padding:"9px 11px",border:`1.5px solid ${t.inputBorder}`,borderRadius:"6px",fontSize:"13px",fontFamily:"inherit",color:t.text,background:t.inputBg}}>{options.map(o=><option key={typeof o==="string"?o:o.value} value={typeof o==="string"?o:o.value}>{typeof o==="string"?o:o.label}</option>)}</select></div>};
+const Card=({children,t:th})=>{const t=th||themes.light;return <div style={{background:t.card,borderRadius:"8px",padding:"20px",boxShadow:t.shadow,border:`1px solid ${t.cardBorder}`}}>{children}</div>};
 const CatalogoPicker=({value,onChange,t,dark})=>{
   const [open,setOpen]=React.useState(false);
   const slug=SWATCH_SLUG[value];
@@ -828,9 +875,9 @@ const CatalogoPicker=({value,onChange,t,dark})=>{
     </div>}
   </div>;
 };
-const ST=({icon,children})=><h3 style={{fontSize:"14px",fontWeight:"700",color:blue,marginBottom:"14px",display:"flex",alignItems:"center",gap:"6px"}}><span>{icon}</span>{children}</h3>;
-const Btn=({children,onClick,style:sx})=><button onClick={onClick} style={{padding:"6px 12px",background:"#f1f5f9",color:"#475569",border:"1.5px solid #e2e8f0",borderRadius:"6px",fontWeight:"600",fontSize:"11px",cursor:"pointer",display:"flex",alignItems:"center",gap:"4px",...sx}}>{children}</button>;
-const DarkToggle=({dark,onToggle})=><button onClick={onToggle} style={{width:"38px",height:"22px",borderRadius:"11px",border:"none",background:dark?"#475569":"#cbd5e1",cursor:"pointer",position:"relative",transition:"background .3s"}}><div style={{width:"18px",height:"18px",borderRadius:"50%",background:dark?"#0f172a":"#fff",position:"absolute",top:"2px",left:dark?"18px":"2px",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px"}}>{dark?"🌙":"☀️"}</div></button>;
+const ST=({icon,children})=><h3 className="vv-st">{children}</h3>;
+const Btn=({children,onClick,style:sx})=><button onClick={onClick} style={{padding:"8px 14px",background:"var(--btn-bg,#f2f6f8)",color:"var(--btn-fg,#3d5268)",border:"1px solid var(--btn-bd,#cfdae2)",borderRadius:"6px",fontWeight:"600",fontSize:"12px",fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:"6px",...sx}}>{children}</button>;
+const DarkToggle=({dark,onToggle})=><button onClick={onToggle} aria-label={dark?"Mudar para tema claro":"Mudar para tema escuro"} style={{width:"38px",height:"22px",borderRadius:"11px",border:"none",background:dark?"#2c4368":"#cbd5e1",cursor:"pointer",position:"relative",transition:"background .3s"}}><div style={{width:"18px",height:"18px",borderRadius:"50%",background:dark?"#0b1524":"#fff",position:"absolute",top:"2px",left:dark?"18px":"2px",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>{dark?<Moon size={11} color="#2dd4bf"/>:<Sun size={11} color="#e8b100"/>}</div></button>;
 
 // ═══ PDF PREVIEW ═══
 const QP=({d,onBack,onSave,autoPositions})=>{
@@ -1219,6 +1266,10 @@ export default function App(){
     }).catch(()=>{setAL(false);clearTimeout(timeout)});
   },[]);
 
+  // Ref com o hist mais recente — evita closure velho dentro do onSnapshot
+  const histRef=useRef(hist);
+  useEffect(()=>{histRef.current=hist},[hist]);
+
   // Firestore sync when user logs in
   useEffect(()=>{
     if(!user||!fbReady||!fb.db||user.uid==="local")return;
@@ -1226,29 +1277,50 @@ export default function App(){
       const colRef=fbFns.collection(fb.db,"users",user.uid,"orcamentos");
       const unsub=fbFns.onSnapshot(colRef,(snap)=>{
         const cloudData=snap.docs.map(d=>({id:d.id,...d.data()}));
-        if(cloudData.length>0){
-          setHist(cloudData);setHL(true);
-          try{localStorage.setItem("vv_hist",JSON.stringify(cloudData))}catch{}
-        } else {
-          // Cloud empty — migrate localStorage data to Firestore
-          const localData=hist.length>0?hist:(()=>{try{const s=localStorage.getItem("vv_hist");return s?JSON.parse(s):[];}catch{return[]}})();
-          if(localData.length>0){
-            localData.forEach(item=>{
-              try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"orcamentos",String(item.id)),JSON.parse(JSON.stringify(item)))}catch{}
-            });
-            setHist(localData);setHL(true);
-          } else {
-            setHL(true);
-          }
+        const cloudIds=new Set(cloudData.map(c=>String(c.id)));
+        // Tudo que já chegou na nuvem sai da fila de pendências
+        cloudData.forEach(c=>clearPending(c.id));
+        const local=histRef.current&&histRef.current.length?histRef.current:(()=>{try{const s=localStorage.getItem("vv_hist");return s?JSON.parse(s):[];}catch{return[]}})();
+        if(cloudData.length===0&&local.length>0){
+          // Nuvem vazia — migra os dados do aparelho (primeiro login neste dispositivo)
+          local.forEach(item=>saveFS(item));
+          setHist(local);setHL(true);
+          return;
         }
+        // Reaplica exclusões que ficaram na fila (feitas antes do Firebase conectar)
+        const pendDel=getPendingDel();
+        pendDel.forEach(id=>{if(cloudIds.has(id))delFS(id);else clearPendingDel(id);});
+        // MERGE em vez de substituir: orçamentos salvos sem conexão (pendentes)
+        // são preservados e reenviados — antes eram apagados pelo sync da nuvem
+        const pending=getPending();
+        const localOnly=local.filter(h=>!cloudIds.has(String(h.id))&&pending.has(String(h.id)));
+        localOnly.forEach(item=>saveFS(item));
+        const merged=[...localOnly,...cloudData.filter(c=>!pendDel.has(String(c.id)))].sort((a,b)=>(Number(b.id)||0)-(Number(a.id)||0));
+        setHist(merged);setHL(true);
+        try{localStorage.setItem("vv_hist",JSON.stringify(merged))}catch{}
       });
       return ()=>unsub();
     }catch(e){console.error("Firestore sync error:",e)}
   },[user,fbReady]);
 
   // Save helpers
-  const saveFS=async(item)=>{if(!fbReady||!fb.db||!user||user.uid==="local")return;try{await fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"orcamentos",String(item.id)),JSON.parse(JSON.stringify(item)))}catch(e){console.error("saveFS:",e)}};
-  const delFS=async(id)=>{if(!fbReady||!fb.db||!user||user.uid==="local")return;try{await fbFns.deleteDoc(fbFns.doc(fb.db,"users",user.uid,"orcamentos",String(id)))}catch(e){console.error("delFS:",e)}};
+  const saveFS=async(item)=>{
+    addPending(item.id); // entra na fila até a nuvem confirmar
+    if(!fbReady||!fb.db||!user||user.uid==="local")return false;
+    try{
+      await fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"orcamentos",String(item.id)),JSON.parse(JSON.stringify(item)));
+      clearPending(item.id);
+      return true;
+    }catch(e){console.error("saveFS:",e);return false;}
+  };
+  const delFS=async(id)=>{
+    clearPending(id); // excluído não volta pra fila de reenvio
+    if(!fbReady||!fb.db||!user||user.uid==="local"){addPendingDel(id);return;}
+    try{
+      await fbFns.deleteDoc(fbFns.doc(fb.db,"users",user.uid,"orcamentos",String(id)));
+      clearPendingDel(id);
+    }catch(e){console.error("delFS:",e);addPendingDel(id);}
+  };
   const saveLS=(h)=>{try{localStorage.setItem("vv_hist",JSON.stringify(h))}catch{}};
 
   // Auth handlers
@@ -1267,7 +1339,7 @@ export default function App(){
     }
   };
   const doLogout=()=>{
-    ["vv_hist","vv_receber","vv_pagar","vv_fixas","vv_stk","vv_stklog","vv_fornec","vv_interacoes","vv_crmmeta"].forEach(k=>localStorage.removeItem(k));
+    ["vv_hist","vv_receber","vv_pagar","vv_fixas","vv_stk","vv_stklog","vv_fornec","vv_interacoes","vv_crmmeta","vv_pending","vv_pending_del"].forEach(k=>localStorage.removeItem(k));
     if(fbReady&&fb.auth)fbFns.signOut(fb.auth);else setUser(null);
   };
 
@@ -1299,6 +1371,14 @@ export default function App(){
     e.target.value="";
   };
   const [fbMsg,setFbMsg]=useState("");
+  // Contador do indicador de sincronização (fila vv_pending + vv_pending_del)
+  const [pendCount,setPendCount]=useState(0);
+  useEffect(()=>{
+    const upd=()=>setPendCount(getPending().size+getPendingDel().size);
+    upd();
+    const iv=setInterval(upd,4000);
+    return ()=>clearInterval(iv);
+  },[]);
   // ═══ ESTOQUE ═══
   const [stk,setStk]=useState(()=>{
     const init={};CAT.forEach(p=>{init[p.id]={qty:0,minQty:2,lastCost:p.p}});return init;
@@ -1556,28 +1636,28 @@ export default function App(){
     return diff;
   };
 
-  // WhatsApp: carrega conversas em tempo real
+  // WhatsApp: carrega conversas em tempo real (só depois do login — as rules exigem auth)
   useEffect(()=>{
-    if(!fbReady||!fb.db)return;
+    if(!fbReady||!fb.db||!user||user.uid==="local")return;
     const ref=fbFns.collection(fb.db,"whatsapp_conversations");
     const q=fbFns.query(ref,fbFns.orderBy("lastActivity","desc"),fbFns.limit(50));
     const unsub=fbFns.onSnapshot(q,(snap)=>{
       const convs=[];
       snap.forEach(doc=>{const d=doc.data();convs.push({phone:doc.id,...d});});
       setWaConvs(convs);
-    });
+    },(err)=>console.warn("whatsapp_conversations:",err.code||err.message));
     return ()=>unsub();
-  },[fbReady]);
+  },[fbReady,user]);
 
   // WhatsApp: carrega chat individual em tempo real
   useEffect(()=>{
-    if(!waChat||!fbReady||!fb.db)return;
+    if(!waChat||!fbReady||!fb.db||!user||user.uid==="local")return;
     const ref=fbFns.doc(fb.db,"whatsapp_conversations",waChat);
     const unsub=fbFns.onSnapshot(ref,(snap)=>{
       if(snap.exists())setWaChatData({phone:snap.id,...snap.data()});
-    });
+    },(err)=>console.warn("whatsapp_chat:",err.code||err.message));
     return ()=>unsub();
-  },[waChat,fbReady]);
+  },[waChat,fbReady,user]);
 
   // WhatsApp: envia mensagem
   const waSendMessage=async()=>{
@@ -1912,9 +1992,11 @@ export default function App(){
     if(editingId){
       const existing=hist.find(q=>q.id===editingId);
       const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};
-      const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);setFbMsg("Atualizado!");setTimeout(()=>setFbMsg(""),2000);
+      const cloudOk=fbReady&&fb.db&&user&&user.uid!=="local"&&navigator.onLine;
+      const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);setFbMsg(cloudOk?"Atualizado!":"💾 Atualizado no aparelho — sincroniza ao conectar");setTimeout(()=>setFbMsg(""),cloudOk?2000:4000);
     }else{
-      const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);setFbMsg("Salvo!");setTimeout(()=>setFbMsg(""),2000);
+      const cloudOk=fbReady&&fb.db&&user&&user.uid!=="local"&&navigator.onLine;
+      const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);setFbMsg(cloudOk?"Salvo!":"💾 Salvo no aparelho — sincroniza ao conectar");setTimeout(()=>setFbMsg(""),cloudOk?2000:4000);
     }
   };
   // Sincroniza automaticamente obra fechada em Contas a Receber
@@ -2003,24 +2085,31 @@ export default function App(){
   };
 
   // Auth loading
-  if(authLoading)return <div style={{display:"flex",justifyContent:"center",alignItems:"center",minHeight:"100vh",background:"#0a1f44"}}><div style={{textAlign:"center",color:"#fff"}}><div style={{fontSize:"32px",marginBottom:"12px"}}>🏊</div><div style={{fontSize:"18px",fontWeight:"700"}}>VINIL VALE</div><div style={{fontSize:"11px",opacity:.6,marginTop:"4px"}}>Carregando...</div></div></div>;
+  if(authLoading)return <div style={{display:"flex",justifyContent:"center",alignItems:"center",minHeight:"100vh",background:`linear-gradient(180deg,${navyDeep},${navy})`}}><div style={{textAlign:"center",color:"#fff"}}><div style={{width:"52px",height:"52px",borderRadius:"12px",background:"rgba(45,212,191,.15)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",animation:"pulse 1.6s ease infinite"}}><Droplets size={28} color={aguaBright}/></div><div className="vv-display" style={{fontSize:"19px",fontWeight:"800",letterSpacing:"2px",fontStretch:"115%"}}>VINIL VALE</div><div className="vv-display" style={{fontSize:"9px",opacity:.55,marginTop:"5px",letterSpacing:"2.5px",textTransform:"uppercase"}}>Carregando</div></div></div>;
 
   // Login screen
-  if(!user)return <div style={{display:"flex",justifyContent:"center",alignItems:"center",minHeight:"100vh",background:"linear-gradient(135deg,#001d3d,#0055a4 60%,#0077cc)",padding:"20px"}}>
-    <div style={{background:"#fff",borderRadius:"16px",padding:"32px",maxWidth:"360px",width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
-      <div style={{textAlign:"center",marginBottom:"24px"}}><div style={{fontSize:"36px"}}>🏊</div><div style={{fontSize:"22px",fontWeight:"800",color:"#0a1f44",marginTop:"8px"}}>VINIL VALE</div><div style={{fontSize:"11px",color:"#666"}}>Sistema de Orçamentos v4.5</div><div style={{fontSize:"10px",color:"#aaa",marginTop:"2px"}}>Acesso restrito</div></div>
+  if(!user)return <div style={{display:"flex",justifyContent:"center",alignItems:"center",minHeight:"100vh",background:`radial-gradient(ellipse at 70% -10%,rgba(45,212,191,.14),transparent 55%),linear-gradient(180deg,${navyDeep} 0%,${navy} 100%)`,padding:"20px",position:"relative",overflow:"hidden",fontFamily:"'Inter',sans-serif"}}>
+    {/* régua métrica no rodapé — assinatura da marca */}
+    <div className="vv-ruler" style={{position:"absolute",left:0,right:0,bottom:"26px",color:aguaBright,opacity:.28}}/>
+    <div style={{background:"#fff",borderRadius:"10px",padding:"32px",maxWidth:"370px",width:"100%",boxShadow:"0 24px 70px rgba(0,0,0,.45)"}}>
+      <div style={{textAlign:"center",marginBottom:"24px"}}>
+        <div style={{width:"46px",height:"46px",borderRadius:"10px",background:"rgba(14,156,141,.1)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}><Droplets size={24} color={agua}/></div>
+        <div className="vv-display" style={{fontSize:"22px",fontWeight:"800",color:navy,marginTop:"10px",letterSpacing:"2px",fontStretch:"115%"}}>VINIL VALE</div>
+        <div className="vv-display" style={{fontSize:"9px",color:"#8399ad",letterSpacing:"2.5px",textTransform:"uppercase",marginTop:"4px"}}>Sistema de Orçamentos · Acesso restrito</div>
+        <div className="vv-ruler" style={{color:navy,marginTop:"14px",opacity:.25}}/>
+      </div>
       <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
-        <input value={loginEmail} onChange={e=>setLE(e.target.value)} placeholder="E-mail" type="email" autoComplete="username" style={{padding:"10px 14px",border:"1.5px solid #e2e8f0",borderRadius:"8px",fontSize:"14px",outline:"none"}}/>
-        <input value={loginPass} onChange={e=>setLP(e.target.value)} placeholder="Senha" type="password" autoComplete="current-password" onKeyDown={e=>e.key==="Enter"&&doLogin()} style={{padding:"10px 14px",border:"1.5px solid #e2e8f0",borderRadius:"8px",fontSize:"14px",outline:"none"}}/>
-        {loginErr&&<div style={{fontSize:"11px",color:"#dc2626",background:"#fef2f2",padding:"8px",borderRadius:"6px"}}>{loginErr}</div>}
-        <button onClick={doLogin} style={{padding:"12px",background:"linear-gradient(135deg,#0055a4,#003d7a)",color:"#fff",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"700",cursor:"pointer"}}>🔑 Entrar</button>
+        <input value={loginEmail} onChange={e=>setLE(e.target.value)} placeholder="E-mail" type="email" autoComplete="username" style={{padding:"11px 14px",border:"1.5px solid #c9d6df",borderRadius:"6px",fontSize:"15px",fontFamily:"inherit",outline:"none"}} onFocus={e=>e.target.style.borderColor=agua} onBlur={e=>e.target.style.borderColor="#c9d6df"}/>
+        <input value={loginPass} onChange={e=>setLP(e.target.value)} placeholder="Senha" type="password" autoComplete="current-password" onKeyDown={e=>e.key==="Enter"&&doLogin()} style={{padding:"11px 14px",border:"1.5px solid #c9d6df",borderRadius:"6px",fontSize:"15px",fontFamily:"inherit",outline:"none"}} onFocus={e=>e.target.style.borderColor=agua} onBlur={e=>e.target.style.borderColor="#c9d6df"}/>
+        {loginErr&&<div style={{fontSize:"12px",color:"#dc2626",background:"#fef2f2",padding:"9px 11px",borderRadius:"6px"}}>{loginErr}</div>}
+        <button onClick={doLogin} style={{padding:"13px",background:agua,color:"#fff",border:"none",borderRadius:"6px",fontSize:"14px",fontWeight:"700",fontFamily:"inherit",cursor:"pointer"}}>Entrar</button>
         <div style={{display:"flex",alignItems:"center",gap:"10px",margin:"4px 0"}}><div style={{flex:1,height:"1px",background:"#e2e8f0"}}/><span style={{fontSize:"10px",color:"#999"}}>ou</span><div style={{flex:1,height:"1px",background:"#e2e8f0"}}/></div>
-        <button onClick={doGoogle} style={{padding:"12px",background:"#fff",color:"#333",border:"1.5px solid #e2e8f0",borderRadius:"8px",fontSize:"13px",fontWeight:"600",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",width:"100%"}}>
+        <button onClick={doGoogle} style={{padding:"12px",background:"#fff",color:"#333",border:"1.5px solid #d7e0e7",borderRadius:"6px",fontSize:"13px",fontWeight:"600",fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",width:"100%"}}>
           <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
           Entrar com Google
         </button>
       </div>
-      <div style={{textAlign:"center",marginTop:"16px",fontSize:"10px",color:"#999"}}>Dados sincronizados com segurança na nuvem ☁️🔒</div>
+      <div style={{textAlign:"center",marginTop:"16px",fontSize:"10.5px",color:"#8399ad"}}>Seus orçamentos ficam salvos no aparelho e sincronizam na nuvem.</div>
     </div>
   </div>;
 
@@ -2034,29 +2123,35 @@ export default function App(){
   const badgeMap={estoque:lowStockCount,financeiro:alertasFinCount};
 
   return(
-    <div className="vv-layout" style={{background:t.bg,color:t.text,transition:"background .3s,color .3s"}}>
+    <div className="vv-layout" style={{background:t.bg,color:t.text,transition:"background .3s,color .3s","--accent-strong":t.accentStrong,"--step-fg":t.stepFg,"--step-bd":t.stepBd,"--btn-bg":t.btnBg,"--btn-fg":t.btnFg,"--btn-bd":t.btnBd}}>
       {/* SIDEBAR OVERLAY (mobile) */}
       <div className={"vv-sidebar-overlay"+(sidebarOpen?" open":"")} onClick={()=>setSidebarOpen(false)}/>
 
       {/* SIDEBAR */}
-      <aside className={"vv-sidebar"+(sidebarOpen?" open":"")} style={{background:dark?"#0f172a":"#001d3d",color:"#fff"}}>
+      <aside className={"vv-sidebar"+(sidebarOpen?" open":"")} style={{background:`linear-gradient(180deg,${navyDeep},${navy})`,color:"#fff"}}>
         {/* Logo */}
-        <div style={{padding:"20px 16px 12px",borderBottom:"1px solid rgba(255,255,255,.1)"}}>
-          <div style={{fontSize:"18px",fontWeight:"800",letterSpacing:".5px"}}>💧 VINIL VALE</div>
-          <div style={{fontSize:"9px",opacity:.5,marginTop:"2px"}}>{VER} · Sistema de Orçamentos</div>
+        <div style={{padding:"20px 16px 14px",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"9px"}}>
+            <div style={{width:"30px",height:"30px",borderRadius:"7px",background:"rgba(45,212,191,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Droplets size={17} color={aguaBright}/></div>
+            <div>
+              <div className="vv-display" style={{fontSize:"16px",fontWeight:"800",letterSpacing:"1.5px",fontStretch:"115%"}}>VINIL VALE</div>
+              <div className="vv-display" style={{fontSize:"8px",opacity:.5,letterSpacing:"2.2px",textTransform:"uppercase",marginTop:"1px"}}>Orçamentos · {VER}</div>
+            </div>
+          </div>
+          <div className="vv-ruler" style={{color:aguaBright,marginTop:"12px"}}/>
         </div>
 
         {/* Service type */}
         <div style={{padding:"12px 12px 8px",display:"flex",flexDirection:"column",gap:"4px"}}>
-          {SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(mkItems(sv.id));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20");setEditingId(null);setSidebarOpen(false);}} style={{padding:"7px 12px",borderRadius:"8px",border:"none",background:svcType===sv.id?"rgba(255,255,255,.15)":"transparent",color:"#fff",fontSize:"11px",fontWeight:svcType===sv.id?"700":"400",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:"6px"}}>{sv.icon} {sv.label}</button>)}
+          {SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(mkItems(sv.id));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20");setEditingId(null);setSidebarOpen(false);}} style={{padding:"8px 12px",borderRadius:"6px",border:"none",background:svcType===sv.id?"rgba(45,212,191,.13)":"transparent",color:svcType===sv.id?aguaBright:"rgba(255,255,255,.75)",fontSize:"11.5px",fontWeight:svcType===sv.id?"700":"400",fontFamily:"inherit",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:"8px"}}><sv.lucide size={14}/> {sv.label}</button>)}
         </div>
 
         {/* Nav items */}
         <nav style={{flex:1,overflowY:"auto",padding:"4px 8px"}}>
           {NAV.map(g=><div key={g.group}>
-            <div className="vv-nav-group" style={{color:"rgba(255,255,255,.4)"}}>{g.group}</div>
-            {g.items.map(n=><button key={n.id} className={"vv-nav-item"+(tab===n.id?" active":"")} onClick={()=>{setTab(n.id);setSidebarOpen(false);}} style={{background:tab===n.id?"rgba(255,255,255,.12)":"transparent",color:tab===n.id?"#fff":"rgba(255,255,255,.7)"}}>
-              <span style={{fontSize:"15px",width:"22px",textAlign:"center"}}>{n.icon}</span>
+            <div className="vv-nav-group" style={{color:"rgba(255,255,255,.45)"}}>{g.group}</div>
+            {g.items.map(n=><button key={n.id} className={"vv-nav-item"+(tab===n.id?" active":"")} onClick={()=>{setTab(n.id);setSidebarOpen(false);}} style={{background:tab===n.id?"rgba(255,255,255,.08)":"transparent",color:tab===n.id?aguaBright:"rgba(255,255,255,.7)"}}>
+              <n.lucide size={16} strokeWidth={tab===n.id?2.4:1.8} style={{width:"22px",flexShrink:0}}/>
               <span>{n.label}</span>
               {badgeMap[n.id]>0&&<span className="vv-badge">{badgeMap[n.id]}</span>}
             </button>)}
@@ -2064,10 +2159,10 @@ export default function App(){
         </nav>
 
         {/* User + logout */}
-        <div style={{padding:"12px 16px",borderTop:"1px solid rgba(255,255,255,.1)",display:"flex",alignItems:"center",gap:"8px"}}>
-          <div style={{flex:1,overflow:"hidden"}}><div style={{fontSize:"11px",fontWeight:"600",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user?.email?.split("@")[0]}</div><div style={{fontSize:"9px",opacity:.5}}>{user?.email}</div></div>
+        <div style={{padding:"12px 16px",borderTop:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",gap:"8px"}}>
+          <div style={{flex:1,overflow:"hidden"}}><div style={{fontSize:"11.5px",fontWeight:"600",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user?.email?.split("@")[0]}</div><div style={{fontSize:"9px",opacity:.5}}>{user?.email}</div></div>
           <DarkToggle dark={dark} onToggle={()=>setDark(p=>!p)}/>
-          <button onClick={doLogout} style={{background:"rgba(255,255,255,.1)",border:"none",borderRadius:"6px",padding:"5px 8px",color:"#fff",fontSize:"10px",cursor:"pointer",fontWeight:"600"}}>Sair</button>
+          <button onClick={doLogout} aria-label="Sair da conta" style={{background:"rgba(255,255,255,.08)",border:"none",borderRadius:"6px",padding:"6px 8px",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><LogOut size={13}/></button>
         </div>
       </aside>
 
@@ -2075,19 +2170,26 @@ export default function App(){
       <div className="vv-main">
         {/* TOP BAR */}
         <div className="vv-topbar" style={{background:t.card,borderColor:t.cardBorder,"--border":t.cardBorder}}>
-          <button onClick={()=>setSidebarOpen(o=>!o)} style={{background:"none",border:"none",fontSize:"20px",cursor:"pointer",color:t.text,padding:"4px",display:"none"}} className="vv-hamburger">☰</button>
-          <div style={{fontSize:"13px",fontWeight:"600",color:t.text,flex:1,display:"flex",alignItems:"center",gap:"6px"}}>
-            <span style={{color:t.textMuted,fontSize:"11px"}}>{SVC.find(s=>s.id===svcType)?.label}</span>
+          <div style={{flex:1,display:"flex",alignItems:"center",gap:"7px",minWidth:0,overflow:"hidden"}}>
+            <span className="vv-display" style={{color:t.textMuted,fontSize:"9.5px",textTransform:"uppercase",letterSpacing:"1.2px",fontWeight:"700",whiteSpace:"nowrap"}}>{SVC.find(s=>s.id===svcType)?.label}</span>
             <span style={{color:t.textMuted}}>›</span>
-            <span>{curNav?.icon} {curNav?.label}</span>
+            <span style={{fontSize:"13px",fontWeight:"700",color:t.text,display:"flex",alignItems:"center",gap:"5px",whiteSpace:"nowrap"}}>{curNav&&<curNav.lucide size={14} color={t.accentStrong}/>}{curNav?.label}</span>
           </div>
-          {fbMsg&&<span style={{background:"#dcfce7",color:"#166534",padding:"4px 10px",borderRadius:"6px",fontSize:"10px",fontWeight:"600"}}>✅ {fbMsg}</span>}
-          <Btn onClick={save} style={{fontSize:"11px"}}>💾 Salvar</Btn>
-          <Btn onClick={()=>setView("quote")} style={{background:blue,color:"#fff",border:"none",fontWeight:"700",fontSize:"11px"}}>���� Orçamento</Btn>
+          {fbMsg&&<span style={{background:"#dcfce7",color:"#166534",padding:"4px 10px",borderRadius:"6px",fontSize:"11px",fontWeight:"600",whiteSpace:"nowrap"}}>{fbMsg}</span>}
+          <div className="vv-sync" title={pendCount===0?"Todos os orçamentos estão na nuvem":pendCount+" alteração(ões) aguardando conexão"} style={pendCount===0?{background:t.tabActive,color:t.accentStrong}:{background:goldL,color:"#8a6d00"}}>
+            {pendCount===0?<Cloud size={13}/>:<RefreshCw size={13} style={{animation:"vv-spin 1.6s linear infinite"}}/>}
+            <span>{pendCount===0?"Sincronizado":pendCount+" pendente"+(pendCount>1?"s":"")}</span>
+          </div>
+          <Btn onClick={save}><Save size={13}/> Salvar</Btn>
+          <Btn onClick={()=>setView("quote")} style={{background:agua,color:"#fff",border:"none",fontWeight:"700"}}><FileText size={13}/> Orçamento</Btn>
         </div>
 
         {/* CONTENT */}
-        <div className="vv-content">
+        <div className={"vv-content"+(EDITOR_TABS.includes(tab)?" pad-taxi":"")}>
+        {/* STEPPER do orçamento */}
+        {EDITOR_TABS.includes(tab)&&<div className="vv-stepper">
+          {NAV[0].items.map((n,i)=><button key={n.id} className={"vv-step"+(tab===n.id?" active":"")} onClick={()=>setTab(n.id)}>{i+1}. {n.label}</button>)}
+        </div>}
         {/* CLIENTE */}
         {tab==="cliente"&&<Card t={t}><ST icon="👤">Dados do Cliente</ST>
           <div style={{display:"flex",gap:"10px",marginBottom:"10px"}}><Inp label="Proposta" value={propNum} onChange={setPN} placeholder="03/26" style={{flex:"0 0 90px"}} t={t}/><Inp label="Nome completo *" value={client.name} onChange={v=>{uc("name")(v);if(v.trim())setFieldErrors(e=>({...e,clientName:false}))}} placeholder="Nome" style={{flex:1}} t={t} error={fieldErrors.clientName}/></div>
@@ -4332,6 +4434,29 @@ ${pendPag.length===0?"<p style='color:#888;font-size:12px'>Nenhuma</p>":`<table 
 
       </div>{/* end vv-content */}
       </div>{/* end vv-main */}
+
+      {/* TAXÍMETRO — total sempre à vista durante o orçamento */}
+      {EDITOR_TABS.includes(tab)&&<div className="vv-taxi">
+        <div style={{display:"flex",flexDirection:"column",gap:"1px",minWidth:0}}>
+          <span className="vv-display" style={{fontSize:"8.5px",letterSpacing:"1.8px",textTransform:"uppercase",opacity:.55}}>Área vinil</span>
+          <span className="vv-mono" style={{fontSize:"13px",fontWeight:"600",whiteSpace:"nowrap"}}>{ar?.tot||0} m²</span>
+        </div>
+        <div style={{flex:1,display:"flex",flexDirection:"column",gap:"1px",alignItems:"flex-end",minWidth:0}}>
+          <span className="vv-display" style={{fontSize:"8.5px",letterSpacing:"1.8px",textTransform:"uppercase",opacity:.55}}>Total do orçamento</span>
+          <span className="vv-mono" style={{fontSize:"19px",fontWeight:"600",color:gold,whiteSpace:"nowrap"}}>{fmt(total||0)}</span>
+        </div>
+        <button onClick={save} style={{background:agua,color:"#fff",border:"none",borderRadius:"6px",padding:"11px 18px",fontSize:"12.5px",fontWeight:"700",fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:"6px",flexShrink:0}}><Save size={14}/> Salvar</button>
+      </div>}
+
+      {/* NAVEGAÇÃO INFERIOR (celular) */}
+      <div className="vv-bottomnav">
+        <button className={EDITOR_TABS.includes(tab)?"active":""} onClick={()=>setTab("cliente")}><Ruler size={19}/>Orçamento</button>
+        <button className={tab==="historico"?"active":""} onClick={()=>setTab("historico")}><FolderOpen size={19}/>Salvos</button>
+        <button className={tab==="crm"?"active":""} onClick={()=>setTab("crm")}><TrendingUp size={19}/>Pipeline</button>
+        <button className={tab==="whatsapp"?"active":""} onClick={()=>setTab("whatsapp")}><MessageCircle size={19}/>WhatsApp</button>
+        <button onClick={()=>setSidebarOpen(true)}><Menu size={19}/>Mais</button>
+      </div>
+
       {rescueModal&&<RescueModal q={rescueModal.q} t={t} daysSince={rescueModal.days} onClose={()=>setRescueModal(null)} openWA={openWA} addInteracao={addInteracao} setLeadTag={setLeadTag} crmTags={crmTags}/>}
       {lostReasonModal&&<LostReasonModal q={lostReasonModal.q} t={t} daysSince={lostReasonModal.days} sugestaoAutomatica={lostReasonModal.auto} onClose={()=>setLostReasonModal(null)} onConfirm={(motivo)=>{salvarMotivoPerda(lostReasonModal.q,motivo);setLostReasonModal(null)}}/>}
     </div>
