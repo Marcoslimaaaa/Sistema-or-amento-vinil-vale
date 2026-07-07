@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, Suspense, lazy } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { MessageCircleIcon, FileTextIcon, CheckIcon, DownloadIcon, SendIcon } from "./AnimatedIcons.jsx";
-import { User, Waves, ShoppingCart, ShieldCheck, Wallet, Ruler, FolderOpen, TrendingUp, MessageCircle, Package, FileText, Coins, Hammer, Paintbrush, Wrench, Menu, Cloud, RefreshCw, Save, Sun, Moon, Droplets, LogOut } from "lucide-react";
+import { User, Waves, ShoppingCart, ShieldCheck, Wallet, Ruler, FolderOpen, TrendingUp, MessageCircle, Package, FileText, Hammer, Paintbrush, Wrench, Menu, Cloud, RefreshCw, Save, Sun, Moon, Droplets, LogOut } from "lucide-react";
 // jspdf/html2canvas (~200KB gz) só carregam quando alguém gera PDF/imagem
 const loadPdfLibs=async()=>{const[h,j]=await Promise.all([import("html2canvas"),import("jspdf")]);return{html2canvas:h.default,jsPDF:j.jsPDF};};
 const Pool3DView = lazy(() => import('./Pool3DView'));
@@ -68,10 +68,6 @@ const clearPending=(id)=>{const p=getPending();if(p.delete(String(id))){try{loca
 const getPendingDel=()=>{try{return new Set(JSON.parse(localStorage.getItem("vv_pending_del")||"[]"))}catch{return new Set()}};
 const addPendingDel=(id)=>{const p=getPendingDel();p.add(String(id));try{localStorage.setItem("vv_pending_del",JSON.stringify([...p]))}catch{}};
 const clearPendingDel=(id)=>{const p=getPendingDel();if(p.delete(String(id))){try{localStorage.setItem("vv_pending_del",JSON.stringify([...p]))}catch{}}};
-// Fila dos docs de config financeiros (receber/pagar/fixas) — versão local mais nova que a nuvem
-const getCfgDirty=()=>{try{return new Set(JSON.parse(localStorage.getItem("vv_cfg_dirty")||"[]"))}catch{return new Set()}};
-const addCfgDirty=(k)=>{const p=getCfgDirty();p.add(k);try{localStorage.setItem("vv_cfg_dirty",JSON.stringify([...p]))}catch{}};
-const clearCfgDirty=(k)=>{const p=getCfgDirty();if(p.delete(k)){try{localStorage.setItem("vv_cfg_dirty",JSON.stringify([...p]))}catch{}}};
 // Escapa caracteres HTML para prevenir XSS em templates de documentos
 const escHtml=(s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;');
 if(typeof document!=="undefined"&&!document.getElementById("vv-styles")){const s=document.createElement("style");s.id="vv-styles";s.textContent=`
@@ -148,7 +144,6 @@ const NAV=[
     {id:"whatsapp",icon:"💬",lucide:MessageCircle,label:"WhatsApp"},
     {id:"estoque",icon:"📦",lucide:Package,label:"Estoque"},
     {id:"contratos",icon:"📝",lucide:FileText,label:"Contratos"},
-    {id:"financeiro",icon:"💵",lucide:Coins,label:"Financeiro"},
   ]},
 ];
 const EDITOR_TABS=NAV[0].items.map(i=>i.id);
@@ -1349,7 +1344,7 @@ export default function App(){
   };
 
   const exportarDados=()=>{
-    const dados={hist,contasReceber,contasPagar,despesasFixas,fornecedores,interacoes,crmNextContact,crmTags,stk,stkLog,exportadoEm:new Date().toISOString(),exportadoDe:user?.email};
+    const dados={hist,fornecedores,interacoes,crmNextContact,crmTags,stk,stkLog,exportadoEm:new Date().toISOString(),exportadoDe:user?.email};
     const blob=new Blob([JSON.stringify(dados,null,2)],{type:"application/json"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);
     a.download=`vinil-vale-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();
@@ -1364,9 +1359,6 @@ export default function App(){
         setHist(d.hist);saveLS(d.hist);
         if(fbReady&&fb.db&&user&&user.uid!=="local")d.hist.forEach(o=>saveFS(o));
       }
-      if(d.contasReceber?.length)saveReceber(d.contasReceber);
-      if(d.contasPagar?.length)savePagar(d.contasPagar);
-      if(d.despesasFixas?.length)saveFixas(d.despesasFixas);
       if(d.fornecedores?.length)saveFornec(d.fornecedores);
       if(d.interacoes&&Object.keys(d.interacoes).length)saveInteracoes(d.interacoes);
       if(d.crmNextContact||d.crmTags)saveCrmMeta(d.crmNextContact||{},d.crmTags||{});
@@ -1379,7 +1371,7 @@ export default function App(){
   // Contador do indicador de sincronização (fila vv_pending + vv_pending_del)
   const [pendCount,setPendCount]=useState(0);
   useEffect(()=>{
-    const upd=()=>setPendCount(getPending().size+getPendingDel().size+getCfgDirty().size);
+    const upd=()=>setPendCount(getPending().size+getPendingDel().size);
     upd();
     const iv=setInterval(upd,4000);
     return ()=>clearInterval(iv);
@@ -1484,16 +1476,6 @@ export default function App(){
   const crmNoteInputRef=useRef(null);
 
   // FINANCEIRO
-  const [contasReceber,setContasReceber]=useState(()=>{try{const s=localStorage.getItem("vv_receber");return s?JSON.parse(s):[]}catch{return[]}});
-  const [contasPagar,setContasPagar]=useState(()=>{try{const s=localStorage.getItem("vv_pagar");return s?JSON.parse(s):[]}catch{return[]}});
-  const [despesasFixas,setDespesasFixas]=useState(()=>{try{const s=localStorage.getItem("vv_fixas");return s?JSON.parse(s):[]}catch{return[]}});
-  const [finTab,setFinTab]=useState("dash");
-  const [finFormR,setFinFormR]=useState({desc:"",valor:"",venc:"",obs:"",parcelas:"1",jaRecebido:false,dataRecebimento:""});
-  const [finFormP,setFinFormP]=useState({desc:"",valor:"",venc:"",cat:"materiais",obs:"",parcelas:"1",obra:"",jaPago:false,dataPagamento:""});
-  const [finFormF,setFinFormF]=useState({desc:"",valor:"",cat:"fixas",dia:"5",obs:"",fimEm:""});
-  const [calMes,setCalMes]=useState(new Date());
-  const [calDiaSel,setCalDiaSel]=useState(null);
-  const [fixaExpandida,setFixaExpandida]=useState(null);
 
   useEffect(()=>{
     if(!user||!fbReady||!fb.db||user.uid==="local")return;
@@ -1529,103 +1511,6 @@ export default function App(){
     if(fbReady&&fb.db&&user&&user.uid!=="local"){
       try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","crmMeta"),{nextContact:nc,tags})}catch{}
     }
-  };
-
-  // Sync receber/pagar/fixas do Firestore ao logar
-  useEffect(()=>{
-    if(!user||!fbReady||!fb.db||user.uid==="local")return;
-    const rRef=fbFns.doc(fb.db,"users",user.uid,"config","receber");
-    const unsubR=fbFns.onSnapshot(rRef,(snap)=>{
-      if(getCfgDirty().has("receber")){saveCfgFS("receber","vv_receber");return;} // local mais novo — reenvia
-      if(snap.exists()&&snap.data().data){
-        const d=snap.data().data;setContasReceber(d);
-        try{localStorage.setItem("vv_receber",JSON.stringify(d))}catch{}
-      } else {
-        // Migra localStorage → Firestore se Firestore vazio
-        try{const ls=JSON.parse(localStorage.getItem("vv_receber")||"[]");if(ls.length>0)fbFns.setDoc(rRef,{data:ls});}catch{}
-      }
-    });
-    const pRef=fbFns.doc(fb.db,"users",user.uid,"config","pagar");
-    const unsubP=fbFns.onSnapshot(pRef,(snap)=>{
-      if(getCfgDirty().has("pagar")){saveCfgFS("pagar","vv_pagar");return;}
-      if(snap.exists()&&snap.data().data){
-        const d=snap.data().data;setContasPagar(d);
-        try{localStorage.setItem("vv_pagar",JSON.stringify(d))}catch{}
-      } else {
-        try{const ls=JSON.parse(localStorage.getItem("vv_pagar")||"[]");if(ls.length>0)fbFns.setDoc(pRef,{data:ls});}catch{}
-      }
-    });
-    const fRef=fbFns.doc(fb.db,"users",user.uid,"config","fixas");
-    const unsubF=fbFns.onSnapshot(fRef,(snap)=>{
-      if(getCfgDirty().has("fixas")){saveCfgFS("fixas","vv_fixas");return;}
-      if(snap.exists()&&snap.data().data){
-        const d=snap.data().data;setDespesasFixas(d);
-        try{localStorage.setItem("vv_fixas",JSON.stringify(d))}catch{}
-      } else {
-        try{const ls=JSON.parse(localStorage.getItem("vv_fixas")||"[]");if(ls.length>0)fbFns.setDoc(fRef,{data:ls});}catch{}
-      }
-    });
-    return ()=>{unsubR();unsubP();unsubF();}
-  },[user,fbReady]);
-
-  // Envia doc de config a partir do localStorage; só sai da fila quando a nuvem confirma
-  const saveCfgFS=(key,lsKey)=>{
-    addCfgDirty(key);
-    if(!fbReady||!fb.db||!user||user.uid==="local")return;
-    try{
-      const data=JSON.parse(localStorage.getItem(lsKey)||"[]");
-      fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config",key),{data})
-        .then(()=>clearCfgDirty(key))
-        .catch(e=>console.error("cfg:"+key,e));
-    }catch(e){console.error("cfg:"+key,e)}
-  };
-
-  const saveReceber=(data)=>{
-    setContasReceber(data);
-    try{localStorage.setItem("vv_receber",JSON.stringify(data))}catch{}
-    saveCfgFS("receber","vv_receber");
-  };
-
-  const savePagar=(data)=>{
-    setContasPagar(data);
-    try{localStorage.setItem("vv_pagar",JSON.stringify(data))}catch{}
-    saveCfgFS("pagar","vv_pagar");
-  };
-
-  const saveFixas=(data)=>{
-    setDespesasFixas(data);
-    try{localStorage.setItem("vv_fixas",JSON.stringify(data))}catch{}
-    saveCfgFS("fixas","vv_fixas");
-  };
-
-  const lancarFixasDoMes=()=>{
-    if(despesasFixas.length===0)return 0;
-    const now=new Date();
-    const mesKey=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
-    // Não lança se já existir lançamento deste mês para cada fixa
-    const jaLancadas=contasPagar.filter(c=>c.fixaId&&c.mesRef===mesKey).map(c=>c.fixaId);
-    const novas=despesasFixas.filter(f=>{
-      if(jaLancadas.includes(f.id))return false;
-      if(f.fimEm&&mesKey>f.fimEm)return false;
-      return true;
-    }).map(f=>{
-      const dia=Math.min(parseInt(f.dia)||5,28);
-      const venc=`${mesKey}-${String(dia).padStart(2,"0")}`;
-      return{id:"pag_"+Date.now()+"_"+f.id,desc:f.desc,valor:parseFloat(f.valor),venc,cat:f.cat||"fixas",status:"pendente",obs:f.obs||"",fixaId:f.id,mesRef:mesKey};
-    });
-    if(novas.length>0)savePagar([...novas,...contasPagar]);
-    return novas.length;
-  };
-
-  const syncReceberFromHist=()=>{
-    const fechados=hist.filter(q=>["fechou","execucao","concluido"].includes(q.status));
-    const existing=contasReceber.map(c=>c.origemId).filter(Boolean);
-    const novos=fechados.filter(q=>!existing.includes(q.id)).map(q=>({
-      id:"rcb_"+q.id,origemId:q.id,desc:"Obra: "+(q.cN||"Cliente"),
-      valor:parseFloat(q.tot)||0,venc:"",status:"pendente",obs:"Auto do orçamento"
-    }));
-    if(novos.length>0)saveReceber([...contasReceber,...novos]);
-    return novos.length;
   };
 
   const addInteracao=(qId,tipo,texto)=>{
@@ -1973,7 +1858,6 @@ export default function App(){
   // Calculate effective quantity based on unit type
   const ar=calcA(pool,spa,wMode,walls,poolFmt,extras,spaType);
   const lowStockCount=Object.entries(stk).filter(([,s])=>s.qty>0&&s.qty<=(s.minQty||2)).length;
-  const alertasFinCount=(()=>{const today=new Date().toISOString().split("T")[0];const d3=new Date();d3.setDate(d3.getDate()+3);const d3s=d3.toISOString().split("T")[0];return[...contasReceber,...contasPagar].filter(c=>c.status==="pendente"&&c.venc&&(c.venc<today||c.venc<=d3s)).length;})();
 
   const effQ=(i)=>{
     if(i.un==="m²")return parseFloat(ar.tot)||0; // area total m²
@@ -2013,21 +1897,14 @@ export default function App(){
       const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);setFbMsg(cloudOk?"Salvo!":"💾 Salvo no aparelho — sincroniza ao conectar");setTimeout(()=>setFbMsg(""),cloudOk?2000:4000);
     }
   };
-  // Sincroniza automaticamente obra fechada em Contas a Receber
-  const autoSyncReceber=(item)=>{
-    const existing=contasReceber.map(c=>c.origemId).filter(Boolean);
-    if(existing.includes(item.id))return;
-    const nova={id:"rcb_"+item.id,origemId:item.id,desc:"Obra: "+(item.cN||"Cliente"),valor:parseFloat(item.tot)||0,venc:"",status:"pendente",obs:"Sincronizado automaticamente ao fechar"};
-    saveReceber([nova,...contasReceber]);
-  };
-  const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);autoStockOut(item);autoSyncReceber(item);}setFbMsg("✅ Cliente fechado e lançado no financeiro!");setTimeout(()=>setFbMsg(""),3000)};
+  const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);autoStockOut(item);}setFbMsg("✅ Cliente fechado!");setTimeout(()=>setFbMsg(""),3000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
   const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
   const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4});setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setDevHeights(d.devHeights||{retorno:"",hidro:""});setEditingId(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
   const movePipe=(id,stage)=>{
     if(stage==="perdido"){const q=hist.find(h=>h.id===id);if(q){setLostReasonModal({q,days:getDaysSince(q.id),auto:false});return;}}
-    const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);if(["fechou","execucao","concluido"].includes(stage))autoSyncReceber(item);}setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
+    const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
   const salvarMotivoPerda=async(q,motivo)=>{const nh=hist.map(h=>h.id===q.id?{...h,status:"perdido",...motivo}:h);setHist(nh);saveLS(nh);const item=nh.find(h=>h.id===q.id);if(item)saveFS(item);addInteracao(q.id,"perda",`Marcado como perdido: ${motivo.motivoLabel}`);setFbMsg("❌ Marcado como perdido");setTimeout(()=>setFbMsg(""),2000)};
   useRescueAutomation({hist,crmTags,crmNextContact,getDaysSince,saveCrmMeta,onSugerirPerda:(q,days)=>setLostReasonModal({q,days,auto:true})});
   const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const fullNum=num.startsWith("55")?num:`55${num}`;const conv=waConvs.find(c=>c.phone===fullNum||c.phone===num);if(conv){setTab("whatsapp");setWaChat(conv.phone);if(msg)setWaMsg(msg)}else{setTab("whatsapp");setFbMsg("📱 Conversa não encontrada no sistema. Inicie pelo WhatsApp.");setTimeout(()=>setFbMsg(""),3000)}};
@@ -2135,7 +2012,7 @@ export default function App(){
   const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};// use className="vv-g2" for responsive
 
   const curNav=NAV.flatMap(g=>g.items).find(i=>i.id===tab);
-  const badgeMap={estoque:lowStockCount,financeiro:alertasFinCount};
+  const badgeMap={estoque:lowStockCount};
 
   return(
     <div className="vv-layout" style={{background:t.bg,color:t.text,transition:"background .3s,color .3s","--accent-strong":t.accentStrong,"--step-fg":t.stepFg,"--step-bd":t.stepBd,"--btn-bg":t.btnBg,"--btn-fg":t.btnFg,"--btn-bd":t.btnBd}}>
@@ -3629,705 +3506,6 @@ export default function App(){
           })() }
         </Card>}
 
-      {/* FINANCEIRO */}
-      {tab==="financeiro"&&<Card t={t}>{(()=>{
-        const fmtV=v=>v?.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})||"R$ 0,00";
-        const today=new Date().toISOString().split("T")[0];
-        const isAtrasado=(venc,status)=>status==="pendente"&&venc&&venc<today;
-        const statusColor=(st,venc)=>{
-          if(st==="recebido"||st==="pago")return"#16a34a";
-          if(isAtrasado(venc,st))return"#dc2626";
-          return"#f59e0b";
-        };
-        const statusLabel=(st,venc)=>{
-          if(st==="recebido")return"✅ Recebido";
-          if(st==="pago")return"✅ Pago";
-          if(isAtrasado(venc,st))return"⚠️ Atrasado";
-          return"⏳ Pendente";
-        };
-
-        // totais
-        const totRcbPend=contasReceber.filter(c=>c.status!=="recebido").reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
-        const totRcbRecb=contasReceber.filter(c=>c.status==="recebido").reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
-        const totPagPend=contasPagar.filter(c=>c.status!=="pago").reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
-        const totPagPago=contasPagar.filter(c=>c.status==="pago").reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
-        const saldo=totRcbRecb-totPagPago;
-
-        // fluxo de caixa mensal
-        const meses={};
-        [...contasReceber].forEach(c=>{
-          // Usa dataRecebimento quando disponível (data real do recebimento), senão usa venc
-          const refDate=c.status==="recebido"&&c.dataRecebimento?c.dataRecebimento:c.venc;
-          if(!refDate)return;
-          const m=refDate.substring(0,7);
-          if(!meses[m])meses[m]={mes:m,entradas:0,saidas:0};
-          if(c.status==="recebido")meses[m].entradas+=parseFloat(c.valor)||0;
-        });
-        [...contasPagar].forEach(c=>{
-          if(!c.venc)return;
-          const m=c.venc.substring(0,7);
-          if(!meses[m])meses[m]={mes:m,entradas:0,saidas:0};
-          if(c.status==="pago")meses[m].saidas+=parseFloat(c.valor)||0;
-        });
-        const fluxoData=Object.values(meses).sort((a,b)=>a.mes.localeCompare(b.mes)).map(m=>({
-          ...m,mes:m.mes.substring(5)+"/"+m.mes.substring(2,4),saldo:m.entradas-m.saidas
-        }));
-
-        // DRE
-        const recBruta=hist.filter(q=>["fechou","execucao","concluido"].includes(q.status)).reduce((a,q)=>a+(parseFloat(q.tot)||0),0);
-        const custoObras=hist.filter(q=>["fechou","execucao","concluido"].includes(q.status)).reduce((a,q)=>{
-          const items=(q.data?.items||[]).filter(i=>i.on);
-          return a+items.reduce((s,i)=>s+(parseFloat(i.cost)||0)*(parseFloat(i.qty)||0),0);
-        },0);
-        const lucroBruto=recBruta-custoObras;
-        const despesasOp=contasPagar.filter(c=>c.status==="pago").reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
-        const lucroLiq=lucroBruto-despesasOp;
-        const margem=recBruta>0?((lucroLiq/recBruta)*100).toFixed(1):0;
-
-        // categorias expandidas
-        const CAT_CORES={materiais:"#8b5cf6",maodeobra:"#3b82f6",combustivel:"#f97316",impostos:"#dc2626",marketing:"#ec4899",aluguel:"#f59e0b",fixas:"#06b6d4",outros:"#64748b"};
-        const CAT_LABELS={materiais:"Materiais",maodeobra:"Mão de Obra",combustivel:"Combustível",impostos:"Impostos",marketing:"Marketing",aluguel:"Aluguel",fixas:"Fixa Mensal",outros:"Outros"};
-
-        // breakdown despesas por categoria
-        const breakdownCat={};
-        contasPagar.filter(c=>c.status==="pago").forEach(c=>{
-          const k=c.cat||"outros";
-          if(!breakdownCat[k])breakdownCat[k]=0;
-          breakdownCat[k]+=parseFloat(c.valor)||0;
-        });
-
-        // obras para centro de custo
-        const obrasAtivas=hist.filter(q=>["fechou","execucao","concluido"].includes(q.status));
-
-        const subBtn=(k,lb)=><button onClick={()=>setFinTab(k)} style={{padding:"6px 14px",borderRadius:"20px",border:`1.5px solid ${finTab===k?blue:t.cardBorder}`,background:finTab===k?blue:"transparent",color:finTab===k?"#fff":t.text,fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>{lb}</button>;
-
-        return <>
-          <ST icon="💵">Financeiro</ST>
-
-          {/* ALERTA DE VENCIMENTO */}
-          {alertasFinCount>0&&<div style={{background:"#fef2f2",border:"1.5px solid #dc2626",borderRadius:"8px",padding:"10px 14px",marginBottom:"12px",display:"flex",alignItems:"center",gap:"8px"}}>
-            <span style={{fontSize:"16px"}}>⚠️</span>
-            <span style={{fontSize:"11px",fontWeight:"700",color:"#dc2626"}}>{alertasFinCount} conta(s) vencida(s) ou vencendo em até 3 dias!</span>
-          </div>}
-
-          {/* CARDS RESUMO */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"8px",marginBottom:"14px"}} className="vv-g4">
-            {[
-              {lb:"A Receber",val:fmtV(totRcbPend),color:"#f59e0b",bg:"#fffbeb"},
-              {lb:"Recebido",val:fmtV(totRcbRecb),color:"#16a34a",bg:"#f0fdf4"},
-              {lb:"A Pagar",val:fmtV(totPagPend),color:"#dc2626",bg:"#fef2f2"},
-              {lb:"Saldo Caixa",val:fmtV(saldo),color:saldo>=0?"#16a34a":"#dc2626",bg:saldo>=0?"#f0fdf4":"#fef2f2"},
-            ].map((c,i)=><div key={i} style={{background:c.bg,borderRadius:"10px",padding:"10px 12px",border:`1px solid ${t.cardBorder}`}}>
-              <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>{c.lb}</div>
-              <div style={{fontSize:"14px",fontWeight:"800",color:c.color}}>{c.val}</div>
-            </div>)}
-          </div>
-
-          {/* SUB-ABAS */}
-          <div style={{display:"flex",gap:"6px",marginBottom:"14px",flexWrap:"wrap"}}>
-            {subBtn("dash","📊 Dashboard")}
-            {subBtn("receber","📥 Receber")}
-            {subBtn("pagar","📤 Pagar")}
-            {subBtn("fixas","📌 Fixas Mensais")}
-            {subBtn("calendario","📅 Calendário")}
-            {subBtn("fluxo","📊 Fluxo de Caixa")}
-            {subBtn("dre","📑 DRE")}
-            {subBtn("obra","🏗 Por Obra")}
-          </div>
-
-          {/* DASHBOARD */}
-          {finTab==="dash"&&(()=>{
-            const now2=new Date();
-            const anoAtual=now2.getFullYear();
-            const mesAtual=now2.getMonth();
-            const mesKeyAtual=`${anoAtual}-${String(mesAtual+1).padStart(2,"0")}`;
-            const entMes=contasReceber.filter(c=>c.status==="recebido"&&((c.dataRecebimento&&c.dataRecebimento.startsWith(mesKeyAtual))||(c.venc&&c.venc.startsWith(mesKeyAtual)))).reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
-            const saiMes=contasPagar.filter(c=>c.status==="pago"&&c.venc&&c.venc.startsWith(mesKeyAtual)).reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
-            const saldoMes=entMes-saiMes;
-            const fixasMes=despesasFixas.reduce((a,f)=>a+(parseFloat(f.valor)||0),0);
-            const comprPct=entMes>0?Math.min(100,(fixasMes/entMes)*100):0;
-
-            const todayStr=new Date().toISOString().split("T")[0];
-            const d7=new Date();d7.setDate(d7.getDate()+7);
-            const d7str=d7.toISOString().split("T")[0];
-            const prox7=[
-              ...contasReceber.filter(c=>c.status!=="recebido"&&c.venc&&c.venc>=todayStr&&c.venc<=d7str).map(c=>({...c,_tipo:"receber"})),
-              ...contasPagar.filter(c=>c.status!=="pago"&&c.venc&&c.venc>=todayStr&&c.venc<=d7str).map(c=>({...c,_tipo:"pagar"}))
-            ].sort((a,b)=>a.venc.localeCompare(b.venc));
-
-            const ultimos6=fluxoData.slice(-6);
-
-            const catBreak={};
-            contasPagar.filter(c=>c.status==="pago").forEach(c=>{
-              const k=c.cat||"outros";
-              if(!catBreak[k])catBreak[k]=0;
-              catBreak[k]+=parseFloat(c.valor)||0;
-            });
-            const catBreakSorted=Object.entries(catBreak).sort((a,b)=>b[1]-a[1]);
-            const maxCatVal=catBreakSorted.length>0?catBreakSorted[0][1]:1;
-
-            return <div style={{display:"flex",flexDirection:"column",gap:"16px"}}>
-              {/* Seção 2: Saúde do mês */}
-              <div style={{background:t.sectionBg,borderRadius:"10px",padding:"14px",border:`1px solid ${t.cardBorder}`}}>
-                <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Saúde do Mês Atual — {new Date().toLocaleDateString("pt-BR",{month:"long",year:"numeric"})}</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"8px",marginBottom:"12px"}} className="vv-g4">
-                  <div style={{background:"#f0fdf4",borderRadius:"8px",padding:"10px",border:"1px solid #bbf7d0",textAlign:"center"}}>
-                    <div style={{fontSize:"8px",color:"#166534",fontWeight:"600",marginBottom:"3px"}}>ENTRADAS DO MÊS</div>
-                    <div style={{fontSize:"14px",fontWeight:"800",color:"#16a34a"}}>{fmtV(entMes)}</div>
-                  </div>
-                  <div style={{background:"#fef2f2",borderRadius:"8px",padding:"10px",border:"1px solid #fecaca",textAlign:"center"}}>
-                    <div style={{fontSize:"8px",color:"#991b1b",fontWeight:"600",marginBottom:"3px"}}>SAÍDAS DO MÊS</div>
-                    <div style={{fontSize:"14px",fontWeight:"800",color:"#dc2626"}}>{fmtV(saiMes)}</div>
-                  </div>
-                  <div style={{background:saldoMes>=0?"#f0fdf4":"#fef2f2",borderRadius:"8px",padding:"10px",border:`1px solid ${saldoMes>=0?"#bbf7d0":"#fecaca"}`,textAlign:"center"}}>
-                    <div style={{fontSize:"8px",color:saldoMes>=0?"#166534":"#991b1b",fontWeight:"600",marginBottom:"3px"}}>SALDO DO MÊS</div>
-                    <div style={{fontSize:"14px",fontWeight:"800",color:saldoMes>=0?"#16a34a":"#dc2626"}}>{fmtV(saldoMes)}</div>
-                  </div>
-                  <div style={{background:"#eff6ff",borderRadius:"8px",padding:"10px",border:"1px solid #bfdbfe",textAlign:"center"}}>
-                    <div style={{fontSize:"8px",color:"#1e40af",fontWeight:"600",marginBottom:"3px"}}>FIXAS MENSAIS</div>
-                    <div style={{fontSize:"14px",fontWeight:"800",color:"#2563eb"}}>{fmtV(fixasMes)}</div>
-                  </div>
-                </div>
-                <div style={{marginTop:"4px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:"4px"}}>
-                    <span style={{fontSize:"9px",color:t.textSec}}>Comprometimento fixo: {fmtV(fixasMes)} de {fmtV(entMes)} recebidos</span>
-                    <span style={{fontSize:"9px",fontWeight:"700",color:comprPct>100?"#dc2626":"#f59e0b"}}>{comprPct.toFixed(0)}%</span>
-                  </div>
-                  <div style={{height:"8px",borderRadius:"4px",background:t.cardBorder,overflow:"hidden"}}>
-                    <div style={{height:"100%",width:`${Math.min(100,comprPct)}%`,background:comprPct>100?"#dc2626":comprPct>80?"#f59e0b":"#16a34a",borderRadius:"4px",transition:"width .4s"}}/>
-                  </div>
-                </div>
-              </div>
-
-              {/* Seção 3: Próximos vencimentos */}
-              <div style={{background:t.sectionBg,borderRadius:"10px",padding:"14px",border:`1px solid ${t.cardBorder}`}}>
-                <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Próximos Vencimentos (7 dias)</div>
-                {prox7.length===0
-                  ?<div style={{textAlign:"center",padding:"16px",color:"#16a34a",fontSize:"11px"}}>Nenhum vencimento nos próximos 7 dias ✓</div>
-                  :<div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
-                    {prox7.map((c,i)=>{
-                      const isR=c._tipo==="receber";
-                      const cor=isR?"#16a34a":"#dc2626";
-                      const dataFmt=c.venc?new Date(c.venc+"T00:00").toLocaleDateString("pt-BR"):"";
-                      return <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",borderRadius:"7px",background:t.card,border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${cor}`}}>
-                        <div style={{flex:1}}>
-                          <div style={{display:"flex",alignItems:"center",gap:"5px"}}>
-                            <span style={{fontSize:"8px",fontWeight:"700",color:cor,background:isR?"#f0fdf4":"#fef2f2",padding:"1px 5px",borderRadius:"3px"}}>{isR?"Receber":"Pagar"}</span>
-                            <span style={{fontSize:"11px",fontWeight:"600",color:t.text}}>{c.desc}</span>
-                          </div>
-                          <div style={{fontSize:"9px",color:t.textMuted,marginTop:"1px"}}>{dataFmt}</div>
-                        </div>
-                        <div style={{display:"flex",alignItems:"center",gap:"6px",flexShrink:0}}>
-                          <span style={{fontSize:"12px",fontWeight:"800",color:cor}}>{fmtV(parseFloat(c.valor))}</span>
-                          <span style={{fontSize:"8px",padding:"2px 6px",borderRadius:"4px",background:"#fffbeb",color:"#f59e0b",fontWeight:"600"}}>⏳ Pendente</span>
-                        </div>
-                      </div>;
-                    })}
-                  </div>
-                }
-              </div>
-
-              {/* Seção 4: Gráfico últimos 6 meses */}
-              {ultimos6.length>0&&<div style={{background:t.sectionBg,borderRadius:"10px",padding:"14px",border:`1px solid ${t.cardBorder}`}}>
-                <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Últimos 6 Meses — Entradas vs Saídas</div>
-                <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={ultimos6} margin={{top:4,right:8,left:0,bottom:4}}>
-                    <XAxis dataKey="mes" tick={{fontSize:9,fill:t.text}}/>
-                    <YAxis tick={{fontSize:8,fill:t.textSec}} tickFormatter={v=>"R$"+v.toLocaleString("pt-BR")}/>
-                    <Tooltip formatter={(v,n)=>[v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}),n==="entradas"?"Entradas":"Saídas"]}/>
-                    <Legend wrapperStyle={{fontSize:"10px"}}/>
-                    <Bar dataKey="entradas" name="Entradas" fill="#16a34a" radius={[3,3,0,0]}/>
-                    <Bar dataKey="saidas" name="Saídas" fill="#dc2626" radius={[3,3,0,0]}/>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>}
-
-              {/* Seção 5: Despesas por categoria */}
-              {catBreakSorted.length>0&&<div style={{background:t.sectionBg,borderRadius:"10px",padding:"14px",border:`1px solid ${t.cardBorder}`}}>
-                <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Despesas por Categoria (pagas)</div>
-                <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
-                  {catBreakSorted.map(([k,v])=>{
-                    const pct=maxCatVal>0?Math.round((v/maxCatVal)*100):0;
-                    const cor=CAT_CORES[k]||"#64748b";
-                    return <div key={k}>
-                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:"2px"}}>
-                        <span style={{fontSize:"10px",fontWeight:"600",color:t.text}}>{CAT_LABELS[k]||k}</span>
-                        <span style={{fontSize:"10px",fontWeight:"700",color:cor}}>{fmtV(v)} · {pct}%</span>
-                      </div>
-                      <div style={{height:"6px",borderRadius:"3px",background:t.cardBorder,overflow:"hidden"}}>
-                        <div style={{height:"100%",width:`${pct}%`,background:cor,borderRadius:"3px"}}/>
-                      </div>
-                    </div>;
-                  })}
-                </div>
-              </div>}
-            </div>;
-          })()}
-
-          {/* CONTAS A RECEBER */}
-          {finTab==="receber"&&<>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px",flexWrap:"wrap",gap:"6px"}}>
-              <div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>Contas a Receber</div>
-              <Btn onClick={()=>{const n=syncReceberFromHist();setFbMsg(n>0?n+" novo(s) importado(s)":"Tudo já importado");setTimeout(()=>setFbMsg(""),3000)}} style={{fontSize:"9px",background:"#3b82f6",color:"#fff",border:"none"}}>↓ Importar do CRM</Btn>
-            </div>
-            {/* Formulário adicionar */}
-            <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",marginBottom:"10px",border:`1px solid ${t.cardBorder}`}}>
-              <div style={{fontSize:"10px",fontWeight:"700",color:blue,marginBottom:"8px"}}>+ Nova conta a receber</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 100px 120px 70px",gap:"6px",marginBottom:"6px"}} className="vv-g3">
-                <input value={finFormR.desc} onChange={e=>setFinFormR(p=>({...p,desc:e.target.value}))} placeholder="Descrição (ex: Obra João - sinal)" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                <input value={finFormR.valor} onChange={e=>setFinFormR(p=>({...p,valor:e.target.value}))} placeholder="Valor R$" type="number" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                <input value={finFormR.venc} onChange={e=>setFinFormR(p=>({...p,venc:e.target.value}))} type="date" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                <input value={finFormR.parcelas} onChange={e=>setFinFormR(p=>({...p,parcelas:e.target.value}))} placeholder="Parcelas" type="number" min="1" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}} title="Número de parcelas"/>
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"6px",flexWrap:"wrap"}}>
-                <label style={{display:"flex",alignItems:"center",gap:"5px",fontSize:"10px",color:t.text,cursor:"pointer",fontWeight:"600"}}>
-                  <input type="checkbox" checked={finFormR.jaRecebido} onChange={e=>setFinFormR(p=>({...p,jaRecebido:e.target.checked}))}/>
-                  Já foi recebido?
-                </label>
-                {finFormR.jaRecebido&&<label style={{display:"flex",alignItems:"center",gap:"5px",fontSize:"10px",color:t.textSec}}>
-                  Data do recebimento:
-                  <input type="date" value={finFormR.dataRecebimento} onChange={e=>setFinFormR(p=>({...p,dataRecebimento:e.target.value}))} style={{padding:"4px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                </label>}
-              </div>
-              <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
-                <input value={finFormR.obs} onChange={e=>setFinFormR(p=>({...p,obs:e.target.value}))} placeholder="Obs (opcional)" style={{flex:1,padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                <Btn onClick={()=>{
-                  if(!finFormR.desc||!finFormR.valor)return;
-                  const n=Math.max(1,parseInt(finFormR.parcelas)||1);
-                  const valUnit=parseFloat(finFormR.valor)/n;
-                  const novas=Array.from({length:n},(_,i)=>{
-                    let vencP=finFormR.venc;
-                    if(finFormR.venc&&n>1){const d=new Date(finFormR.venc+"T00:00");d.setDate(d.getDate()+i*30);vencP=d.toISOString().split("T")[0];}
-                    const stRcb=finFormR.jaRecebido?"recebido":"pendente";
-                    const dtRcb=finFormR.jaRecebido?(finFormR.dataRecebimento||today):undefined;
-                    return{id:"rcb_"+Date.now()+"_"+i,desc:n>1?`${finFormR.desc} (${i+1}/${n})`:finFormR.desc,valor:valUnit,venc:vencP,status:stRcb,dataRecebimento:dtRcb,obs:finFormR.obs,parcela:n>1?i+1:undefined,totalParcelas:n>1?n:undefined};
-                  });
-                  saveReceber([...novas,...contasReceber]);
-                  setFinFormR({desc:"",valor:"",venc:"",obs:"",parcelas:"1",jaRecebido:false,dataRecebimento:""});
-                }} style={{background:"#16a34a",color:"#fff",border:"none",whiteSpace:"nowrap",fontSize:"11px"}}>Adicionar</Btn>
-              </div>
-            </div>
-            {/* Lista */}
-            {contasReceber.length===0?<div style={{textAlign:"center",padding:"24px",color:t.textMuted,fontSize:"11px"}}>Nenhuma conta a receber. Importe do CRM ou adicione manualmente.</div>:
-            <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
-              {contasReceber.map(c=>{
-                const cor=statusColor(c.status,c.venc);
-                return <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:t.sectionBg,borderRadius:"8px",border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${cor}`}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{c.desc}</div>
-                    <div style={{fontSize:"9px",color:t.textMuted}}>{c.venc?new Date(c.venc+"T00:00").toLocaleDateString("pt-BR"):""}{c.status==="recebido"&&c.dataRecebimento?" · Recebido em: "+new Date(c.dataRecebimento+"T00:00").toLocaleDateString("pt-BR"):""} {c.obs?" · "+c.obs:""}</div>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:"8px",flexShrink:0}}>
-                    <div style={{fontSize:"13px",fontWeight:"800",color:cor}}>{fmtV(parseFloat(c.valor))}</div>
-                    <span style={{fontSize:"8px",fontWeight:"600",color:cor,whiteSpace:"nowrap"}}>{statusLabel(c.status,c.venc)}</span>
-                    {c.status!=="recebido"
-                      ?<button onClick={()=>saveReceber(contasReceber.map(x=>x.id===c.id?{...x,status:"recebido",dataRecebimento:today}:x))} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#16a34a",color:"#fff",cursor:"pointer",fontWeight:"600"}}>✓ Recebido</button>
-                      :<input type="date" value={c.dataRecebimento||""} onChange={e=>saveReceber(contasReceber.map(x=>x.id===c.id?{...x,dataRecebimento:e.target.value}:x))} title="Data do recebimento" style={{fontSize:"9px",border:`1px solid ${t.cardBorder}`,borderRadius:"4px",padding:"2px 4px",background:t.inputBg,color:"#16a34a",width:"110px"}}/>
-                    }
-                    <button onClick={()=>saveReceber(contasReceber.filter(x=>x.id!==c.id))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>✕</button>
-                  </div>
-                </div>;
-              })}
-            </div>}
-          </>}
-
-          {/* CONTAS A PAGAR */}
-          {finTab==="pagar"&&<>
-            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Contas a Pagar</div>
-            {/* Formulário */}
-            <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",marginBottom:"10px",border:`1px solid ${t.cardBorder}`}}>
-              <div style={{fontSize:"10px",fontWeight:"700",color:"#dc2626",marginBottom:"8px"}}>+ Nova despesa</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 100px 120px 70px",gap:"6px",marginBottom:"6px"}} className="vv-g3">
-                <input value={finFormP.desc} onChange={e=>setFinFormP(p=>({...p,desc:e.target.value}))} placeholder="Descrição (ex: Fornecedor Acqualiner)" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                <input value={finFormP.valor} onChange={e=>setFinFormP(p=>({...p,valor:e.target.value}))} placeholder="Valor R$" type="number" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                <input value={finFormP.venc} onChange={e=>setFinFormP(p=>({...p,venc:e.target.value}))} type="date" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                <input value={finFormP.parcelas} onChange={e=>setFinFormP(p=>({...p,parcelas:e.target.value}))} placeholder="Parcelas" type="number" min="1" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}} title="Número de parcelas"/>
-              </div>
-              <div style={{display:"flex",gap:"6px",alignItems:"center",flexWrap:"wrap"}}>
-                <select value={finFormP.cat} onChange={e=>setFinFormP(p=>({...p,cat:e.target.value}))} style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}>
-                  <option value="materiais">Materiais</option>
-                  <option value="maodeobra">Mão de Obra</option>
-                  <option value="combustivel">Combustível</option>
-                  <option value="impostos">Impostos</option>
-                  <option value="marketing">Marketing</option>
-                  <option value="aluguel">Aluguel</option>
-                  <option value="fixas">Fixa Mensal</option>
-                  <option value="outros">Outros</option>
-                </select>
-                <select value={finFormP.obra} onChange={e=>setFinFormP(p=>({...p,obra:e.target.value}))} style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}>
-                  <option value="">— Despesa geral —</option>
-                  {obrasAtivas.map(o=><option key={o.id} value={String(o.id)}>{o.cN||"Cliente"}</option>)}
-                </select>
-                <input value={finFormP.obs} onChange={e=>setFinFormP(p=>({...p,obs:e.target.value}))} placeholder="Obs (opcional)" style={{flex:1,padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"6px",flexWrap:"wrap"}}>
-                <label style={{display:"flex",alignItems:"center",gap:"5px",fontSize:"10px",color:t.text,cursor:"pointer",fontWeight:"600"}}>
-                  <input type="checkbox" checked={finFormP.jaPago} onChange={e=>setFinFormP(p=>({...p,jaPago:e.target.checked}))}/>
-                  Já foi pago?
-                </label>
-                {finFormP.jaPago&&<label style={{display:"flex",alignItems:"center",gap:"5px",fontSize:"10px",color:t.textSec}}>
-                  Data do pagamento:
-                  <input type="date" value={finFormP.dataPagamento} onChange={e=>setFinFormP(p=>({...p,dataPagamento:e.target.value}))} style={{padding:"4px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                </label>}
-              </div>
-              <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
-                <Btn onClick={()=>{
-                  if(!finFormP.desc||!finFormP.valor)return;
-                  const n=Math.max(1,parseInt(finFormP.parcelas)||1);
-                  const valUnit=parseFloat(finFormP.valor)/n;
-                  const novas=Array.from({length:n},(_,i)=>{
-                    let vencP=finFormP.venc;
-                    if(finFormP.venc&&n>1){const d=new Date(finFormP.venc+"T00:00");d.setDate(d.getDate()+i*30);vencP=d.toISOString().split("T")[0];}
-                    const stPago=finFormP.jaPago?"pago":"pendente";
-                    const dtPago=finFormP.jaPago?(finFormP.dataPagamento||today):undefined;
-                    return{id:"pag_"+Date.now()+"_"+i,desc:n>1?`${finFormP.desc} (${i+1}/${n})`:finFormP.desc,valor:valUnit,venc:vencP,cat:finFormP.cat,obra:finFormP.obra,status:stPago,dataPagamento:dtPago,obs:finFormP.obs,parcela:n>1?i+1:undefined,totalParcelas:n>1?n:undefined};
-                  });
-                  savePagar([...novas,...contasPagar]);
-                  setFinFormP({desc:"",valor:"",venc:"",cat:"materiais",obs:"",parcelas:"1",obra:"",jaPago:false,dataPagamento:""});
-                }} style={{background:"#dc2626",color:"#fff",border:"none",whiteSpace:"nowrap",fontSize:"11px"}}>Adicionar</Btn>
-              </div>
-            </div>
-            {/* Lista */}
-            {contasPagar.length===0?<div style={{textAlign:"center",padding:"24px",color:t.textMuted,fontSize:"11px"}}>Nenhuma despesa cadastrada.</div>:
-            <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
-              {contasPagar.map(c=>{
-                const cor=statusColor(c.status,c.venc);
-                const catColors={...CAT_CORES,fornecedor:"#8b5cf6",funcionario:"#3b82f6",servico:"#06b6d4"};
-                return <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:t.sectionBg,borderRadius:"8px",border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${cor}`}}>
-                  <div style={{flex:1}}>
-                    <div style={{display:"flex",alignItems:"center",gap:"5px"}}>
-                      <span style={{fontSize:"8px",background:catColors[c.cat]||"#64748b",color:"#fff",padding:"1px 5px",borderRadius:"3px",fontWeight:"600"}}>{CAT_LABELS[c.cat]||c.cat}</span>
-                      <div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{c.desc}</div>
-                    </div>
-                    <div style={{fontSize:"9px",color:t.textMuted}}>{c.venc?new Date(c.venc+"T00:00").toLocaleDateString("pt-BR"):""}{c.status==="pago"&&c.dataPagamento?" · Pago em: "+new Date(c.dataPagamento+"T00:00").toLocaleDateString("pt-BR"):""} {c.obs?" · "+c.obs:""}</div>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:"8px",flexShrink:0}}>
-                    <div style={{fontSize:"13px",fontWeight:"800",color:cor}}>{fmtV(parseFloat(c.valor))}</div>
-                    <span style={{fontSize:"8px",fontWeight:"600",color:cor,whiteSpace:"nowrap"}}>{statusLabel(c.status,c.venc)}</span>
-                    {c.status!=="pago"
-                      ?<button onClick={()=>savePagar(contasPagar.map(x=>x.id===c.id?{...x,status:"pago",dataPagamento:today}:x))} style={{fontSize:"8px",padding:"3px 6px",borderRadius:"4px",border:"none",background:"#16a34a",color:"#fff",cursor:"pointer",fontWeight:"600"}}>✓ Pago</button>
-                      :<input type="date" value={c.dataPagamento||""} onChange={e=>savePagar(contasPagar.map(x=>x.id===c.id?{...x,dataPagamento:e.target.value}:x))} title="Data do pagamento" style={{fontSize:"9px",border:`1px solid ${t.cardBorder}`,borderRadius:"4px",padding:"2px 4px",background:t.inputBg,color:"#16a34a",width:"110px"}}/>
-                    }
-                    <button onClick={()=>savePagar(contasPagar.filter(x=>x.id!==c.id))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>✕</button>
-                  </div>
-                </div>;
-              })}
-            </div>}
-          </>}
-
-          {/* DESPESAS FIXAS MENSAIS */}
-          {finTab==="fixas"&&<>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px",flexWrap:"wrap",gap:"6px"}}>
-              <div>
-                <div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>Despesas Fixas Mensais</div>
-                <div style={{fontSize:"9px",color:t.textMuted,marginTop:"1px"}}>Cadastre despesas que se repetem todo mês e lance com um clique</div>
-              </div>
-              <Btn onClick={()=>{const n=lancarFixasDoMes();setFbMsg(n>0?`📌 ${n} despesa(s) lançada(s) no mês!`:"Todas já foram lançadas este mês");setTimeout(()=>setFbMsg(""),3000);}} style={{background:"#06b6d4",color:"#fff",border:"none",fontWeight:"700",fontSize:"11px"}}>
-                ⚡ Lançar este mês
-              </Btn>
-            </div>
-
-            {/* Formulário nova fixa */}
-            <div style={{background:t.sectionBg,borderRadius:"8px",padding:"10px",marginBottom:"12px",border:`1px solid ${t.cardBorder}`}}>
-              <div style={{fontSize:"10px",fontWeight:"700",color:"#06b6d4",marginBottom:"8px"}}>+ Nova despesa fixa</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 90px",gap:"6px",marginBottom:"6px"}} className="vv-g3">
-                <input value={finFormF.desc} onChange={e=>setFinFormF(p=>({...p,desc:e.target.value}))} placeholder="Descrição (ex: Aluguel escritório)" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                <input value={finFormF.valor} onChange={e=>setFinFormF(p=>({...p,valor:e.target.value}))} placeholder="R$ valor" type="number" style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"6px",flexWrap:"wrap"}}>
-                <label style={{display:"flex",alignItems:"center",gap:"5px",fontSize:"10px",color:t.textSec,fontWeight:"600"}}>
-                  📅 Dia do vencimento (1–28):
-                  <input value={finFormF.dia} onChange={e=>setFinFormF(p=>({...p,dia:e.target.value}))} type="number" min="1" max="28" style={{width:"56px",padding:"4px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                </label>
-              </div>
-              <div style={{display:"flex",gap:"6px",alignItems:"center",flexWrap:"wrap",marginBottom:"6px"}}>
-                <select value={finFormF.cat} onChange={e=>setFinFormF(p=>({...p,cat:e.target.value}))} style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}>
-                  <option value="fixas">Fixa Mensal</option>
-                  <option value="aluguel">Aluguel</option>
-                  <option value="maodeobra">Mão de Obra</option>
-                  <option value="impostos">Impostos</option>
-                  <option value="marketing">Marketing</option>
-                  <option value="outros">Outros</option>
-                </select>
-                <div style={{display:"flex",flexDirection:"column",gap:"2px"}}>
-                  <label style={{fontSize:"9px",color:t.textMuted,fontWeight:"600"}}>Até (opcional)</label>
-                  <input type="month" value={finFormF.fimEm} onChange={e=>setFinFormF(p=>({...p,fimEm:e.target.value}))} style={{padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                </div>
-              </div>
-              <div style={{display:"flex",gap:"6px",alignItems:"center",flexWrap:"wrap"}}>
-                <input value={finFormF.obs} onChange={e=>setFinFormF(p=>({...p,obs:e.target.value}))} placeholder="Obs (opcional)" style={{flex:1,padding:"6px 8px",border:`1px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text}}/>
-                <Btn onClick={()=>{
-                  if(!finFormF.desc||!finFormF.valor)return;
-                  const nova={id:"fix_"+Date.now(),desc:finFormF.desc,valor:parseFloat(finFormF.valor),cat:finFormF.cat,dia:finFormF.dia||"5",obs:finFormF.obs,fimEm:finFormF.fimEm};
-                  saveFixas([nova,...despesasFixas]);
-                  setFinFormF({desc:"",valor:"",cat:"fixas",dia:"5",obs:"",fimEm:""});
-                }} style={{background:"#06b6d4",color:"#fff",border:"none",whiteSpace:"nowrap",fontSize:"11px"}}>Cadastrar</Btn>
-              </div>
-            </div>
-
-            {/* Lista de fixas */}
-            {despesasFixas.length===0
-              ?<div style={{textAlign:"center",padding:"28px",color:t.textMuted,fontSize:"11px"}}>
-                  Nenhuma despesa fixa cadastrada.<br/>
-                  <span style={{fontSize:"9px"}}>Ex: Aluguel, internet, contador, salários fixos…</span>
-                </div>
-              :<div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
-                {despesasFixas.map(f=>{
-                  const cor=CAT_CORES[f.cat]||"#06b6d4";
-                  const nowF=new Date();
-                  const mesKey=`${nowF.getFullYear()}-${String(nowF.getMonth()+1).padStart(2,"0")}`;
-                  const jaLancada=contasPagar.some(c=>c.fixaId===f.id&&c.mesRef===mesKey);
-                  const isExp=fixaExpandida===f.id;
-                  const historico=contasPagar.filter(c=>c.fixaId===f.id).sort((a,b)=>a.mesRef?.localeCompare(b.mesRef||"")||0);
-                  const totalPago=historico.filter(c=>c.status==="pago").reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
-                  let mesesRestantes=null;
-                  if(f.fimEm){
-                    const [ayF,amF]=f.fimEm.split("-").map(Number);
-                    const [ayCur,amCur]=[nowF.getFullYear(),nowF.getMonth()+1];
-                    mesesRestantes=(ayF-ayCur)*12+(amF-amCur);
-                  }
-                  const infoVenc=f.fimEm
-                    ?`Vence dia ${f.dia} · até ${f.fimEm.substring(5)}/${f.fimEm.substring(0,4)}`
-                    :`Vence dia ${f.dia} · sem prazo definido`;
-                  return <div key={f.id} style={{borderRadius:"8px",border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${cor}`,overflow:"hidden"}}>
-                    <div onClick={()=>setFixaExpandida(isExp?null:f.id)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:t.sectionBg,cursor:"pointer"}}>
-                      <div style={{flex:1}}>
-                        <div style={{display:"flex",alignItems:"center",gap:"5px"}}>
-                          <span style={{fontSize:"8px",background:cor,color:"#fff",padding:"1px 5px",borderRadius:"3px",fontWeight:"600"}}>{CAT_LABELS[f.cat]||f.cat}</span>
-                          <span style={{fontSize:"11px",fontWeight:"700",color:t.text}}>{f.desc}</span>
-                          <span style={{fontSize:"9px",color:t.textMuted}}>{isExp?"▲":"▼"}</span>
-                        </div>
-                        <div style={{fontSize:"9px",color:t.textMuted,marginTop:"1px"}}>{infoVenc}{f.obs?" · "+f.obs:""}</div>
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",gap:"8px",flexShrink:0}}>
-                        <span style={{fontSize:"13px",fontWeight:"800",color:cor}}>{fmtV(f.valor)}</span>
-                        <span style={{fontSize:"8px",padding:"2px 6px",borderRadius:"4px",background:jaLancada?"#dcfce7":"#f1f5f9",color:jaLancada?"#16a34a":t.textMuted,fontWeight:"600"}}>
-                          {jaLancada?"✓ Lançada":"Pendente"}
-                        </span>
-                        <button onClick={e=>{e.stopPropagation();saveFixas(despesasFixas.filter(x=>x.id!==f.id));}} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>✕</button>
-                      </div>
-                    </div>
-                    {isExp&&<div style={{background:t.card,padding:"10px 12px",borderTop:`1px solid ${t.cardBorder}`}}>
-                      <div style={{display:"flex",gap:"16px",flexWrap:"wrap",marginBottom:"8px"}}>
-                        <div><span style={{fontSize:"9px",color:t.textMuted}}>Total pago até hoje: </span><strong style={{fontSize:"11px",color:"#16a34a"}}>{fmtV(totalPago)}</strong></div>
-                        {f.fimEm&&<div><span style={{fontSize:"9px",color:t.textMuted}}>Meses restantes: </span><strong style={{fontSize:"11px",color:mesesRestantes&&mesesRestantes>0?"#f59e0b":"#dc2626"}}>{mesesRestantes!==null?mesesRestantes<=0?"Encerrada":mesesRestantes+" mês(es)":"—"}</strong></div>}
-                      </div>
-                      {historico.length===0
-                        ?<div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",padding:"8px"}}>Nenhum lançamento ainda</div>
-                        :<div style={{display:"flex",flexDirection:"column",gap:"3px"}}>
-                          <div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,marginBottom:"4px"}}>Histórico de lançamentos</div>
-                          {historico.map((h,hi)=><div key={hi} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",borderRadius:"5px",background:t.sectionBg,border:`1px solid ${t.cardBorder}`}}>
-                            <span style={{fontSize:"9px",color:t.text,fontWeight:"600"}}>{h.mesRef||"—"}</span>
-                            <span style={{fontSize:"9px",color:t.text}}>{fmtV(parseFloat(h.valor))}</span>
-                            <span style={{fontSize:"8px",padding:"1px 5px",borderRadius:"3px",background:h.status==="pago"?"#dcfce7":"#fffbeb",color:h.status==="pago"?"#16a34a":"#f59e0b",fontWeight:"600"}}>{h.status==="pago"?"Pago":"Pendente"}</span>
-                          </div>)}
-                        </div>
-                      }
-                    </div>}
-                  </div>;
-                })}
-                <div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",marginTop:"6px"}}>
-                  Total fixo mensal: <strong style={{color:t.text}}>{fmtV(despesasFixas.reduce((a,f)=>a+(parseFloat(f.valor)||0),0))}</strong>
-                </div>
-              </div>
-            }
-          </>}
-
-          {/* CALENDÁRIO */}
-          {finTab==="calendario"&&(()=>{
-            const anoC=calMes.getFullYear();
-            const mesC=calMes.getMonth();
-            const primeiroDia=new Date(anoC,mesC,1).getDay();
-            const diasNoMes=new Date(anoC,mesC+1,0).getDate();
-            const hojeStr=new Date().toISOString().split("T")[0];
-            const byDay={};
-            [...contasReceber.map(c=>({...c,_tipo:"receber"})),...contasPagar.map(c=>({...c,_tipo:"pagar"}))].forEach(c=>{
-              if(c.venc){if(!byDay[c.venc])byDay[c.venc]=[];byDay[c.venc].push(c);}
-            });
-            const nomeMes=calMes.toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
-            const navMes=(delta)=>{const d=new Date(calMes);d.setDate(1);d.setMonth(d.getMonth()+delta);setCalMes(d);};
-            const diasSemana=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
-            const diasSelecionados=calDiaSel?byDay[calDiaSel]||[]:[];
-            return <div>
-              {/* Cabeçalho */}
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"12px"}}>
-                <button onClick={()=>navMes(-1)} style={{padding:"4px 10px",borderRadius:"6px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer",fontSize:"14px",fontWeight:"700"}}>◀</button>
-                <div style={{fontSize:"13px",fontWeight:"700",color:t.text,textTransform:"capitalize"}}>{nomeMes}</div>
-                <button onClick={()=>navMes(1)} style={{padding:"4px 10px",borderRadius:"6px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer",fontSize:"14px",fontWeight:"700"}}>▶</button>
-              </div>
-              {/* Cabeçalho dias da semana */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px",marginBottom:"2px"}}>
-                {diasSemana.map(d=><div key={d} style={{textAlign:"center",fontSize:"9px",fontWeight:"700",color:t.textMuted,padding:"4px 0"}}>{d}</div>)}
-              </div>
-              {/* Grade */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px"}}>
-                {Array.from({length:primeiroDia}).map((_,i)=><div key={"e"+i} style={{minHeight:"38px"}}/>)}
-                {Array.from({length:diasNoMes},(_,i)=>i+1).map(d=>{
-                  const key=`${anoC}-${String(mesC+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-                  const isHoje=key===hojeStr;
-                  const isSel=key===calDiaSel;
-                  const contas=byDay[key]||[];
-                  const temReceber=contas.some(c=>c._tipo==="receber");
-                  const temPagar=contas.some(c=>c._tipo==="pagar");
-                  return <div key={key} onClick={()=>setCalDiaSel(isSel?null:key)} style={{minHeight:"38px",borderRadius:"6px",padding:"4px",cursor:"pointer",position:"relative",background:isHoje?blue:isSel?t.sectionBg:"transparent",border:isSel?`1.5px solid ${blue}`:`1px solid ${t.cardBorder}`,textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",gap:"2px"}}>
-                    <span style={{fontSize:"10px",fontWeight:isHoje?"800":"500",color:isHoje?"#fff":t.text}}>{d}</span>
-                    {contas.length>0&&<div style={{display:"flex",gap:"2px",justifyContent:"center",flexWrap:"wrap"}}>
-                      {temReceber&&<div style={{width:"5px",height:"5px",borderRadius:"50%",background:"#16a34a"}}/>}
-                      {temPagar&&<div style={{width:"5px",height:"5px",borderRadius:"50%",background:"#dc2626"}}/>}
-                    </div>}
-                  </div>;
-                })}
-              </div>
-              {/* Painel dia selecionado */}
-              {calDiaSel&&<div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"8px",padding:"12px",border:`1px solid ${t.cardBorder}`}}>
-                <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"8px"}}>
-                  Vencimentos em {new Date(calDiaSel+"T00:00").toLocaleDateString("pt-BR")}
-                </div>
-                {diasSelecionados.length===0
-                  ?<div style={{fontSize:"10px",color:t.textMuted,textAlign:"center",padding:"12px"}}>Nenhum vencimento neste dia</div>
-                  :<div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
-                    {diasSelecionados.map((c,i)=>{
-                      const isR=c._tipo==="receber";
-                      const cor=isR?"#16a34a":"#dc2626";
-                      const stLabel=c.status==="recebido"||c.status==="pago"?"✅ Pago":"⏳ Pendente";
-                      return <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",borderRadius:"6px",background:t.card,border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${cor}`}}>
-                        <div>
-                          <div style={{display:"flex",alignItems:"center",gap:"4px"}}>
-                            <span style={{fontSize:"8px",fontWeight:"700",color:cor,background:isR?"#f0fdf4":"#fef2f2",padding:"1px 4px",borderRadius:"3px"}}>{isR?"Receber":"Pagar"}</span>
-                            <span style={{fontSize:"10px",fontWeight:"600",color:t.text}}>{c.desc}</span>
-                          </div>
-                        </div>
-                        <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
-                          <span style={{fontSize:"11px",fontWeight:"800",color:cor}}>{fmtV(parseFloat(c.valor))}</span>
-                          <span style={{fontSize:"8px",padding:"2px 5px",borderRadius:"3px",background:c.status==="recebido"||c.status==="pago"?"#dcfce7":"#fffbeb",color:c.status==="recebido"||c.status==="pago"?"#16a34a":"#f59e0b",fontWeight:"600"}}>{stLabel}</span>
-                        </div>
-                      </div>;
-                    })}
-                  </div>
-                }
-              </div>}
-            </div>;
-          })()}
-
-          {/* FLUXO DE CAIXA */}
-          {finTab==="fluxo"&&<>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px",flexWrap:"wrap",gap:"6px"}}>
-              <div style={{fontSize:"11px",fontWeight:"700",color:t.text}}>Fluxo de Caixa — entradas e saídas confirmadas por mês</div>
-              <Btn onClick={()=>{
-                const fmtM=v=>(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
-                const pendRcb=contasReceber.filter(c=>c.status!=="recebido");
-                const pendPag=contasPagar.filter(c=>c.status!=="pago");
-                const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;box-sizing:border-box;-webkit-print-color-adjust:exact!important}body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;padding:16mm;font-size:13px;line-height:1.7;color:#111}@page{size:A4;margin:10mm}.hdr{background:#0a1f44;color:#fff;padding:16px 24px;border-radius:8px;text-align:center;margin-bottom:16px}.hdr h1{font-size:22px;color:#e8b100;margin:0}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}.card{border-radius:8px;padding:10px 14px;text-align:center}.card .lbl{font-size:10px;color:#666;margin-bottom:4px}.card .val{font-size:16px;font-weight:800}.tbl{width:100%;border-collapse:collapse;margin:10px 0}.tbl th{background:#0055a4;color:#fff;padding:6px 10px;text-align:left;font-size:11px}.tbl td{padding:5px 10px;border-bottom:1px solid #e2e8f0;font-size:12px}.sec{font-size:14px;font-weight:700;margin:16px 0 8px;color:#0a1f44;border-bottom:2px solid #0055a4;padding-bottom:4px}.ft{text-align:center;font-size:10px;color:#888;margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px}</style></head><body>
-<div class="hdr"><h1>VINILVALE</h1><div style="font-size:11px;margin-top:4px">Relatório Financeiro</div><div style="font-size:10px;opacity:.7;margin-top:2px">Gerado em ${new Date().toLocaleDateString("pt-BR")}</div></div>
-<div class="cards">
-  <div class="card" style="background:#fffbeb;border:1px solid #fde68a"><div class="lbl">A Receber</div><div class="val" style="color:#f59e0b">${fmtM(totRcbPend)}</div></div>
-  <div class="card" style="background:#f0fdf4;border:1px solid #bbf7d0"><div class="lbl">Recebido</div><div class="val" style="color:#16a34a">${fmtM(totRcbRecb)}</div></div>
-  <div class="card" style="background:#fef2f2;border:1px solid #fecaca"><div class="lbl">A Pagar</div><div class="val" style="color:#dc2626">${fmtM(totPagPend)}</div></div>
-  <div class="card" style="background:${saldo>=0?"#f0fdf4":"#fef2f2"};border:1px solid ${saldo>=0?"#bbf7d0":"#fecaca"}"><div class="lbl">Saldo</div><div class="val" style="color:${saldo>=0?"#16a34a":"#dc2626"}">${fmtM(saldo)}</div></div>
-</div>
-<div class="sec">Fluxo Mensal</div>
-${fluxoData.length===0?"<p style='color:#888;font-size:12px'>Sem dados</p>":`<table class="tbl"><tr><th>Mês</th><th>Entradas</th><th>Saídas</th><th>Saldo</th></tr>${fluxoData.map(m=>`<tr><td>${m.mes}</td><td style="color:#16a34a">${fmtM(m.entradas)}</td><td style="color:#dc2626">${fmtM(m.saidas)}</td><td style="color:${m.saldo>=0?"#16a34a":"#dc2626"};font-weight:700">${fmtM(m.saldo)}</td></tr>`).join("")}</table>`}
-<div class="sec">Contas a Receber Pendentes</div>
-${pendRcb.length===0?"<p style='color:#888;font-size:12px'>Nenhuma</p>":`<table class="tbl"><tr><th>Descrição</th><th>Vencimento</th><th>Valor</th></tr>${pendRcb.map(c=>`<tr><td>${c.desc}</td><td>${c.venc?new Date(c.venc+"T00:00").toLocaleDateString("pt-BR"):"-"}</td><td style="font-weight:700;color:#f59e0b">${fmtM(parseFloat(c.valor))}</td></tr>`).join("")}</table>`}
-<div class="sec">Contas a Pagar Pendentes</div>
-${pendPag.length===0?"<p style='color:#888;font-size:12px'>Nenhuma</p>":`<table class="tbl"><tr><th>Descrição</th><th>Categoria</th><th>Vencimento</th><th>Valor</th></tr>${pendPag.map(c=>`<tr><td>${c.desc}</td><td>${c.cat||"-"}</td><td>${c.venc?new Date(c.venc+"T00:00").toLocaleDateString("pt-BR"):"-"}</td><td style="font-weight:700;color:#dc2626">${fmtM(parseFloat(c.valor))}</td></tr>`).join("")}</table>`}
-<div class="ft">${CO.name} · ${CO.ph1} / ${CO.ph2}</div>
-<script>window.onload=function(){setTimeout(function(){window.print()},800)}<\/script></body></html>`;
-                const w=window.open("","_blank");if(w){w.document.write(html);w.document.close();}
-              }} style={{background:blue,color:"#fff",border:"none",fontSize:"10px"}}>📊 Exportar PDF</Btn>
-            </div>
-            {fluxoData.length===0?<div style={{textAlign:"center",padding:"32px",color:t.textMuted,fontSize:"11px"}}>Sem dados ainda. Marque contas como Recebido/Pago para gerar o gráfico.</div>:
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={fluxoData} margin={{top:4,right:8,left:0,bottom:4}}>
-                <XAxis dataKey="mes" tick={{fontSize:10,fill:t.text}}/>
-                <YAxis tick={{fontSize:9,fill:t.textSec}} tickFormatter={v=>"R$"+v.toLocaleString("pt-BR")}/>
-                <Tooltip formatter={(v,n)=>[v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}),n==="entradas"?"Entradas":n==="saidas"?"Saídas":"Saldo"]}/>
-                <Legend wrapperStyle={{fontSize:"11px"}}/>
-                <Bar dataKey="entradas" name="Entradas" fill="#16a34a" radius={[4,4,0,0]}/>
-                <Bar dataKey="saidas" name="Saídas" fill="#dc2626" radius={[4,4,0,0]}/>
-              </BarChart>
-            </ResponsiveContainer>}
-            {fluxoData.length>0&&<div style={{display:"flex",flexDirection:"column",gap:"3px",marginTop:"10px"}}>
-              {fluxoData.map((m,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 10px",background:t.sectionBg,borderRadius:"6px",border:`1px solid ${t.cardBorder}`}}>
-                <span style={{fontSize:"11px",fontWeight:"600",color:t.text}}>{m.mes}</span>
-                <span style={{fontSize:"11px",color:"#16a34a",fontWeight:"700"}}>+{fmtV(m.entradas)}</span>
-                <span style={{fontSize:"11px",color:"#dc2626",fontWeight:"700"}}>-{fmtV(m.saidas)}</span>
-                <span style={{fontSize:"11px",fontWeight:"800",color:m.saldo>=0?"#16a34a":"#dc2626"}}>{fmtV(m.saldo)}</span>
-              </div>)}
-            </div>}
-          </>}
-
-          {/* DRE */}
-          {finTab==="dre"&&<>
-            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"12px"}}>DRE — Demonstrativo de Resultado</div>
-            <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
-              {[
-                {lb:"(+) Receita Bruta (obras fechadas)",val:recBruta,color:"#16a34a",bold:false},
-                {lb:"(-) Custo dos Materiais (orçamentos)",val:-custoObras,color:"#dc2626",bold:false},
-                {lb:"(=) Lucro Bruto",val:lucroBruto,color:lucroBruto>=0?"#16a34a":"#dc2626",bold:true,sep:true},
-                {lb:"(-) Despesas Operacionais (contas pagas)",val:-despesasOp,color:"#f97316",bold:false},
-                {lb:"(=) Lucro Líquido",val:lucroLiq,color:lucroLiq>=0?"#16a34a":"#dc2626",bold:true,sep:true},
-              ].map((row,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:row.bold?t.sectionBg:"transparent",borderRadius:"8px",border:row.bold?`1.5px solid ${t.cardBorder}`:"none",borderTop:row.sep?`2px solid ${t.cardBorder}`:"none",marginTop:row.sep?"4px":"0"}}>
-                <span style={{fontSize:"12px",fontWeight:row.bold?700:500,color:t.text}}>{row.lb}</span>
-                <span style={{fontSize:"13px",fontWeight:row.bold?800:600,color:row.color}}>{fmtV(Math.abs(row.val))}</span>
-              </div>)}
-              <div style={{marginTop:"8px",padding:"10px 14px",background:"#f0fdf4",borderRadius:"8px",border:"1.5px solid #16a34a",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:"12px",fontWeight:"700",color:"#15803d"}}>Margem Líquida</span>
-                <span style={{fontSize:"16px",fontWeight:"800",color:parseFloat(margem)>=0?"#16a34a":"#dc2626"}}>{margem}%</span>
-              </div>
-              <div style={{fontSize:"9px",color:t.textMuted,marginTop:"4px",textAlign:"center"}}>* Baseado nos orçamentos com status Fechou/Em Execução/Concluído e despesas marcadas como Pago</div>
-
-              {/* BREAKDOWN POR CATEGORIA */}
-              {Object.keys(breakdownCat).length>0&&<>
-                <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginTop:"16px",marginBottom:"8px"}}>Despesas por Categoria (pagas)</div>
-                <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
-                  {Object.entries(breakdownCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=><div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 12px",borderRadius:"6px",background:t.sectionBg,border:`1px solid ${t.cardBorder}`,borderLeft:`3px solid ${CAT_CORES[k]||"#64748b"}`}}>
-                    <span style={{fontSize:"11px",fontWeight:"600",color:t.text}}>{CAT_LABELS[k]||k}</span>
-                    <span style={{fontSize:"12px",fontWeight:"800",color:CAT_CORES[k]||"#64748b"}}>{fmtV(v)}</span>
-                  </div>)}
-                </div>
-              </>}
-            </div>
-          </>}
-
-          {/* CENTRO DE CUSTO POR OBRA */}
-          {finTab==="obra"&&<>
-            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"12px"}}>Centro de Custo por Obra</div>
-            {obrasAtivas.length===0?<div style={{textAlign:"center",padding:"32px",color:t.textMuted,fontSize:"11px"}}>Nenhuma obra ativa (Fechou/Em Execução/Concluído) no CRM.</div>:
-            <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
-              {obrasAtivas.map(o=>{
-                const orcado=parseFloat(o.tot)||0;
-                const custoReal=contasPagar.filter(c=>c.obra===String(o.id)&&c.status==="pago").reduce((a,c)=>a+(parseFloat(c.valor)||0),0);
-                const saldoO=orcado-custoReal;
-                const lucro=saldoO>=0;
-                return <div key={o.id} style={{padding:"12px 14px",borderRadius:"8px",background:t.sectionBg,border:`1.5px solid ${lucro?"#16a34a":"#dc2626"}`,borderLeft:`4px solid ${lucro?"#16a34a":"#dc2626"}`}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:"6px"}}>
-                    <div>
-                      <div style={{fontSize:"12px",fontWeight:"700",color:t.text}}>{o.cN||"Cliente"}</div>
-                      <div style={{fontSize:"9px",color:t.textMuted}}>{PIPE.find(p=>p.id===o.status)?.label||o.status} · {o.date||""}</div>
-                    </div>
-                    <span style={{fontSize:"10px",fontWeight:"700",padding:"2px 8px",borderRadius:"4px",background:lucro?"#f0fdf4":"#fef2f2",color:lucro?"#16a34a":"#dc2626"}}>{lucro?"✅ Lucro":"🔴 Prejuízo"}</span>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px",marginTop:"10px"}}>
-                    <div style={{textAlign:"center"}}>
-                      <div style={{fontSize:"9px",color:t.textMuted,marginBottom:"2px"}}>Orçado</div>
-                      <div style={{fontSize:"12px",fontWeight:"700",color:"#3b82f6"}}>{fmtV(orcado)}</div>
-                    </div>
-                    <div style={{textAlign:"center"}}>
-                      <div style={{fontSize:"9px",color:t.textMuted,marginBottom:"2px"}}>Custo Real</div>
-                      <div style={{fontSize:"12px",fontWeight:"700",color:"#dc2626"}}>{fmtV(custoReal)}</div>
-                    </div>
-                    <div style={{textAlign:"center"}}>
-                      <div style={{fontSize:"9px",color:t.textMuted,marginBottom:"2px"}}>Saldo</div>
-                      <div style={{fontSize:"12px",fontWeight:"800",color:lucro?"#16a34a":"#dc2626"}}>{fmtV(saldoO)}</div>
-                    </div>
-                  </div>
-                </div>;
-              })}
-            </div>}
-          </>}
-        </>;
-      })()}</Card>}
 
       {/* MODAL REVISÃO DE BAIXA NO ESTOQUE */}
       {stkReview&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
@@ -4438,7 +3616,6 @@ ${pendPag.length===0?"<p style='color:#888;font-size:12px'>Nenhuma</p>":`<table 
               };
               const nh=[item,...hist];
               setHist(nh);saveLS(nh);saveFS(item);
-              if(manualForm.status==="fechou")autoSyncReceber(item);
               setShowManualOrc(false);
               setManualForm({nome:"",cidade:"",tel:"",tipo:"vinil",ps:"",valor:"",data:new Date().toLocaleDateString("pt-BR"),status:"lead"});
               setFbMsg("Orçamento registrado!");setTimeout(()=>setFbMsg(""),2500);
