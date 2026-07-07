@@ -2,6 +2,19 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Só a equipe da Vinil Vale acessa dados compartilhados de clientes.
+    // Qualquer conta Google consegue LOGAR no app, mas não passa daqui.
+    // Para dar acesso a alguém novo, adicione o e-mail à lista e rode:
+    //   firebase deploy --only firestore:rules
+    function isEquipe() {
+      return request.auth != null
+        && request.auth.token.email in [
+          'vinilvale@hotmail.com',
+          'vinilvale.ads@gmail.com',
+          'marcoslimablockchain@gmail.com'
+        ];
+    }
+
     // Apenas o próprio usuário autenticado acessa seus dados
     match /users/{userId}/{document=**} {
       allow read: if request.auth != null && request.auth.uid == userId;
@@ -29,19 +42,19 @@ service cloud.firestore {
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Contatos Google - acessível por qualquer usuário autenticado
+    // Contatos Google - somente equipe
     match /google_contacts/{contactId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isEquipe();
     }
 
-    // Conversas WhatsApp - acessível por qualquer usuário autenticado
+    // Conversas WhatsApp - somente equipe (o bot escreve via Admin SDK, não passa por rules)
     match /whatsapp_conversations/{phone} {
-      allow read: if request.auth != null;
+      allow read: if isEquipe();
     }
 
-    // Leads WhatsApp - acessível por qualquer usuário autenticado
+    // Leads WhatsApp - somente equipe
     match /whatsapp_leads/{phone} {
-      allow read: if request.auth != null;
+      allow read: if isEquipe();
     }
 
     // Bloqueia tudo mais por padrão

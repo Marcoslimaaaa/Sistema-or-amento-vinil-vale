@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, Suspense, lazy } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { MessageCircleIcon, FileTextIcon, CheckIcon, DownloadIcon, SendIcon } from "./AnimatedIcons.jsx";
 import { User, Waves, ShoppingCart, ShieldCheck, Wallet, Ruler, FolderOpen, TrendingUp, MessageCircle, Package, FileText, Coins, Hammer, Paintbrush, Wrench, Menu, Cloud, RefreshCw, Save, Sun, Moon, Droplets, LogOut } from "lucide-react";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
+// jspdf/html2canvas (~200KB gz) só carregam quando alguém gera PDF/imagem
+const loadPdfLibs=async()=>{const[h,j]=await Promise.all([import("html2canvas"),import("jspdf")]);return{html2canvas:h.default,jsPDF:j.jsPDF};};
 const Pool3DView = lazy(() => import('./Pool3DView'));
 import RescueModal from "./components/rescue/RescueModal";
 import LostReasonModal from "./components/rescue/LostReasonModal";
@@ -68,6 +68,10 @@ const clearPending=(id)=>{const p=getPending();if(p.delete(String(id))){try{loca
 const getPendingDel=()=>{try{return new Set(JSON.parse(localStorage.getItem("vv_pending_del")||"[]"))}catch{return new Set()}};
 const addPendingDel=(id)=>{const p=getPendingDel();p.add(String(id));try{localStorage.setItem("vv_pending_del",JSON.stringify([...p]))}catch{}};
 const clearPendingDel=(id)=>{const p=getPendingDel();if(p.delete(String(id))){try{localStorage.setItem("vv_pending_del",JSON.stringify([...p]))}catch{}}};
+// Fila dos docs de config financeiros (receber/pagar/fixas) — versão local mais nova que a nuvem
+const getCfgDirty=()=>{try{return new Set(JSON.parse(localStorage.getItem("vv_cfg_dirty")||"[]"))}catch{return new Set()}};
+const addCfgDirty=(k)=>{const p=getCfgDirty();p.add(k);try{localStorage.setItem("vv_cfg_dirty",JSON.stringify([...p]))}catch{}};
+const clearCfgDirty=(k)=>{const p=getCfgDirty();if(p.delete(k)){try{localStorage.setItem("vv_cfg_dirty",JSON.stringify([...p]))}catch{}}};
 // Escapa caracteres HTML para prevenir XSS em templates de documentos
 const escHtml=(s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;');
 if(typeof document!=="undefined"&&!document.getElementById("vv-styles")){const s=document.createElement("style");s.id="vv-styles";s.textContent=`
@@ -941,6 +945,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
       const plantaEl=el.querySelector('[data-pdf-section="planta"]');
       const h2cOpts={scale:3,useCORS:true,backgroundColor:"#ffffff",logging:false,windowWidth:820,scrollY:0,scrollX:0};
       const pdfW=210,pdfH=297,pageW=pdfW-16,usableH=pdfH-16; // A4 mm, margem 8mm
+      const {html2canvas,jsPDF}=await loadPdfLibs();
       const pdf=new jsPDF({orientation:"p",unit:"mm",format:"a4"});
 
       // Função para adicionar imagem escalada que cabe na página A4
@@ -1339,7 +1344,7 @@ export default function App(){
     }
   };
   const doLogout=()=>{
-    ["vv_hist","vv_receber","vv_pagar","vv_fixas","vv_stk","vv_stklog","vv_fornec","vv_interacoes","vv_crmmeta","vv_pending","vv_pending_del"].forEach(k=>localStorage.removeItem(k));
+    ["vv_hist","vv_receber","vv_pagar","vv_fixas","vv_stk","vv_stklog","vv_fornec","vv_interacoes","vv_crmmeta","vv_pending","vv_pending_del","vv_cfg_dirty"].forEach(k=>localStorage.removeItem(k));
     if(fbReady&&fb.auth)fbFns.signOut(fb.auth);else setUser(null);
   };
 
@@ -1374,7 +1379,7 @@ export default function App(){
   // Contador do indicador de sincronização (fila vv_pending + vv_pending_del)
   const [pendCount,setPendCount]=useState(0);
   useEffect(()=>{
-    const upd=()=>setPendCount(getPending().size+getPendingDel().size);
+    const upd=()=>setPendCount(getPending().size+getPendingDel().size+getCfgDirty().size);
     upd();
     const iv=setInterval(upd,4000);
     return ()=>clearInterval(iv);
@@ -1531,6 +1536,7 @@ export default function App(){
     if(!user||!fbReady||!fb.db||user.uid==="local")return;
     const rRef=fbFns.doc(fb.db,"users",user.uid,"config","receber");
     const unsubR=fbFns.onSnapshot(rRef,(snap)=>{
+      if(getCfgDirty().has("receber")){saveCfgFS("receber","vv_receber");return;} // local mais novo — reenvia
       if(snap.exists()&&snap.data().data){
         const d=snap.data().data;setContasReceber(d);
         try{localStorage.setItem("vv_receber",JSON.stringify(d))}catch{}
@@ -1541,6 +1547,7 @@ export default function App(){
     });
     const pRef=fbFns.doc(fb.db,"users",user.uid,"config","pagar");
     const unsubP=fbFns.onSnapshot(pRef,(snap)=>{
+      if(getCfgDirty().has("pagar")){saveCfgFS("pagar","vv_pagar");return;}
       if(snap.exists()&&snap.data().data){
         const d=snap.data().data;setContasPagar(d);
         try{localStorage.setItem("vv_pagar",JSON.stringify(d))}catch{}
@@ -1550,6 +1557,7 @@ export default function App(){
     });
     const fRef=fbFns.doc(fb.db,"users",user.uid,"config","fixas");
     const unsubF=fbFns.onSnapshot(fRef,(snap)=>{
+      if(getCfgDirty().has("fixas")){saveCfgFS("fixas","vv_fixas");return;}
       if(snap.exists()&&snap.data().data){
         const d=snap.data().data;setDespesasFixas(d);
         try{localStorage.setItem("vv_fixas",JSON.stringify(d))}catch{}
@@ -1560,28 +1568,34 @@ export default function App(){
     return ()=>{unsubR();unsubP();unsubF();}
   },[user,fbReady]);
 
+  // Envia doc de config a partir do localStorage; só sai da fila quando a nuvem confirma
+  const saveCfgFS=(key,lsKey)=>{
+    addCfgDirty(key);
+    if(!fbReady||!fb.db||!user||user.uid==="local")return;
+    try{
+      const data=JSON.parse(localStorage.getItem(lsKey)||"[]");
+      fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config",key),{data})
+        .then(()=>clearCfgDirty(key))
+        .catch(e=>console.error("cfg:"+key,e));
+    }catch(e){console.error("cfg:"+key,e)}
+  };
+
   const saveReceber=(data)=>{
     setContasReceber(data);
     try{localStorage.setItem("vv_receber",JSON.stringify(data))}catch{}
-    if(fbReady&&fb.db&&user&&user.uid!=="local"){
-      try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","receber"),{data})}catch{}
-    }
+    saveCfgFS("receber","vv_receber");
   };
 
   const savePagar=(data)=>{
     setContasPagar(data);
     try{localStorage.setItem("vv_pagar",JSON.stringify(data))}catch{}
-    if(fbReady&&fb.db&&user&&user.uid!=="local"){
-      try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","pagar"),{data})}catch{}
-    }
+    saveCfgFS("pagar","vv_pagar");
   };
 
   const saveFixas=(data)=>{
     setDespesasFixas(data);
     try{localStorage.setItem("vv_fixas",JSON.stringify(data))}catch{}
-    if(fbReady&&fb.db&&user&&user.uid!=="local"){
-      try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","fixas"),{data})}catch{}
-    }
+    saveCfgFS("fixas","vv_fixas");
   };
 
   const lancarFixasDoMes=()=>{
@@ -2042,6 +2056,7 @@ export default function App(){
     idoc.open();idoc.write(html.replace(/<script[\s\S]*?<\/script>/gi,""));idoc.close();
     await new Promise(r=>setTimeout(r,500));
     try{
+      const {html2canvas,jsPDF}=await loadPdfLibs();
       const canvas=await html2canvas(idoc.body,{scale:2,useCORS:true,backgroundColor:"#ffffff",logging:false});
       const imgData=canvas.toDataURL("image/jpeg",0.92);
       const pdfW=210,pageW=pdfW-16;
@@ -2830,7 +2845,7 @@ export default function App(){
                   <span style={{color:"#e9edef",fontSize:"15px",fontWeight:"600"}}>Vinil Vale</span>
                 </div>
                 <div style={{display:"flex",gap:"12px",alignItems:"center"}}>
-                  <button onClick={async()=>{const el=document.getElementById("wa-full-area");if(!el)return;const canvas=await html2canvas(el,{backgroundColor:null,scale:2});const link=document.createElement("a");link.download=`whatsapp-${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.png`;link.href=canvas.toDataURL("image/png");link.click()}} title="Capturar PNG" style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
+                  <button onClick={async()=>{const el=document.getElementById("wa-full-area");if(!el)return;const {html2canvas}=await loadPdfLibs();const canvas=await html2canvas(el,{backgroundColor:null,scale:2});const link=document.createElement("a");link.download=`whatsapp-${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.png`;link.href=canvas.toDataURL("image/png");link.click()}} title="Capturar PNG" style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
                     <DownloadIcon size={20} color="#aebac1"/>
                   </button>
                   <button title="Nova conversa" style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
