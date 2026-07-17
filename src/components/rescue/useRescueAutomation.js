@@ -1,12 +1,12 @@
 import { useEffect, useRef } from "react";
 import { REGUA } from "../crm/regua";
 
-export function useRescueAutomation({ hist, crmTags, crmNextContact, getDaysSince, saveCrmMeta, onSugerirPerda, ready = false }) {
+export function useRescueAutomation({ hist, crmTags, getDaysSince, patchCrmMeta, onSugerirPerda, ready = false }) {
   const ranRef = useRef(false);
-  const dataRef = useRef({ hist, crmTags, crmNextContact, getDaysSince, saveCrmMeta, onSugerirPerda });
+  const dataRef = useRef({ hist, crmTags, getDaysSince, patchCrmMeta, onSugerirPerda });
 
   // Keep refs up to date without triggering effect
-  dataRef.current = { hist, crmTags, crmNextContact, getDaysSince, saveCrmMeta, onSugerirPerda };
+  dataRef.current = { hist, crmTags, getDaysSince, patchCrmMeta, onSugerirPerda };
 
   useEffect(() => {
     // Só roda depois que hist, interações e crmMeta chegaram da nuvem —
@@ -16,11 +16,11 @@ export function useRescueAutomation({ hist, crmTags, crmNextContact, getDaysSinc
       if (ranRef.current) return;
       ranRef.current = true;
 
-      const { hist, crmTags, crmNextContact, getDaysSince, saveCrmMeta, onSugerirPerda } = dataRef.current;
+      const { hist, crmTags, getDaysSince, patchCrmMeta, onSugerirPerda } = dataRef.current;
       if (!hist || hist.length === 0) return;
 
-      let changed = false;
-      const newTags = { ...crmTags };
+      // Só as tags que mudaram — gravadas com merge, sem tocar no resto do crmMeta
+      const changedTags = {};
       let firstSuggestion = null;
 
       hist.forEach((q) => {
@@ -30,7 +30,7 @@ export function useRescueAutomation({ hist, crmTags, crmNextContact, getDaysSinc
         const days = getDaysSince(q.id);
         // Sem nenhuma referência de contato (lead antigo sem data) — não tagueia no escuro
         if (days >= REGUA.desconhecido) return;
-        const tags = newTags[q.id] || [];
+        const tags = crmTags[q.id] || [];
         let updated = [...tags];
 
         if (days >= REGUA.resgate.aguardando && !updated.includes("Aguardando")) updated.push("Aguardando");
@@ -38,8 +38,7 @@ export function useRescueAutomation({ hist, crmTags, crmNextContact, getDaysSinc
         if (days >= REGUA.resgate.urgente && !updated.includes("Urgente")) updated.push("Urgente");
 
         if (updated.length !== tags.length) {
-          newTags[q.id] = updated;
-          changed = true;
+          changedTags[String(q.id)] = updated;
         }
 
         if (days >= REGUA.resgate.perda && !firstSuggestion) {
@@ -47,7 +46,7 @@ export function useRescueAutomation({ hist, crmTags, crmNextContact, getDaysSinc
         }
       });
 
-      if (changed) saveCrmMeta(crmNextContact, newTags);
+      if (Object.keys(changedTags).length > 0) patchCrmMeta({ tags: changedTags });
       if (firstSuggestion) onSugerirPerda(firstSuggestion.q, firstSuggestion.days);
     }, 3000);
 

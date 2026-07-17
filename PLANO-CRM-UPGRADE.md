@@ -57,7 +57,15 @@ Referência: Pipedrive + WhatsApp, Clientify, NetHunt — padrões de mercado em
 
 **✅ Fase 3a concluída** — caixa **"Tarefas de Hoje"** no topo do Pipeline (`src/components/crm/TodayTasks.jsx`): contatos agendados atrasados/de hoje + leads parados ≥5d, ordenados por prioridade (valor × tempo parado), com 💬 envio 1-clique via wa.me (mensagem pronta pela régua de dias + registra interação + reagenda +5d), ✓ Feito e +3d adiar. KPI de conversão agora mostra a **taxa de vitória sobre decididos** (a geral antiga aparece ao lado).
 
-**Pendente:** Fase 3b (Cloud API oficial da Meta + cadência 100% automática — depende de ativar o Coexistence no número da empresa) e Fase 4 (subcoleções, vírgula decimal no calcA, Google Contacts em batches, deploy das rules).
+**✅ Fase 4 concluída (parte segura)** — robustez:
+- `interacoes` e `crmMeta` agora gravam com **merge por lead** (`saveInteracaoLead`/`patchCrmMeta`): dois aparelhos abertos não apagam mais as notas um do outro; a automação grava só as tags que mudaram e não toca no `nextContact`.
+- **Vírgula decimal**: dimensões da piscina/spa/paredes normalizam "," → "." na digitação; valores em R$ (valor final e lead manual) usam `parseMoney` no padrão BR ("12.500,50" → 12500.50 — antes "12.500" virava R$ 12,50).
+- **Google Contacts**: exclusão da coleção antiga em blocos de 450 (antes um batch único quebrava com 500+ contatos).
+
+**Pendente:**
+- Fase 3b — Cloud API oficial da Meta + cadência 100% automática (depende de ativar o Coexistence no número da empresa e migrar o bot do Z-API).
+- Deploy das Firestore Rules com allowlist: rodar `firebase deploy --only firestore:rules` (precisa de login do Firebase CLI — não dá para fazer sem o Marcos).
+- Itens maiores do PLANO-MELHORIA: quebrar App.jsx em módulos, code-splitting do bundle.
 
 ## 6. Roadmap proposto
 

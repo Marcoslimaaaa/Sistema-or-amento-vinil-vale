@@ -757,6 +757,8 @@ const mkCI=(tipo)=>{
 const mkG=t=>{if(t==="revestimento")return[{id:2,it:"Mão de obra/Soldas",y:3,on:true},{id:3,it:"Vinil (fabricação)",y:3,on:true}];if(t==="reforma")return[{id:2,it:"Mão de obra/Soldas",y:3,on:true},{id:3,it:"Vinil (fabricação)",y:3,on:true},{id:4,it:"Kit Filtrante",y:1,on:true}];return[{id:1,it:"Alvenaria",y:5,on:true},{id:2,it:"Mão de obra/Soldas",y:3,on:true},{id:3,it:"Vinil (fabricação)",y:3,on:true},{id:4,it:"Kit Filtrante",y:1,on:true}]};
 const IPAY={pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
 const fmt=v=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(v);
+// Dinheiro digitado no padrão BR: ponto = milhar, vírgula = decimal ("12.500,50" → 12500.5)
+const parseMoney=v=>parseFloat(String(v??"").replace(/\./g,"").replace(",","."))||0;
 
 // ═══ AREA CALCULATION ═══
 const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType)=>{
@@ -893,7 +895,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
     if(i.un==="ml")return parseFloat(ar.perim)||0;
     return i.q||0;
   };
-  const total=parseFloat(d.totOv)||inc.reduce((s,i)=>s+effQ(i)*(i.c||0)*(1+(i.m||0)/100),0)+(parseFloat(d.mo)||0);
+  const total=parseMoney(d.totOv)||inc.reduce((s,i)=>s+effQ(i)*(i.c||0)*(1+(i.m||0)/100),0)+(parseFloat(d.mo)||0);
   const today=new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"});
   const pix=total*(1-(pay.pixD||0)/100),btc=total*(1-(pay.btcD||0)/100);
   const ent=total*(pay.entPct||50)/100,bal=total*(pay.balPct||50)/100,inst=total/(pay.noFee||1);
@@ -1159,7 +1161,8 @@ export default function App(){
   const uc=f=>v=>setCl(p=>({...p,[f]:v}));
   const [pool,setPool]=useState({length:"10.00",width:"4.00",depth:"1.40",depthMin:"",depthMax:"",chanfro:"1.00"});
   const [fieldErrors,setFieldErrors]=useState({});
-  const up=f=>v=>{setPool(p=>({...p,[f]:v}));if(parseFloat(v)>0)setFieldErrors(e=>({...e,[f]:false}));};
+  // Vírgula vira ponto na entrada — "3,5" era lido como 3 pelo parseFloat e errava área/preço
+  const up=f=>v=>{const nv=String(v).replace(",",".");setPool(p=>({...p,[f]:nv}));if(parseFloat(nv)>0)setFieldErrors(e=>({...e,[f]:false}));};
 
   // DISPOSITIVOS HIDRAULICOS
   const [disps,setDisps]=useState({retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4});
@@ -1218,16 +1221,16 @@ export default function App(){
 
   // SPA
   const [spa,setSpa]=useState({on:false,length:"2.00",width:"2.00",depth:"0.80",side:"top"});
-  const uSpa=f=>v=>setSpa(p=>({...p,[f]:v}));
+  const uSpa=f=>v=>setSpa(p=>({...p,[f]:String(v).replace(",",".")}));
   const [spaType,setSpaType]=useState({redondo:false,quadrado:false,qComp:"2.00",qLarg:"2.00",qProf:"0.80",qCanto:"top-right",rDiam:"2.00",rProf:"0.80",rCanto:"top-left",rFormato:"redondo",rComp:"2.00",rLarg:"2.00"});
-  const uSpaT=f=>v=>setSpaType(p=>({...p,[f]:v}));
+  const uSpaT=f=>v=>setSpaType(p=>({...p,[f]:typeof v==="string"?v.replace(",","."):v}));
 
   // WALLS irregular
   const [wMode,setWM]=useState("regular"); // "regular" | "irregular"
   const [walls,setWalls]=useState([{l:"10",h:"1.40"},{l:"4",h:"1.40"},{l:"10",h:"1.40"},{l:"4",h:"1.40"}]);
   const addWall=()=>setWalls(p=>[...p,{l:"",h:pool.depth||"1.40"}]);
   const rmWall=i=>setWalls(p=>p.filter((_,x)=>x!==i));
-  const uWall=(i,f,v)=>setWalls(p=>p.map((w,x)=>x===i?{...w,[f]:v}:w));
+  const uWall=(i,f,v)=>setWalls(p=>p.map((w,x)=>x===i?{...w,[f]:String(v).replace(",",".")}:w));
 
   // EXTRAS (prainha, degrau, banco — cada peça = topo L×W + face L×H, H = borda até topo da peça)
   const [extras,setExtras]=useState([]);
@@ -1495,10 +1498,20 @@ export default function App(){
     }catch{}
   },[user,fbReady]);
 
+  // Grava TODAS as interações (usado só no import de backup)
   const saveInteracoes=async(data)=>{
     setInteracoes(data);
     if(fbReady&&fb.db&&user&&user.uid!=="local"){
       try{await fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","interacoes"),{data})}catch{}
+    }
+  };
+
+  // Grava só a lista de UM lead com merge — dois aparelhos abertos não
+  // sobrescrevem mais as interações um do outro (antes era last-write-wins)
+  const saveInteracaoLead=async(qId,list)=>{
+    setInteracoes(prev=>({...prev,[qId]:list}));
+    if(fbReady&&fb.db&&user&&user.uid!=="local"){
+      try{await fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","interacoes"),{data:{[String(qId)]:list}},{merge:true})}catch{}
     }
   };
 
@@ -1514,6 +1527,7 @@ export default function App(){
     }catch{}
   },[user,fbReady]);
 
+  // Grava crmMeta INTEIRO (usado só no import de backup)
   const saveCrmMeta=(nc,tags)=>{
     setCrmNextContact(nc);setCrmTags(tags);
     if(fbReady&&fb.db&&user&&user.uid!=="local"){
@@ -1521,11 +1535,18 @@ export default function App(){
     }
   };
 
+  // Grava só as chaves alteradas com merge — mesmo racional do saveInteracaoLead
+  const patchCrmMeta=(patch)=>{
+    if(patch.nextContact)setCrmNextContact(prev=>({...prev,...patch.nextContact}));
+    if(patch.tags)setCrmTags(prev=>({...prev,...patch.tags}));
+    if(fbReady&&fb.db&&user&&user.uid!=="local"){
+      try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","crmMeta"),patch,{merge:true})}catch{}
+    }
+  };
+
   const addInteracao=(qId,tipo,texto)=>{
-    const ni={...interacoes};
-    if(!ni[qId])ni[qId]=[];
-    ni[qId]=[{tipo,texto,data:new Date().toLocaleDateString("pt-BR"),hora:new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}),ts:Date.now()},...ni[qId]];
-    saveInteracoes(ni);
+    const list=[{tipo,texto,data:new Date().toLocaleDateString("pt-BR"),hora:new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}),ts:Date.now()},...(interacoes[qId]||[])];
+    saveInteracaoLead(qId,list);
   };
 
   const getLastContact=(qId)=>{
@@ -1630,13 +1651,16 @@ export default function App(){
           }while(nextPageToken);
 
           setSyncMsg(`Salvando ${allContacts.length} contatos...`);
-          // Salva no Firestore
-          const batch=fbFns.writeBatch(fb.db);
           const colRef=fbFns.collection(fb.db,"google_contacts");
-          // Limpa coleção antiga
+          // Limpa coleção antiga em blocos de 450 (limite do Firestore: 500 ops/batch —
+          // um batch único quebrava o sync a partir de 500 contatos)
           const oldSnap=await fbFns.getDocs(colRef);
-          oldSnap.forEach(d=>batch.delete(d.ref));
-          await batch.commit();
+          const oldDocs=oldSnap.docs;
+          for(let i=0;i<oldDocs.length;i+=450){
+            const delBatch=fbFns.writeBatch(fb.db);
+            oldDocs.slice(i,i+450).forEach(d=>delBatch.delete(d.ref));
+            await delBatch.commit();
+          }
 
           // Salva em batches de 500
           let batchCount=0;let currentBatch=fbFns.writeBatch(fb.db);
@@ -1687,13 +1711,11 @@ export default function App(){
   const setLeadTag=(qId,tag)=>{
     const cur=crmTags[qId]||[];
     const updated=cur.includes(tag)?cur.filter(t=>t!==tag):[...cur,tag];
-    const nt={...crmTags,[qId]:updated};
-    saveCrmMeta(crmNextContact,nt);
+    patchCrmMeta({tags:{[String(qId)]:updated}});
   };
 
   const setNextContact=(qId,date)=>{
-    const nn={...crmNextContact,[qId]:date};
-    saveCrmMeta(nn,crmTags);
+    patchCrmMeta({nextContact:{[String(qId)]:date}});
   };
 
   // Atrasado = data ANTERIOR a hoje (contato marcado para hoje ainda está no prazo)
@@ -1901,7 +1923,7 @@ export default function App(){
   const matC=inc.reduce((s,i)=>s+effQ(i)*(i.c||0),0);
   const matS=inc.reduce((s,i)=>s+effQ(i)*(i.c||0)*(1+(i.m||0)/100),0);
   const tCalc=matS+(parseFloat(mo)||0);
-  const total=parseFloat(totOv)||tCalc;
+  const total=parseMoney(totOv)||tCalc;
 
   const ui=(id,f,v)=>setItems(p=>p.map(i=>i.id===id?{...i,[f]:v}:i));
   const ti=id=>setItems(p=>p.map(i=>i.id===id?{...i,on:!i.on}:i));
@@ -1939,7 +1961,7 @@ export default function App(){
     if(stage==="perdido"){const q=hist.find(h=>h.id===id);if(q){setLostReasonModal({q,days:getDaysSince(q.id),auto:false});return;}}
     const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
   const salvarMotivoPerda=async(q,motivo)=>{const nh=hist.map(h=>h.id===q.id?{...h,status:"perdido",...motivo}:h);setHist(nh);saveLS(nh);const item=nh.find(h=>h.id===q.id);if(item)saveFS(item);addInteracao(q.id,"perda",`Marcado como perdido: ${motivo.motivoLabel}`);setFbMsg("❌ Marcado como perdido");setTimeout(()=>setFbMsg(""),2000)};
-  useRescueAutomation({hist,crmTags,crmNextContact,getDaysSince,saveCrmMeta,ready:histLoaded&&interacoesLoaded&&crmMetaLoaded,onSugerirPerda:(q,days)=>setLostReasonModal({q,days,auto:true})});
+  useRescueAutomation({hist,crmTags,getDaysSince,patchCrmMeta,ready:histLoaded&&interacoesLoaded&&crmMetaLoaded,onSugerirPerda:(q,days)=>setLostReasonModal({q,days,auto:true})});
   const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const fullNum=num.startsWith("55")?num:`55${num}`;const conv=waConvs.find(c=>c.phone===fullNum||c.phone===num);if(conv){setTab("whatsapp");setWaChat(conv.phone);if(msg)setWaMsg(msg)}else{setTab("whatsapp");setFbMsg("📱 Conversa não encontrada no sistema. Inicie pelo WhatsApp.");setTimeout(()=>setFbMsg(""),3000)}};
   const sendOrcWA=async(q)=>{
     const d=q.data;const c=d?.client||{};const inc=(d?.items||[]).filter(i=>i.on);
@@ -3643,7 +3665,7 @@ export default function App(){
               const id=Date.now();
               const item={
                 id,cN:manualForm.nome.trim(),cC:manualForm.cidade.trim(),
-                ps:manualForm.ps||"0",tot:manualForm.valor,date:manualForm.data,
+                ps:manualForm.ps||"0",tot:String(parseMoney(manualForm.valor)),date:manualForm.data,
                 type:manualForm.tipo,status:manualForm.status,manual:true,
                 closedDate:manualForm.status==="fechou"?manualForm.data:undefined,
                 data:{client:{name:manualForm.nome.trim(),city:manualForm.cidade.trim(),phone:manualForm.tel.trim(),address:"",cpf:"",rg:"",email:""},pool:{length:0,width:0,depth:0},items:[],svcType:manualForm.tipo,propNum:""},
