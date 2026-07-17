@@ -62,9 +62,13 @@ Referência: Pipedrive + WhatsApp, Clientify, NetHunt — padrões de mercado em
 - **Vírgula decimal**: dimensões da piscina/spa/paredes normalizam "," → "." na digitação; valores em R$ (valor final e lead manual) usam `parseMoney` no padrão BR ("12.500,50" → 12500.50 — antes "12.500" virava R$ 12,50).
 - **Google Contacts**: exclusão da coleção antiga em blocos de 450 (antes um batch único quebrava com 500+ contatos).
 
-**Pendente:**
-- Fase 3b — Cloud API oficial da Meta + cadência 100% automática (depende de ativar o Coexistence no número da empresa e migrar o bot do Z-API).
-- Deploy das Firestore Rules com allowlist: rodar `firebase deploy --only firestore:rules` (precisa de login do Firebase CLI — não dá para fazer sem o Marcos).
+**✅ Rules deployadas (17/07)** — Firestore (allowlist de equipe) e Storage publicadas via `firebase deploy` no projeto `sistema-vinil-vale`.
+
+**✅ Fase 3b — código pronto (bot v1.5, commit 9092c9d)** — o bot agora suporta a **Meta Cloud API oficial**: provider em `src/services/meta-cloud.js` (texto, templates, mídia, anti-loop de ecos), roteamento automático em `whatsapp.js` (ativa quando `META_WA_TOKEN`+`META_WA_PHONE_ID` existirem), rotas `/webhook-meta` traduzindo o payload da Meta (incl. echoes do Coexistence) para o pipeline atual. **Nada muda em produção até configurar as variáveis.**
+
+**Pendente (precisa do Marcos — não dá via CLI):**
+- Seguir o passo a passo de `MIGRACAO-META-CLOUD-API.md` no repo do bot (criar app na Meta, conectar o número via Coexistence, token permanente, webhook, variáveis no Railway — ~30–60 min).
+- Depois da migração: criar os 3 templates de follow-up no WhatsApp Manager e ligar o `followup.js` neles (cadência 100% automática).
 - Itens maiores do PLANO-MELHORIA: quebrar App.jsx em módulos, code-splitting do bundle.
 
 ## 6. Roadmap proposto
