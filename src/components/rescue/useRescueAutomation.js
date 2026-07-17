@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
+import { REGUA } from "../crm/regua";
 
-export function useRescueAutomation({ hist, crmTags, crmNextContact, getDaysSince, saveCrmMeta, onSugerirPerda }) {
+export function useRescueAutomation({ hist, crmTags, crmNextContact, getDaysSince, saveCrmMeta, onSugerirPerda, ready = false }) {
   const ranRef = useRef(false);
   const dataRef = useRef({ hist, crmTags, crmNextContact, getDaysSince, saveCrmMeta, onSugerirPerda });
 
@@ -8,7 +9,9 @@ export function useRescueAutomation({ hist, crmTags, crmNextContact, getDaysSinc
   dataRef.current = { hist, crmTags, crmNextContact, getDaysSince, saveCrmMeta, onSugerirPerda };
 
   useEffect(() => {
-    if (ranRef.current) return;
+    // Só roda depois que hist, interações e crmMeta chegaram da nuvem —
+    // rodar antes tagueava tudo errado (dias=999) e sobrescrevia o crmMeta.
+    if (!ready || ranRef.current) return;
     const timer = setTimeout(() => {
       if (ranRef.current) return;
       ranRef.current = true;
@@ -25,27 +28,29 @@ export function useRescueAutomation({ hist, crmTags, crmNextContact, getDaysSinc
         if (!["lead", "negociacao", "orcamento"].includes(status)) return;
 
         const days = getDaysSince(q.id);
+        // Sem nenhuma referência de contato (lead antigo sem data) — não tagueia no escuro
+        if (days >= REGUA.desconhecido) return;
         const tags = newTags[q.id] || [];
         let updated = [...tags];
 
-        if (days >= 3 && !updated.includes("Aguardando")) updated.push("Aguardando");
-        if (days >= 9 && !updated.includes("Retornar")) updated.push("Retornar");
-        if (days >= 20 && !updated.includes("Urgente")) updated.push("Urgente");
+        if (days >= REGUA.resgate.aguardando && !updated.includes("Aguardando")) updated.push("Aguardando");
+        if (days >= REGUA.resgate.ligar && !updated.includes("Retornar")) updated.push("Retornar");
+        if (days >= REGUA.resgate.urgente && !updated.includes("Urgente")) updated.push("Urgente");
 
         if (updated.length !== tags.length) {
           newTags[q.id] = updated;
           changed = true;
         }
 
-        if (days >= 45 && !firstSuggestion) {
+        if (days >= REGUA.resgate.perda && !firstSuggestion) {
           firstSuggestion = { q, days };
         }
       });
 
       if (changed) saveCrmMeta(crmNextContact, newTags);
       if (firstSuggestion) onSugerirPerda(firstSuggestion.q, firstSuggestion.days);
-    }, 30000);
+    }, 3000);
 
     return () => clearTimeout(timer);
-  }, []); // runs once on mount only
+  }, [ready]);
 }

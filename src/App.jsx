@@ -10,6 +10,8 @@ import LostReasonModal from "./components/rescue/LostReasonModal";
 import RescueButton, { getRescuePriority } from "./components/rescue/RescueButton";
 import { useRescueAutomation } from "./components/rescue/useRescueAutomation";
 import LossAnalysis from "./components/dashboard/LossAnalysis";
+import { REGUA, normalizePhone, openWaMe } from "./components/crm/regua";
+import TodayTasks from "./components/crm/TodayTasks";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
 const FB_CFG = {
@@ -58,7 +60,7 @@ const initFB = async () => {
   } catch (e) { console.error("Firebase init erro:", e); return false; }
 };
 
-const VER="v4.6";
+const VER="v4.7";
 // Fila de sincronização: ids de orçamentos salvos no aparelho que ainda não foram
 // confirmados na nuvem (salvos sem internet ou antes do login carregar no celular)
 const getPending=()=>{try{return new Set(JSON.parse(localStorage.getItem("vv_pending")||"[]"))}catch{return new Set()}};
@@ -1388,6 +1390,10 @@ export default function App(){
   const [entItems,setEntItems]=useState([{catId:"",qty:"",cost:""}]);
   const [fornecedores,setFornec]=useState([]);
   const [interacoes,setInteracoes]=useState({});
+  // Flags de "dados da nuvem carregados" — a automação de resgate só pode rodar
+  // depois disso, senão tagueia tudo errado com base em dados vazios
+  const [interacoesLoaded,setInteracoesLoaded]=useState(false);
+  const [crmMetaLoaded,setCrmMetaLoaded]=useState(false);
   const [crmDetail,setCrmDetail]=useState(null);
   const [crmChatPhone,setCrmChatPhone]=useState(null);
   const [showManualOrc,setShowManualOrc]=useState(false);
@@ -1483,6 +1489,7 @@ export default function App(){
       const iRef=fbFns.doc(fb.db,"users",user.uid,"config","interacoes");
       const unsub=fbFns.onSnapshot(iRef,(snap)=>{
         if(snap.exists()&&snap.data().data)setInteracoes(snap.data().data);
+        setInteracoesLoaded(true);
       });
       return ()=>unsub();
     }catch{}
@@ -1501,6 +1508,7 @@ export default function App(){
       const ref=fbFns.doc(fb.db,"users",user.uid,"config","crmMeta");
       const unsub=fbFns.onSnapshot(ref,(snap)=>{
         if(snap.exists()){const d=snap.data();if(d.nextContact)setCrmNextContact(d.nextContact);if(d.tags)setCrmTags(d.tags);}
+        setCrmMetaLoaded(true);
       });
       return ()=>unsub();
     }catch{}
@@ -1526,13 +1534,29 @@ export default function App(){
     return list[0];
   };
 
+  // Dias sem contato = mais recente entre: interação manual, última atividade
+  // na conversa real do WhatsApp (cruzada pelo telefone) e criação do orçamento.
+  // Antes retornava 999 para lead sem interação — todo lead novo nascia "gelado".
   const getDaysSince=(qId)=>{
+    const refs=[];
     const last=getLastContact(qId);
-    if(!last)return 999;
-    const parts=last.data.split("/");
-    const d=new Date(parts[2],parts[1]-1,parts[0]);
-    const diff=Math.floor((Date.now()-d.getTime())/(1000*60*60*24));
-    return diff;
+    if(last){
+      if(last.ts)refs.push(last.ts);
+      else if(last.data){const p=last.data.split("/");const d=new Date(p[2],p[1]-1,p[0]);if(!isNaN(d))refs.push(d.getTime());}
+    }
+    const q=histRef.current.find(h=>String(h.id)===String(qId));
+    const ph=(q?.data?.client?.phone||q?.tel||"").replace(/\D/g,"");
+    if(ph){
+      const full=ph.startsWith("55")?ph:"55"+ph;
+      const conv=waConvs.find(c=>c.phone===full||c.phone===ph);
+      const la=conv?.lastActivity;
+      const ms=la?.toMillis?la.toMillis():(typeof la==="number"?la:(la?new Date(la).getTime():0));
+      if(ms>0)refs.push(ms);
+    }
+    const created=Number(qId);
+    if(created>1e12)refs.push(created); // id é timestamp de criação
+    if(refs.length===0)return 999;
+    return Math.max(0,Math.floor((Date.now()-Math.max(...refs))/(1000*60*60*24)));
   };
 
   // WhatsApp: carrega conversas em tempo real (só depois do login — as rules exigem auth)
@@ -1559,11 +1583,18 @@ export default function App(){
   },[waChat,fbReady,user]);
 
   // WhatsApp: envia mensagem
-  const waSendMessage=async()=>{
-    if(!waMsg.trim()||!waChat||waSending)return;
+  // phoneOverride: permite enviar direto do chat inline do CRM sem depender do
+  // estado waChat (o setTimeout+setWaChat antigo usava closure velho e falhava
+  // em silêncio ou mandava a mensagem para o contato errado)
+  const waSendMessage=async(phoneOverride)=>{
+    const phone=phoneOverride||waChat;
+    if(!waMsg.trim()||!phone||waSending)return;
     setWaSending(true);
     try{
-      await fetch(`${BOT_URL}/api/send-message`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:waChat,message:waMsg})});
+      await fetch(`${BOT_URL}/api/send-message`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,message:waMsg})});
+      // Registra contato real no CRM se o telefone corresponder a um lead
+      const lead=histRef.current.find(h=>{const p=(h.data?.client?.phone||h.tel||"").replace(/\D/g,"");return p&&(normalizePhone(p)===normalizePhone(phone))});
+      if(lead)addInteracao(lead.id,"whatsapp","Mensagem enviada pelo sistema");
       setWaMsg("");
     }catch(e){alert("Erro ao enviar: "+e.message);}
     setWaSending(false);
@@ -1641,15 +1672,15 @@ export default function App(){
 
   const needsFollowUp=(qId,status)=>{
     if(!["lead","negociacao"].includes(status||"lead"))return false;
-    return getDaysSince(qId)>=5;
+    return getDaysSince(qId)>=REGUA.followUp;
   };
 
-  const getTemp=(qId,status)=>{
+  const getTemp=(qId,status,daysArg)=>{
     if(["concluido","perdido"].includes(status))return null;
-    const d=getDaysSince(qId);
-    if(d<=2)return{icon:"🔥",label:"Quente",color:"#ef4444",bg:"#fef2f2"};
-    if(d<=7)return{icon:"🌡️",label:"Morno",color:"#f97316",bg:"#fff7ed"};
-    if(d<=14)return{icon:"❄️",label:"Frio",color:"#06b6d4",bg:"#ecfeff"};
+    const d=daysArg!==undefined?daysArg:getDaysSince(qId);
+    if(d<=REGUA.quente)return{icon:"🔥",label:"Quente",color:"#ef4444",bg:"#fef2f2"};
+    if(d<=REGUA.morno)return{icon:"🌡️",label:"Morno",color:"#f97316",bg:"#fff7ed"};
+    if(d<=REGUA.frio)return{icon:"❄️",label:"Frio",color:"#06b6d4",bg:"#ecfeff"};
     return{icon:"🧊",label:"Gelado",color:"#64748b",bg:"#f1f5f9"};
   };
 
@@ -1665,10 +1696,12 @@ export default function App(){
     saveCrmMeta(nn,crmTags);
   };
 
+  // Atrasado = data ANTERIOR a hoje (contato marcado para hoje ainda está no prazo)
   const isNextContactOverdue=(qId)=>{
     const d=crmNextContact[qId];if(!d)return false;
     const parts=d.split("-");
-    return new Date(parts[0],parts[1]-1,parts[2])<new Date();
+    const today=new Date();today.setHours(0,0,0,0);
+    return new Date(parts[0],parts[1]-1,parts[2])<today;
   };
   const [newFornec,setNF2]=useState({name:"",phone:"",products:""});
 
@@ -1906,7 +1939,7 @@ export default function App(){
     if(stage==="perdido"){const q=hist.find(h=>h.id===id);if(q){setLostReasonModal({q,days:getDaysSince(q.id),auto:false});return;}}
     const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
   const salvarMotivoPerda=async(q,motivo)=>{const nh=hist.map(h=>h.id===q.id?{...h,status:"perdido",...motivo}:h);setHist(nh);saveLS(nh);const item=nh.find(h=>h.id===q.id);if(item)saveFS(item);addInteracao(q.id,"perda",`Marcado como perdido: ${motivo.motivoLabel}`);setFbMsg("❌ Marcado como perdido");setTimeout(()=>setFbMsg(""),2000)};
-  useRescueAutomation({hist,crmTags,crmNextContact,getDaysSince,saveCrmMeta,onSugerirPerda:(q,days)=>setLostReasonModal({q,days,auto:true})});
+  useRescueAutomation({hist,crmTags,crmNextContact,getDaysSince,saveCrmMeta,ready:histLoaded&&interacoesLoaded&&crmMetaLoaded,onSugerirPerda:(q,days)=>setLostReasonModal({q,days,auto:true})});
   const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const fullNum=num.startsWith("55")?num:`55${num}`;const conv=waConvs.find(c=>c.phone===fullNum||c.phone===num);if(conv){setTab("whatsapp");setWaChat(conv.phone);if(msg)setWaMsg(msg)}else{setTab("whatsapp");setFbMsg("📱 Conversa não encontrada no sistema. Inicie pelo WhatsApp.");setTimeout(()=>setFbMsg(""),3000)}};
   const sendOrcWA=async(q)=>{
     const d=q.data;const c=d?.client||{};const inc=(d?.items||[]).filter(i=>i.on);
@@ -2367,8 +2400,12 @@ export default function App(){
           const perdidos=hist.filter(q=>q.status==="perdido");
           const receita=fechados.reduce((s,q)=>s+(parseFloat(q.tot)||0),0);
           const txConv=hist.length>0?Math.round((fechados.length/hist.length)*100):0;
+          // Taxa de vitória: só sobre leads DECIDIDOS (fechados+perdidos) — a taxa
+          // antiga dividia pelo total e era diluída pelos leads ainda em aberto
+          const decididos=fechados.length+perdidos.length;
+          const winRate=decididos>0?Math.round((fechados.length/decididos)*100):0;
           const ticketMedio=fechados.length>0?receita/fechados.length:0;
-          const followUps=hist.filter(q=>{const s=q.status||"lead";if(!["lead","negociacao"].includes(s))return false;return getCachedDays(q.id)>=5});
+          const followUps=hist.filter(q=>{const s=q.status||"lead";if(!["lead","negociacao"].includes(s))return false;const d=getCachedDays(q.id);return d>=REGUA.followUp&&d<REGUA.desconhecido});
           const overdueNC=Object.keys(crmNextContact).filter(id=>isNextContactOverdue(id)&&hist.find(q=>q.id==id&&!["concluido","perdido"].includes(q.status)));
 
           const filteredHist=hist.filter(q=>{
@@ -2401,7 +2438,7 @@ export default function App(){
                 {label:"Total",val:hist.length,color:blue,bg:"linear-gradient(135deg,#0055a4,#003d7a)"},
                 {label:"Ativos",val:ativos.length,color:"#f97316",bg:"linear-gradient(135deg,#f97316,#ea580c)"},
                 {label:"Fechados",val:fechados.length,color:"#16a34a",bg:"linear-gradient(135deg,#16a34a,#15803d)"},
-                {label:"Conversão",val:txConv+"%",color:"#8b5cf6",bg:"linear-gradient(135deg,#8b5cf6,#7c3aed)"},
+                {label:`Conversão real (geral ${txConv}%)`,val:winRate+"%",color:"#8b5cf6",bg:"linear-gradient(135deg,#8b5cf6,#7c3aed)"},
                 {label:"Ticket Médio",val:fmt(ticketMedio),color:"#f59e0b",bg:"linear-gradient(135deg,#f59e0b,#d97706)"},
                 {label:"Follow-up",val:followUps.length+(overdueNC.length>0?"  ⏰"+overdueNC.length:""),color:"#dc2626",bg:"linear-gradient(135deg,#dc2626,#991b1b)"},
               ].map((k,i)=><div key={i} style={{borderRadius:"10px",padding:"12px",color:"#fff",background:k.bg}}><div style={{fontSize:"18px",fontWeight:"800"}}>{k.val}</div><div style={{fontSize:"8px",opacity:.85,marginTop:"2px",fontWeight:"600",textTransform:"uppercase",letterSpacing:".5px"}}>{k.label}</div></div>)}
@@ -2464,11 +2501,8 @@ export default function App(){
               </select>
               <button onClick={()=>setCrmShowLost(p=>!p)} style={{padding:"6px 10px",borderRadius:"6px",border:`1.5px solid ${crmShowLost?"#dc2626":t.cardBorder}`,background:crmShowLost?"#fef2f2":"transparent",color:crmShowLost?"#dc2626":t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>❌ Perdidos</button>
             </div>
-            {/* Follow-up banner */}
-            {(followUps.length>0||overdueNC.length>0)&&<div style={{background:"#fef2f2",borderRadius:"8px",padding:"8px 12px",marginBottom:"10px",border:"1px solid #fecaca",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{fontSize:"10px",fontWeight:"700",color:"#dc2626"}}>⚠️ {followUps.length} leads precisam de follow-up{overdueNC.length>0?` · ${overdueNC.length} contatos atrasados`:""}</span>
-              <button onClick={()=>{setCrmSearch("");setCrmSvcF("todos")}} style={{fontSize:"8px",background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontWeight:"700"}}>Ver todos</button>
-            </div>}
+            {/* Tarefas de Hoje — follow-up acionável em 1 clique (wa.me) */}
+            <TodayTasks hist={hist} getDays={getCachedDays} fmt={fmt} t={t} blue={blue} crmNextContact={crmNextContact} setNextContact={setNextContact} addInteracao={addInteracao}/>
             {/* Pipeline columns */}
             <div style={{display:"flex",gap:"8px",overflowX:"auto",paddingBottom:"8px"}}>
               {(crmShowLost?PIPE:activePipe).map(stage=>{
@@ -2486,10 +2520,10 @@ export default function App(){
                     {items.length===0?<div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",padding:"16px"}}>—</div>:
                     items.map(q=>{
                       const days=getCachedDays(q.id);
-                      const temp=["concluido","perdido"].includes(q.status)?null:days<=2?{icon:"🔥",label:"Quente",color:"#ef4444",bg:"#fef2f2"}:days<=7?{icon:"🌡️",label:"Morno",color:"#f97316",bg:"#fff7ed"}:days<=14?{icon:"❄️",label:"Frio",color:"#06b6d4",bg:"#ecfeff"}:{icon:"🧊",label:"Gelado",color:"#64748b",bg:"#f1f5f9"};
+                      const temp=getTemp(q.id,q.status,days);
                       const overdue=isNextContactOverdue(q.id);
                       const tags=crmTags[q.id]||[];
-                      const isFollowUp=["lead","negociacao"].includes(q.status||"lead")&&days>=5;
+                      const isFollowUp=["lead","negociacao"].includes(q.status||"lead")&&days>=REGUA.followUp&&days<REGUA.desconhecido;
                       return <div key={q.id} style={{background:t.card,borderRadius:"8px",padding:"8px",border:`1px solid ${overdue?"#fca5a5":t.cardBorder}`,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"3px"}}>
                           <div style={{flex:1,minWidth:0}}>
@@ -2508,7 +2542,7 @@ export default function App(){
                         {tags.length>0&&<div style={{display:"flex",gap:"2px",flexWrap:"wrap",marginBottom:"4px"}}>{tags.map(tg=><span key={tg} style={{fontSize:"6px",padding:"1px 4px",borderRadius:"8px",background:blue+"15",color:blue,fontWeight:"700"}}>{tg}</span>)}</div>}
                         {crmNextContact[q.id]&&<div style={{fontSize:"7px",marginBottom:"4px",color:overdue?"#dc2626":"#16a34a",fontWeight:"600"}}>📅 {overdue?"Atrasado":"Próx"}: {new Date(crmNextContact[q.id]+"T12:00").toLocaleDateString("pt-BR")}</div>}
                         <div style={{display:"flex",gap:"2px",marginTop:"4px"}}>
-                          <button title="Abrir Chat WhatsApp" onClick={()=>{const ph=(q.data?.client?.phone||"").replace(/\D/g,"");const fullPh=ph.startsWith("55")?ph:`55${ph}`;const conv=waConvs.find(c=>c.phone===fullPh||c.phone===ph);if(conv){setCrmChatPhone(conv.phone)}else{msgWA(q)}addInteracao(q.id,"whatsapp","Chat WhatsApp aberto")}} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><MessageCircleIcon size={13} color="#fff"/></button>
+                          <button title="Abrir Chat WhatsApp" onClick={()=>{const ph=(q.data?.client?.phone||"").replace(/\D/g,"");const fullPh=ph.startsWith("55")?ph:`55${ph}`;const conv=waConvs.find(c=>c.phone===fullPh||c.phone===ph);if(conv){setCrmChatPhone(conv.phone)}else{msgWA(q)}}} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><MessageCircleIcon size={13} color="#fff"/></button>
                           <button title="PDF" onClick={()=>{sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado via WhatsApp");if((q.status||"lead")==="lead")movePipe(q.id,"orcamento")}} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><FileTextIcon size={13} color="#fff"/></button>
                           <RescueButton q={q} daysSince={days} onClick={(q)=>setRescueModal({q,days:getCachedDays(q.id)})} compact={true}/>
                           {!["concluido","perdido"].includes(stage.id)&&<select title="Mover" value="" onChange={e=>{if(e.target.value)movePipe(q.id,e.target.value);e.target.value=""}} style={{flex:2,fontSize:"7px",padding:"2px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer"}}>
@@ -2605,10 +2639,10 @@ export default function App(){
               }).map(q=>{
                 const stage=PIPE.find(p=>p.id===(q.status||"lead"))||PIPE[0];
                 const days=getCachedDays(q.id);
-                const temp=["concluido","perdido"].includes(q.status)?null:days<=2?{icon:"🔥",label:"Quente",color:"#ef4444",bg:"#fef2f2"}:days<=7?{icon:"🌡️",label:"Morno",color:"#f97316",bg:"#fff7ed"}:days<=14?{icon:"❄️",label:"Frio",color:"#06b6d4",bg:"#ecfeff"}:{icon:"🧊",label:"Gelado",color:"#64748b",bg:"#f1f5f9"};
+                const temp=getTemp(q.id,q.status,days);
                 const tags=crmTags[q.id]||[];
                 const overdue=isNextContactOverdue(q.id);
-                const isFollowUp=["lead","negociacao"].includes(q.status||"lead")&&days>=5;
+                const isFollowUp=["lead","negociacao"].includes(q.status||"lead")&&days>=REGUA.followUp&&days<REGUA.desconhecido;
                 return <div key={q.id}>
                   <div onClick={()=>setCrmDetail(crmDetail===q.id?null:q.id)} style={{display:"flex",alignItems:"center",gap:"8px",padding:"8px 10px",background:t.card,borderRadius:crmDetail===q.id?"8px 8px 0 0":"8px",border:`1px solid ${overdue?"#fca5a5":t.cardBorder}`,cursor:"pointer"}}>
                     <div style={{width:"8px",height:"8px",borderRadius:"50%",background:stage.color,flexShrink:0}}/>
@@ -2627,7 +2661,7 @@ export default function App(){
                     </div>
                     <div style={{fontSize:"10px",fontWeight:"700",color:days<=5?"#16a34a":days<=10?"#f59e0b":"#dc2626",flexShrink:0,minWidth:"26px",textAlign:"right"}}>{days<999?days+"d":"—"}</div>
                     <div style={{display:"flex",gap:"3px",flexShrink:0}}>
-                      <button title="Abrir Chat WhatsApp" onClick={e=>{e.stopPropagation();const ph=(q.data?.client?.phone||"").replace(/\D/g,"");const fullPh=ph.startsWith("55")?ph:`55${ph}`;const conv=waConvs.find(c=>c.phone===fullPh||c.phone===ph);if(conv){setCrmChatPhone(conv.phone)}else{msgWA(q)}addInteracao(q.id,"whatsapp","Chat WhatsApp aberto")}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><MessageCircleIcon size={14} color="#fff"/></button>
+                      <button title="Abrir Chat WhatsApp" onClick={e=>{e.stopPropagation();const ph=(q.data?.client?.phone||"").replace(/\D/g,"");const fullPh=ph.startsWith("55")?ph:`55${ph}`;const conv=waConvs.find(c=>c.phone===fullPh||c.phone===ph);if(conv){setCrmChatPhone(conv.phone)}else{msgWA(q)}}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><MessageCircleIcon size={14} color="#fff"/></button>
                       <button title="PDF" onClick={e=>{e.stopPropagation();sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado");if((q.status||"lead")==="lead")movePipe(q.id,"orcamento")}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><FileTextIcon size={14} color="#fff"/></button>
                       <RescueButton q={q} daysSince={days} onClick={(q)=>setRescueModal({q,days:getCachedDays(q.id)})} compact={false}/>
                     </div>
@@ -2696,9 +2730,9 @@ export default function App(){
               {/* Input */}
               <div style={{padding:"6px 12px",background:"#f0f2f5",display:"flex",gap:"6px",alignItems:"center"}}>
                 <div style={{flex:1,background:"#fff",borderRadius:"8px",display:"flex",alignItems:"center",padding:"0 10px",minHeight:"38px"}}>
-                  <input value={waMsg} onChange={e=>setWaMsg(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!waMsg.trim())return;const origChat=waChat;setWaChat(crmChatPhone);setTimeout(()=>{waSendMessage();if(!origChat||origChat!==crmChatPhone)setWaChat(origChat)},100)}}} placeholder="Digite uma mensagem..." style={{flex:1,border:"none",outline:"none",fontSize:"13px",color:"#111b21",background:"transparent",padding:"8px 0"}}/>
+                  <input value={waMsg} onChange={e=>setWaMsg(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();waSendMessage(crmChatPhone)}}} placeholder="Digite uma mensagem..." style={{flex:1,border:"none",outline:"none",fontSize:"13px",color:"#111b21",background:"transparent",padding:"8px 0"}}/>
                 </div>
-                <button onClick={()=>{if(!waMsg.trim())return;const origChat=waChat;setWaChat(crmChatPhone);setTimeout(()=>{waSendMessage();if(!origChat||origChat!==crmChatPhone)setWaChat(origChat)},100)}} disabled={waSending||!waMsg.trim()} style={{width:"38px",height:"38px",borderRadius:"50%",background:"#008069",border:"none",cursor:waSending?"wait":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:waSending||!waMsg.trim()?0.5:1}}>
+                <button onClick={()=>waSendMessage(crmChatPhone)} disabled={waSending||!waMsg.trim()} style={{width:"38px",height:"38px",borderRadius:"50%",background:"#008069",border:"none",cursor:waSending?"wait":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:waSending||!waMsg.trim()?0.5:1}}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 </button>
               </div>

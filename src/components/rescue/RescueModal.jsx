@@ -1,13 +1,14 @@
 import React, { useState } from "react";
+import { openWaMe } from "../crm/regua";
 
-const RESCUE_MSGS = [
+export const RESCUE_MSGS = [
   { min: 3, max: 8, msg: (name) => `Ol\u00e1 ${name}! \ud83d\ude0a\n\nTudo bem? Passando pra saber se voc\u00ea ainda tem interesse no or\u00e7amento da piscina.\n\nQualquer d\u00favida estamos \u00e0 disposi\u00e7\u00e3o! \ud83d\udcaa` },
   { min: 9, max: 19, msg: (name) => `Ol\u00e1 ${name}! \ud83d\ude0a\n\nFaz um tempinho que conversamos sobre sua piscina. Gostaria de saber se ainda tem interesse!\n\nTemos condi\u00e7\u00f5es especiais essa semana. Posso te ajudar? \ud83c\udfca` },
   { min: 20, max: 44, msg: (name) => `Ol\u00e1 ${name}! \ud83d\ude0a\n\nJ\u00e1 faz um tempo desde nosso \u00faltimo contato sobre o projeto da piscina.\n\nSe ainda tiver interesse, temos novidades e condi\u00e7\u00f5es especiais que podem te interessar! Me chama quando puder \ud83d\ude4f` },
   { min: 45, max: 9999, msg: (name) => `Ol\u00e1 ${name}! \ud83d\ude0a\n\nH\u00e1 bastante tempo conversamos sobre sua piscina. Gostar\u00edamos muito de retomar o contato!\n\nTemos novos pre\u00e7os e materiais. Se quiser, posso preparar um novo or\u00e7amento atualizado. O que acha? \ud83c\udfca\u2728` },
 ];
 
-const getRescueMsg = (days, name) => {
+export const getRescueMsg = (days, name) => {
   const tmpl = RESCUE_MSGS.find((m) => days >= m.min && days <= m.max) || RESCUE_MSGS[RESCUE_MSGS.length - 1];
   return tmpl.msg(name || "");
 };
@@ -17,10 +18,16 @@ export default function RescueModal({ q, t, daysSince, onClose, openWA, addInter
   const [msg, setMsg] = useState(() => getRescueMsg(daysSince, clientName));
 
   const handleSend = () => {
-    const phone = q.data?.client?.phone || "";
-    openWA(phone, msg);
-    addInteracao(q.id, "whatsapp", "Follow-up de resgate enviado");
-    // Add "Retornar" tag if not already present
+    // Envio via wa.me (WhatsApp do próprio aparelho) — funciona mesmo com o bot
+    // desconectado e sem risco de banimento. Só registra a interação se o
+    // WhatsApp realmente abriu; antes registrava "enviado" até sem telefone.
+    const phone = q.data?.client?.phone || q.tel || "";
+    const opened = openWaMe(phone, msg);
+    if (!opened) {
+      alert("Lead sem telefone cadastrado — edite o orçamento e adicione o telefone.");
+      return;
+    }
+    addInteracao(q.id, "whatsapp", "Follow-up de resgate enviado (wa.me)");
     const tags = crmTags[q.id] || [];
     if (!tags.includes("Retornar")) {
       setLeadTag(q.id, "Retornar");

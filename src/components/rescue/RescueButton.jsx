@@ -1,11 +1,12 @@
 import React from "react";
+import { REGUA } from "../crm/regua";
 
 export const getRescuePriority = (days, status) => {
   if (!["lead", "negociacao", "orcamento"].includes(status || "lead")) return null;
-  if (days < 3) return null;
-  if (days <= 8) return { level: "aguardando", label: "Aguardando", icon: "\u23f3", color: "#3b82f6", bg: "#eff6ff", border: "#93c5fd" };
-  if (days <= 19) return { level: "resgatar", label: "Resgatar agora", icon: "\ud83d\udcde", color: "#f97316", bg: "#fff7ed", border: "#fdba74" };
-  if (days <= 44) return { level: "urgente", label: "Urgente", icon: "\ud83d\udea8", color: "#dc2626", bg: "#fef2f2", border: "#fca5a5" };
+  if (days < REGUA.resgate.aguardando || days >= REGUA.desconhecido) return null;
+  if (days < REGUA.resgate.ligar) return { level: "aguardando", label: "Aguardando", icon: "\u23f3", color: "#3b82f6", bg: "#eff6ff", border: "#93c5fd" };
+  if (days < REGUA.resgate.urgente) return { level: "resgatar", label: "Resgatar agora", icon: "\ud83d\udcde", color: "#f97316", bg: "#fff7ed", border: "#fdba74" };
+  if (days < REGUA.resgate.perda) return { level: "urgente", label: "Urgente", icon: "\ud83d\udea8", color: "#dc2626", bg: "#fef2f2", border: "#fca5a5" };
   return { level: "sugerir_perda", label: "Sugerir perda", icon: "\ud83d\udc80", color: "#7f1d1d", bg: "#fef2f2", border: "#f87171" };
 };
 
