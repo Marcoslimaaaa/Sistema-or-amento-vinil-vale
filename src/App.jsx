@@ -2,6 +2,10 @@ import React, { useState, useEffect, useRef, Suspense, lazy } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { MessageCircleIcon, FileTextIcon, CheckIcon, DownloadIcon, SendIcon } from "./AnimatedIcons.jsx";
 import { User, Waves, ShoppingCart, ShieldCheck, Wallet, Ruler, FolderOpen, TrendingUp, MessageCircle, Package, FileText, Hammer, Paintbrush, Wrench, Menu, Cloud, RefreshCw, Save, Sun, Moon, Droplets, LogOut } from "lucide-react";
+import { getEstampaByNome } from "./data/estampas.js";
+import FormaEditor, { MiniForma } from "./FormaEditor.jsx";
+import { MODELOS } from "./data/modelos.js";
+import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor } from "./motor/formas.js";
 // jspdf/html2canvas (~200KB gz) só carregam quando alguém gera PDF/imagem
 const loadPdfLibs=async()=>{const[h,j]=await Promise.all([import("html2canvas"),import("jspdf")]);return{html2canvas:h.default,jsPDF:j.jsPDF};};
 const Pool3DView = lazy(() => import('./Pool3DView'));
@@ -185,7 +189,7 @@ const CAT=[
 // un: "m²" = custo por m² (usa área total), "ml" = custo por metro linear (usa perímetro), "un" = custo unitário
 
 const SYSTEMS=["dreno","aspiracao","skimmer","retorno","hidro"];
-const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,dark,poolFmt,ar,autoPositions,blue,t,tubeOffsets={},setTubeOffsets=()=>{},invertSide=false,wMode="regular",walls=[],stamp="",spaType={redondo:false,quadrado:true},extras=[]})=>{
+const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,dark,poolFmt,ar,autoPositions,blue,t,tubeOffsets={},setTubeOffsets=()=>{},invertSide=false,wMode="regular",walls=[],stamp="",spaType={redondo:false,quadrado:true},extras=[],desenho=null})=>{
     // const SYSTEMS=["retorno","hidro","aspiracao","dreno","skimmer","nivelador"];
   const L=parseFloat(pool.length)||6,W=parseFloat(pool.width)||3,D=parseFloat(pool.depth)||1.4;
   const svgW=700,svgH=420,pad=50;
@@ -203,6 +207,12 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
   const pw=L*scale,ph=W*scale;
   const ox=pad+spaExL*scale+cmExtra*scale*0.5,oy=(svgH-totalPxH)/2+spaExT*scale;
   const cmW=pw*0.1,cmH=ph*0.5;
+  // Desenho livre: contorno efetivo + regiões rasas mapeados (escala uniforme) no box da piscina
+  const efPoly=desenho&&desenho.vertices&&desenho.vertices.length>=3?contornoEfetivo(desenho):null;
+  const efInfo=efPoly?(()=>{const exs=efPoly.map(p=>p.x),eys=efPoly.map(p=>p.y);const eMinX=Math.min(...exs),eMaxX=Math.max(...exs),eMinY=Math.min(...eys),eMaxY=Math.max(...eys);const esc2=Math.min(pw/Math.max(eMaxX-eMinX,.01),ph/Math.max(eMaxY-eMinY,.01));const ox2=ox+(pw-(eMaxX-eMinX)*esc2)/2,oy2=oy+(ph-(eMaxY-eMinY)*esc2)/2;return{map:p=>({x:ox2+(p.x-eMinX)*esc2,y:oy2+(p.y-eMinY)*esc2}),esc:esc2}})():null;
+  const efMap=efInfo?efInfo.map:null;
+  const efEsc=efInfo?efInfo.esc:1;
+  const efRegs=efPoly?regioesProfundidade(desenho,parseFloat(pool.depth)||1.4).filter(r=>r.profundidadeM!==null):[];
   const casaP=customPos["casa"]||(invertSide?{x:-0.15,y:0.5}:{x:1.12,y:0.5});
   const cmX=ox+casaP.x*pw,cmY=oy+casaP.y*ph-cmH/2;
   const hasSpa2=spa?.on,sL=parseFloat(spa?.length||2)*scale,sW=parseFloat(spa?.width||2)*scale;
@@ -246,9 +256,13 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
   return <div style={{display:"flex",flexDirection:"column",alignItems:"stretch",width:"100%"}}>
     <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px",textAlign:"center"}}>Planta Baixa</div>
     <svg viewBox={`0 0 ${svgW} ${svgH}`} style={{width:"100%",height:"auto",display:"block",background:dark?"#0f172a":"#f8fafc",borderRadius:"6px",border:"1px solid "+(dark?"#334155":"#e2e8f0"),cursor:dragging?"grabbing":"default",touchAction:"none"}} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onTouchMove={e=>{onMove({currentTarget:e.currentTarget,clientX:e.touches[0].clientX,clientY:e.touches[0].clientY})}} onTouchEnd={onUp}>
-      <defs><pattern id="grd" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke={dark?"#1e293b":"#e2e8f0"} strokeWidth="0.3"/></pattern>{stamp&&SWATCH_SLUG[stamp]&&<clipPath id="poolClip2d">{poolFmt==="Oval"||poolFmt==="Feijão"?<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2}/>:poolFmt==="Formato L"?<polygon points={`${ox},${oy} ${ox+pw},${oy} ${ox+pw},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph} ${ox},${oy+ph}`}/>:poolFmt==="Oitavada"?(()=>{const c=(parseFloat(pool.chanfro)||1)/L*pw;const cY=(parseFloat(pool.chanfro)||1)/W*ph;return<polygon points={`${ox+c},${oy} ${ox+pw-c},${oy} ${ox+pw},${oy+cY} ${ox+pw},${oy+ph-cY} ${ox+pw-c},${oy+ph} ${ox+c},${oy+ph} ${ox},${oy+ph-cY} ${ox},${oy+cY}`}/>})():<rect x={ox} y={oy} width={pw} height={ph}/>}</clipPath>}</defs>
+      <defs><pattern id="grd" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke={dark?"#1e293b":"#e2e8f0"} strokeWidth="0.3"/></pattern>{stamp&&SWATCH_SLUG[stamp]&&<clipPath id="poolClip2d">{efMap?<polygon points={efPoly.map(p=>{const q=efMap(p);return`${q.x},${q.y}`}).join(" ")}/>:poolFmt==="Oval"||poolFmt==="Feijão"?<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2}/>:poolFmt==="Formato L"?<polygon points={`${ox},${oy} ${ox+pw},${oy} ${ox+pw},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph} ${ox},${oy+ph}`}/>:poolFmt==="Oitavada"?(()=>{const c=(parseFloat(pool.chanfro)||1)/L*pw;const cY=(parseFloat(pool.chanfro)||1)/W*ph;return<polygon points={`${ox+c},${oy} ${ox+pw-c},${oy} ${ox+pw},${oy+cY} ${ox+pw},${oy+ph-cY} ${ox+pw-c},${oy+ph} ${ox+c},${oy+ph} ${ox},${oy+ph-cY} ${ox},${oy+cY}`}/>})():<rect x={ox} y={oy} width={pw} height={ph}/>}</clipPath>}</defs>
       <rect width={svgW} height={svgH} fill="url(#grd)"/>
       {(()=>{const fill=dark?"#1e3a5f":"#dbeafe";const stroke="#2563eb";
+        if(efMap)return<>
+          <polygon points={efPoly.map(p=>{const q=efMap(p);return`${q.x},${q.y}`}).join(" ")} fill={fill} stroke={stroke} strokeWidth="2" strokeLinejoin="round"/>
+          {efRegs.map((r,i)=>{const c=r.poligono.reduce((s,p)=>({x:s.x+p.x/r.poligono.length,y:s.y+p.y/r.poligono.length}),{x:0,y:0});const cq=efMap(c);return<g key={`reg${i}`}><polygon points={r.poligono.map(p=>{const q=efMap(p);return`${q.x},${q.y}`}).join(" ")} fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#3b82f6" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.85"/>{r.tipo!=="escada"&&<text x={cq.x} y={cq.y+2} textAnchor="middle" fontSize="5.5" fill={dark?"#93c5fd":"#1d4ed8"} fontWeight="700">{r.tipo==="prainha"?"PRAINHA":r.tipo==="spa"?"SPA":""} {r.profundidadeM}m</text>}</g>})}
+        </>;
         if(poolFmt==="Formato L")return<polygon points={`${ox},${oy} ${ox+pw},${oy} ${ox+pw},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph} ${ox},${oy+ph}`} fill={fill} stroke={stroke} strokeWidth="2"/>;
         if(poolFmt==="Oval"||poolFmt==="Feijão")return<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2} fill={fill} stroke={stroke} strokeWidth="2"/>;
         if(poolFmt==="Oitavada"){const c=(parseFloat(pool.chanfro)||1)/L*pw;const cY=(parseFloat(pool.chanfro)||1)/W*ph;return<polygon points={`${ox+c},${oy} ${ox+pw-c},${oy} ${ox+pw},${oy+cY} ${ox+pw},${oy+ph-cY} ${ox+pw-c},${oy+ph} ${ox+c},${oy+ph} ${ox},${oy+ph-cY} ${ox},${oy+cY}`} fill={fill} stroke={stroke} strokeWidth="2"/>}
@@ -282,6 +296,50 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
         let sysIdx=0;
         const sysData={};
         const totalSys=systems.filter(s=>Object.entries(positions).some(([k,p])=>p.type===s&&!p.special&&autoPositions(L,W,disps,invertSide,poolFmt)[k])).length;
+        // Desenho livre: tubulação abraça o CONTORNO REAL — cada sistema corre num
+        // anel externo próprio (offset crescente): stub curto de cada dispositivo
+        // até o anel, RAMAL COLETOR único interligando todos e UM tronco até a
+        // casa de máquinas (sistemas interligados, sem tubo duplicado)
+        if(efMap){
+          const efPx=efPoly.map(p=>efMap(p));
+          const somaLen=arr=>{let s=0;for(let i2=1;i2<arr.length;i2++)s+=Math.hypot(arr[i2].x-arr[i2-1].x,arr[i2].y-arr[i2-1].y);return s};
+          systems.forEach(sysType=>{
+            const devs=Object.entries(positions).filter(([k,p])=>p.type===sysType&&!p.special&&autoPositions(L,W,disps,invertSide,poolFmt)[k]);
+            if(devs.length===0)return;
+            const col=tubeColors[sysType]||"#999";
+            const arriveY=cmY+8+sysIdx*((cmH-16)/Math.max(totalSys-1,1));
+            sysData[sysType]={devs,col,arriveY,lane:0,curvas:0,tes:0,tuboM:0};
+            const sd=sysData[sysType];
+            const ring=offsetPoligono(efPx,5+sysIdx*4);
+            const casaPt={x:cmX,y:arriveY};
+            const tCasa=fracaoMaisProxima(ring,casaPt);
+            // stubs: cada dispositivo entra no anel no ponto mais próximo
+            const frDevs=devs.map(([k,p2])=>{
+              const cx2=ox+p2.x*pw,cy2=oy+p2.y*ph;
+              const tDev=fracaoMaisProxima(ring,{x:cx2,y:cy2});
+              const q=pontoNaFracao(ring,tDev);
+              pipes.push(<line key={"st_"+k} x1={cx2} y1={cy2} x2={q.x} y2={q.y} stroke={col} strokeWidth="2" strokeLinecap="round" opacity="0.6"/>);
+              sd.tuboM+=Math.hypot(q.x-cx2,q.y-cy2)/efEsc;
+              return tDev;
+            });
+            // ramal coletor: trechos mínimos do anel interligando dispositivos + casa
+            trechosColetor([...frDevs,tCasa]).forEach(([a,b],ti)=>{
+              const caminho=caminhoNoContorno(ring,a,b);
+              pipes.push(<path key={"tr_"+sysType+ti} d={caminho.map((q,i2)=>(i2?"L":"M")+q.x.toFixed(1)+","+q.y.toFixed(1)).join(" ")} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>);
+              sd.tuboM+=somaLen(caminho)/efEsc;
+            });
+            // tronco final: anel → casa de máquinas
+            const qc=pontoNaFracao(ring,tCasa);
+            pipes.push(<path key={"cm_tr_"+sysType} d={"M"+qc.x.toFixed(1)+","+qc.y.toFixed(1)+" L"+cmX+","+arriveY} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" opacity="0.7"/>);
+            sd.tuboM+=Math.hypot(cmX-qc.x,arriveY-qc.y)/efEsc;
+            sd.tes+=Math.max(0,devs.length-1);
+            sd.curvas+=2+devs.length;
+            pipes.push(<rect key={"cm_"+sysType} x={cmX-1} y={arriveY-3} width="6" height="6" rx="1" fill={col} opacity="0.9"/>);
+            sysIdx++;
+          });
+          window._sysData=sysData;
+          return pipes;
+        }
         systems.forEach(sysType=>{
           const devs=Object.entries(positions).filter(([k,p])=>p.type===sysType&&!p.special&&autoPositions(L,W,disps,invertSide,poolFmt)[k]);
           if(devs.length===0)return;
@@ -343,6 +401,7 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
           
           pipes.push(<rect key={"cm_"+sysType} x={cmX-1} y={arriveY-3} width="6" height="6" rx="1" fill={col} opacity="0.9"/>);
         });
+        window._sysData=sysData;
         return pipes;
       })()}
       {Object.entries(positions).filter(([k,p])=>!p.special&&autoPositions(L,W,disps,invertSide,poolFmt)[k]).map(([key,p])=>{const cx2=ox+p.x*pw,cy2=oy+p.y*ph,col=tubeColors[p.type]||"#666";return <g key={key} onMouseDown={e=>onDown(key,e)} onTouchStart={e=>{e.preventDefault();setDragging(key)}} style={{cursor:"grab"}}>{p.floor?<><circle cx={cx2} cy={cy2} r="6" fill="none" stroke={col} strokeWidth="1.5"/><line x1={cx2-3} y1={cy2-3} x2={cx2+3} y2={cy2+3} stroke={col} strokeWidth="1"/><line x1={cx2+3} y1={cy2-3} x2={cx2-3} y2={cy2+3} stroke={col} strokeWidth="1"/></>:p.type==="skimmer"?<rect x={cx2-3} y={cy2-6} width="6" height="12" rx="1" fill="none" stroke={col} strokeWidth="1.5"/>:(p.type==="retorno"||p.type==="hidro")?<rect x={cx2-3} y={cy2-5} width="6" height="10" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:p.type==="aspiracao"?<rect x={cx2-5} y={cy2-3} width="10" height="6" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:<circle cx={cx2} cy={cy2} r="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>}<text x={cx2} y={cy2+(p.floor?12:p.type==="skimmer"?10:12)} textAnchor="middle" fontSize="5" fontWeight="700" fill={col}>{p.label}</text></g>})}
@@ -381,8 +440,19 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
 };
 
 // ═══ ISOMETRIC VIEW ═══
-const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,autoPositions,customPos={},invertSide=false,devHeights={},stamp="",spaType={redondo:false,quadrado:true},extras=[]},ref)=>{
-  const L=parseFloat(pool.length)||6,W=parseFloat(pool.width)||3,D=parseFloat(pool.depth)||1.4;
+const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,autoPositions,customPos={},invertSide=false,devHeights={},stamp="",spaType={redondo:false,quadrado:true},extras=[],desenho=null},ref)=>{
+  let L=parseFloat(pool.length)||6,W=parseFloat(pool.width)||3;
+  const D=parseFloat(pool.depth)||1.4;
+  // Desenho livre: projeta o contorno efetivo real; L/W viram o bounding box do desenho
+  const efPoly0=desenho&&desenho.vertices&&desenho.vertices.length>=3?contornoEfetivo(desenho):null;
+  let efPoly=null,efRegs=[];
+  if(efPoly0){
+    const exs=efPoly0.map(p=>p.x),eys=efPoly0.map(p=>p.y);
+    const mnX=Math.min(...exs),mnY=Math.min(...eys);
+    L=Math.max(0.5,Math.max(...exs)-mnX);W=Math.max(0.5,Math.max(...eys)-mnY);
+    efPoly=efPoly0.map(p=>({x:p.x-mnX,y:p.y-mnY}));
+    efRegs=regioesProfundidade(desenho,D).filter(r=>r.profundidadeM!==null).map(r=>({...r,poligono:r.poligono.map(p=>({x:p.x-mnX,y:p.y-mnY}))}));
+  }
   const svgW=640,svgH=440,cos30=Math.cos(Math.PI/6),sin30=0.5;
   const mX=28,mYt=54,mYb=90;
   const totalX=L+2.9;
@@ -406,7 +476,47 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   const isLFmt=poolFmt==="Formato L";
   const isOitavada=poolFmt==="Oitavada";
   const N=24;
-  if(isOitavada){
+  if(efPoly){
+    // ── Forma livre: chão, pisos rasos, paredes, água e borda do contorno real ──
+    const v=efPoly.map(p=>[p.x,p.y]);
+    const nv=v.length;
+    // classifica cada aresta como frente (voltada ao observador) ou fundo, pela normal externa
+    const ehFrente=[];
+    for(let i=0;i<nv;i++){
+      const [x1,y1]=v[i],[x2,y2]=v[(i+1)%nv];
+      const len=Math.hypot(x2-x1,y2-y1)||1;
+      let nx=(y2-y1)/len,ny=-(x2-x1)/len;
+      const mid={x:(x1+x2)/2+nx*0.06,y:(y1+y2)/2+ny*0.06};
+      if(pontoDentro(mid,efPoly)){nx=-nx;ny=-ny;} // garante normal para FORA
+      ehFrente.push(nx+ny>0); // no iso, +x/+y apontam para o observador
+    }
+    // Chão do corpo (profundidade total)
+    const flPts=v.map(([x,y])=>pt(x,y,0)).join(' ');
+    els.push(<polygon key="fl" points={flPts} fill={floorFill} opacity="0.7"/>);
+    if(swSlug){const p00=iso(0,0,0),pL0=iso(L,0,0),p0W=iso(0,W,0);els.push(<defs key="defsLivre"><clipPath id="isoFlClip"><polygon points={flPts}/></clipPath></defs>);els.push(isoImg("flImg",p00,pL0,p0W,"isoFlClip","0.85"));}
+    // Pisos rasos (prainha/spa/degraus da escada) na profundidade própria
+    efRegs.forEach((r,i)=>{
+      const z=Math.max(0,D-r.profundidadeM);
+      els.push(<polygon key={`reg${i}`} points={r.poligono.map(p=>pt(p.x,p.y,z)).join(' ')} fill={dk?"#2a5a8f":"#93c5fd"} stroke="#2563eb" strokeWidth="0.6" opacity="0.9"/>);
+    });
+    // Paredes do fundo (atrás da água, esmaecidas)
+    for(let i=0;i<nv;i++){if(ehFrente[i])continue;const [x1,y1]=v[i],[x2,y2]=v[(i+1)%nv];els.push(<polygon key={`wl${i}`} points={pts([[x1,y1,0],[x2,y2,0],[x2,y2,D],[x1,y1,D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);}
+    // Água
+    els.push(<polygon key="wtr" points={v.map(([x,y])=>pt(x,y,wZ)).join(' ')} fill={dk?"#1d4ed8":"#3b82f6"} opacity="0.22"/>);
+    [0.25,0.5,0.75].forEach((f,i)=>els.push(<line key={`sh${i}`} x1={iso(L*0.12,W*f,wZ).x} y1={iso(L*0.12,W*f,wZ).y} x2={iso(L*0.88,W*f,wZ).x} y2={iso(L*0.88,W*f,wZ).y} stroke="#93c5fd" strokeWidth="0.5" opacity="0.4" strokeDasharray="5,4"/>));
+    // Paredes da frente
+    for(let i=0;i<nv;i++){if(!ehFrente[i])continue;const [x1,y1]=v[i],[x2,y2]=v[(i+1)%nv];els.push(<polygon key={`wf${i}`} points={pts([[x1,y1,0],[x2,y2,0],[x2,y2,D],[x1,y1,D]])} fill={dk?"#1e4080":"#93c5fd"} stroke="#2563eb" strokeWidth="1"/>);}
+    // Borda + verticais dos cantos
+    els.push(<polygon key="rim" points={v.map(([x,y])=>pt(x,y,D)).join(' ')} fill="none" stroke="#2563eb" strokeWidth="2.5"/>);
+    if(nv<=16)v.forEach(([x,y],i)=>{const a2=iso(x,y,0),b2=iso(x,y,D);els.push(<line key={`cv${i}`} x1={a2.x} y1={a2.y} x2={b2.x} y2={b2.y} stroke="#2563eb" strokeWidth="1" opacity="0.35"/>);});
+    // Rótulos das regiões (prainha/spa)
+    efRegs.forEach((r,i)=>{
+      if(r.tipo==="escada")return;
+      const c=r.poligono.reduce((s,p)=>({x:s.x+p.x/r.poligono.length,y:s.y+p.y/r.poligono.length}),{x:0,y:0});
+      const q=iso(c.x,c.y,D-r.profundidadeM);
+      els.push(<text key={`regL${i}`} x={q.x} y={q.y+3} textAnchor="middle" fontSize="7.5" fill={dk?"#bfdbfe":"#1d4ed8"} fontWeight="700">{r.tipo==="prainha"?"PRAINHA":"SPA"} {r.profundidadeM}m</text>);
+    });
+  } else if(isOitavada){
     const ch=parseFloat(pool.chanfro)||1;
     // 8 vértices do octógono (sentido horário visto de cima)
     const v=[[ch,0],[L-ch,0],[L,ch],[L,W-ch],[L-ch,W],[ch,W],[0,W-ch],[0,ch]];
@@ -761,7 +871,7 @@ const fmt=v=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).fo
 const parseMoney=v=>parseFloat(String(v??"").replace(/\./g,"").replace(",","."))||0;
 
 // ═══ AREA CALCULATION ═══
-const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType)=>{
+const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
   const L=parseFloat(pool.length)||0,W=parseFloat(pool.width)||0;
   const dMin=parseFloat(pool.depthMin)||0,dMax=parseFloat(pool.depthMax)||0;
   const D=(dMin>0&&dMax>0)?(dMin+dMax)/2:parseFloat(pool.depth)||0;
@@ -785,6 +895,9 @@ const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType)=>{
   let perim=wMode==="irregular"&&walls.length>0
     ?walls.reduce((s,w)=>s+(parseFloat(w.l)||0),0)
     :(isOval?ovalPerim:isOitavada?oitPerim:(2*L+2*W));
+  // Desenho livre (modelos/editor): áreas e perímetro REAIS do formato desenhado
+  const dM=desenho&&desenho.vertices&&desenho.vertices.length>=3?calcDesenho(desenho,D):null;
+  if(dM){chao=dM.chao;par=dM.paredes;perim=dM.perim;}
   // Extras (prainha, degrau, banco — cada peça: topo=L×W, face=L×H)
   const pf=v=>parseFloat(String(v||"").replace(",","."))||0;
   let extraChao=0,extraPar=0;
@@ -813,7 +926,7 @@ const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType)=>{
   const srPar=st.redondo?(isRndSq?(2*srC2*srP+2*srL2*srP):Math.PI*(srR*2)*srP):0;
   const fmtSpaChao=sqChao+srChao,fmtSpaPar=sqPar+srPar;
   const srVol=st.redondo?(isRndSq?srC2*srL2*srP:Math.PI*srR*srR*srP):0;
-  const vol=(isOval?(Math.PI*a*b):isOitavada?(L*W-4*(ch*ch/2)):L*W)*D+(spa.on?sL*sW*sD:0)+(st.quadrado?sqC*sqL*sqP:0)+srVol;
+  const vol=(dM?dM.vol:(isOval?(Math.PI*a*b):isOitavada?(L*W-4*(ch*ch/2)):L*W)*D)+(spa.on?sL*sW*sD:0)+(st.quadrado?sqC*sqL*sqP:0)+srVol;
   const depthInfo={avg:D,min:realDMin,max:realDMax,sloped:dMin>0&&dMax>0&&dMin!==dMax};
   return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:(sChao+fmtSpaChao).toFixed(1),sPar:(sPar+fmtSpaPar).toFixed(1),tot:(chao+par+sChao+sPar+fmtSpaChao+fmtSpaPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao+fmtSpaChao).toFixed(1),depthInfo,extraChao:extraChao.toFixed(1),extraPar:extraPar.toFixed(1),sqChao:sqChao.toFixed(1),sqPar:sqPar.toFixed(1),srChao:srChao.toFixed(1),srPar:srPar.toFixed(1)};
 };
@@ -888,7 +1001,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
   const pool=d.pool||{length:"0",width:"0",depth:"0"};
   const spa=d.spa||{on:false,length:"0",width:"0",depth:"0"};
   const pay=d.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
-  const ar=calcA(pool,spa,d.wMode||"regular",d.walls||[],d.poolFmt,d.extras||[],d.spaType);
+  const ar=calcA(pool,spa,d.wMode||"regular",d.walls||[],d.poolFmt,d.extras||[],d.spaType,d.desenho);
   const effQ=(i)=>{
     if(i.un==="m²")return parseFloat(ar.tot)||0;
     if(i.un==="chao")return parseFloat(ar.chaoTot)||0;
@@ -1075,6 +1188,14 @@ const QP=({d,onBack,onSave,autoPositions})=>{
               <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Chão:</b> {ar.chao}m² <b>Paredes:</b> {ar.par}m²</span>
               {d.execDays&&<span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Prazo:</b> {d.execDays} dias úteis{d.svcType==="revestimento"?" após a medição detalhada":""}</span>}
             </div>
+            {d.stamp&&(()=>{const est=getEstampaByNome(d.stamp);return est?<div style={{marginTop:"8px",display:"flex",alignItems:"center",gap:"10px",background:"#fff",borderRadius:"8px",padding:"7px 10px",border:`1px solid ${gold}66`}}>
+              <img src={`/swatches/${est.id}.png`} alt={d.stamp} style={{width:"52px",height:"52px",objectFit:"cover",borderRadius:"8px",boxShadow:"0 1px 4px rgba(0,0,0,.18)",flexShrink:0}}/>
+              <div>
+                <div style={{fontSize:"6.5px",textTransform:"uppercase",letterSpacing:"1.5px",color:"#999",fontWeight:"700"}}>Acabamento escolhido</div>
+                <div style={{fontSize:"12px",fontWeight:"800",color:navy,lineHeight:1.3}}>{d.stamp}</div>
+                <div style={{fontSize:"8px",color:"#666"}}>ACQUALINER {d.vinilT} · vinil de alta resistência</div>
+              </div>
+            </div>:null})()}
             {spa.on&&<div style={{marginTop:"6px",background:goldL,borderRadius:"6px",padding:"6px 8px",border:`1px solid ${gold}44`,fontSize:"8.5px"}}><b style={{color:navy}}>🌊 SPA Externo:</b> {spa.length}×{spa.width}×{spa.depth}m — Chão: {ar.sChao}m² | Paredes: {ar.sPar}m²</div>}
             {(d.wMode||"")==="irregular"&&(d.walls||[]).length>0&&<div style={{marginTop:"6px",background:"#eef2ff",borderRadius:"6px",padding:"6px 8px",border:"1px solid #c7d2fe",fontSize:"8.5px"}}><b style={{color:navy}}>📐 Paredes fora de esquadro:</b> {(d.walls||[]).map((w,i)=>`P${i+1}: ${w.l}×${w.h}m`).join(" | ")}</div>}
           </div></Sec>
@@ -1095,13 +1216,22 @@ const QP=({d,onBack,onSave,autoPositions})=>{
           </div></Sec>
         </div>
 
-        {d.includePlanta&&autoPositions&&<div data-pdf-section="planta" style={{padding:"14px 28px",borderTop:"2px solid #e2e8f0"}}>
+        {(()=>{
+          // Opções independentes: 2D e isométrica; orçamentos antigos (sem includeIso) seguem o includePlanta
+          const inc2d=d.includePlanta!==false;
+          const incIso=d.includeIso!==undefined?d.includeIso:inc2d;
+          if(!autoPositions||(!inc2d&&!incIso))return null;
+          return <div data-pdf-section="planta" style={{padding:"14px 28px",borderTop:"2px solid #e2e8f0"}}>
           <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"4px"}}><div style={{width:"3px",height:"14px",background:gold,borderRadius:"2px"}}/><div style={{fontSize:"11px",fontWeight:"700",color:navy,textTransform:"uppercase",letterSpacing:".5px"}}>Planta Hidráulica</div></div>
           <div style={{fontSize:"8px",color:"#999",fontStyle:"italic",marginBottom:"10px",marginLeft:"9px"}}>* Planta meramente ilustrativa, podendo sofrer alterações na execução.</div>
-          {d.isoView
-            ?<IsometricView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} dark={false} t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc"}} poolFmt={d.poolFmt||"Retangular"} clientName={d.client?.name||""} autoPositions={autoPositions} customPos={d.customPos||{}} invertSide={d.invertSide||false} devHeights={d.devHeights||{}} spaType={d.spaType||{redondo:false,quadrado:true}} extras={d.extras||[]}/>
-            :<PlantaView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} customPos={d.customPos||{}} setCustomPos={()=>{}} dragging={null} setDragging={()=>{}} dark={false} poolFmt={d.poolFmt||"Retangular"} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc",stampBg:"#e2e8f0"}} invertSide={d.invertSide||false} wMode={d.wMode||"regular"} walls={d.walls||[]} spaType={d.spaType||{redondo:false,quadrado:true}} extras={d.extras||[]}/>}
-        </div>}
+          {inc2d&&<PlantaView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} customPos={d.customPos||{}} setCustomPos={()=>{}} dragging={null} setDragging={()=>{}} dark={false} poolFmt={d.poolFmt||"Retangular"} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc",stampBg:"#e2e8f0"}} invertSide={d.invertSide||false} wMode={d.wMode||"regular"} walls={d.walls||[]} spaType={d.spaType||{redondo:false,quadrado:true}} extras={d.extras||[]} desenho={d.desenho||null}/>}
+          {incIso&&<>
+            {inc2d&&<div style={{fontSize:"9px",fontWeight:"600",color:"#718096",marginTop:"12px",marginBottom:"4px",textAlign:"center"}}>Vista Isométrica</div>}
+            <div style={{width:inc2d?"62%":"78%",margin:"0 auto"}}>
+              <IsometricView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} dark={false} t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc"}} poolFmt={d.poolFmt||"Retangular"} clientName={d.client?.name||""} autoPositions={autoPositions} customPos={d.customPos||{}} invertSide={d.invertSide||false} devHeights={d.devHeights||{}} spaType={d.spaType||{redondo:false,quadrado:true}} extras={d.extras||[]} desenho={d.desenho||null}/>
+            </div>
+          </>}
+        </div>;})()}
         <div data-pdf-section="footer" style={{background:navy,padding:"12px 28px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap"}}><div><div style={{fontSize:"8.5px",fontWeight:"700",color:gold}}>Válido por 15 dias</div><div style={{fontSize:"7px",color:"rgba(255,255,255,.5)"}}>{CO.name}</div></div><div style={{textAlign:"right",fontSize:"7.5px",color:"rgba(255,255,255,.6)"}}><div>{CO.ph1} / {CO.ph2}</div><div>{CO.email} | {CO.insta}</div></div></div>
       </div>
     </div>
@@ -1169,7 +1299,10 @@ export default function App(){
   const [devHeights,setDevHeights]=useState({retorno:"",hidro:""});
   const [invertSide,setInvertSide]=useState(false);
   const [includePlanta,setIncludePlanta]=useState(true);
+  const [includeIso,setIncludeIso]=useState(true);
   const [isoView,setIsoView]=useState(false);
+  const [desenho,setDesenho]=useState(null); // forma livre {vertices,formas} — null = paramétrico clássico
+  const [showFormaEd,setShowFormaEd]=useState(false);
   const [show3D,setShow3D]=useState(false);
   const isoRef=useRef(null);
   const downloadISO=(asPng=false)=>{
@@ -1887,9 +2020,16 @@ export default function App(){
   const [catO,setCatO]=useState(false);
   const [catQ,setCatQ]=useState("");
   const [viewContract,setVC]=useState(null);
-  const [ce,setCE]=useState({servicos:[],obs:"",garantias:"",valor:"",prazo:"20",data:"",novoServico:""});
+  const PAG_DEF={forma:"parcelado",pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15,entQuando:"na assinatura deste contrato",balQuando:"na conclusão dos serviços"};
+  const [ce,setCE]=useState({servicos:[],obs:"",garantias:"",valor:"",prazo:"20",data:"",novoServico:"",pag:PAG_DEF});
+  const [ceRev,setCeRev]=useState(0);
   const uce=f=>e=>setCE(p=>({...p,[f]:typeof e==="object"&&e?.target?e.target.value:e}));
-  const initCE=(q)=>{const d=q.data;const inc=(d.items||[]).filter(i=>i.on);const p=d.pool||{};const pay2=d.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};const tot=parseFloat(q.tot)||0;const svcLabel=SVC.find(s=>s.id===d.svcType)?.label||"Serviço";const vt=d.vinilT||"0,7mm";const vo=VOPTS.find(o=>o.t===vt);const vinilAnos=vo?vo.w:3;const guarAdj=(d.guar||[]).filter(g=>g.on).map(g=>{const y=g.it==="Vinil (fabricação)"?vinilAnos:g.it==="Mão de obra/Soldas"?3:g.y;return y+" anos para "+g.it;}).join(", ");setCE({servicos:inc.map(it=>it.n+(it.q>1?" ("+it.q+"x)":"")+(it.nt?" - "+it.nt:"")),obs:(d.ci||[]).join(", ")||"Materiais de alvenaria e hidráulico, pedra de borda, água para enchimento, remoção de entulho",garantias:guarAdj,valor:fmt(tot),prazo:d.execDays||"20",data:new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"}),novoServico:"",tipoServico:svcLabel,piscina:p.length+"x"+p.width+"x"+p.depth+"m"+(d.poolFmt?" - "+d.poolFmt:""),vinil:"ACQUALINER "+vt,estampa:d.stamp||"",pagPix:fmt(tot*(1-pay2.pixD/100))+" ("+pay2.pixD+"% desc.)",pagCartao:"até "+(pay2.noFee||5)+"x sem juros ou "+(pay2.wFee||12)+"x com juros",pagParcelado:pay2.entPct+"% entrada + "+pay2.balPct+"% no término",pagBtc:fmt(tot*(1-pay2.btcD/100))+" ("+pay2.btcD+"% desc.)",propNum:d.propNum||""})};
+  const upag=(f,v)=>setCE(p=>({...p,pag:{...(p.pag||PAG_DEF),[f]:v}}));
+  // Valor do contrato editável ("R$ 1.234,56") → número
+  const ceVal=()=>{const n=parseFloat(String(ce.valor||"").replace(/[^\d,.\-]/g,"").replace(/\./g,"").replace(",","."));return isNaN(n)?0:n};
+  const buildCE=(q)=>{const d=q.data;const inc=(d.items||[]).filter(i=>i.on);const p=d.pool||{};const pay2=d.pay||{};const tot=parseFloat(q.tot)||0;const svcLabel=SVC.find(s=>s.id===d.svcType)?.label||"Serviço";const vt=d.vinilT||"0,7mm";const vo=VOPTS.find(o=>o.t===vt);const vinilAnos=vo?vo.w:3;const guarAdj=(d.guar||[]).filter(g=>g.on).map(g=>{const y=g.it==="Vinil (fabricação)"?vinilAnos:g.it==="Mão de obra/Soldas"?3:g.y;return y+" anos para "+g.it;}).join(", ");return{servicos:inc.map(it=>it.n+(it.q>1?" ("+it.q+"x)":"")+(it.nt?" - "+it.nt:"")),obs:(d.ci||[]).join(", ")||"Materiais de alvenaria e hidráulico, pedra de borda, água para enchimento, remoção de entulho",garantias:guarAdj,valor:fmt(tot),prazo:d.execDays||"20",data:new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"}),novoServico:"",tipoServico:svcLabel,piscina:p.length+"x"+p.width+"x"+p.depth+"m"+(d.poolFmt?" - "+d.poolFmt:""),vinil:"ACQUALINER "+vt,estampa:d.stamp||"",propNum:d.propNum||"",bottomHtml:undefined,pag:{...PAG_DEF,pixD:pay2.pixD??5,entPct:pay2.entPct??50,balPct:pay2.balPct??50,noFee:pay2.noFee||5,wFee:pay2.wFee||12,btcD:pay2.btcD??15}};};
+  // force=true ignora o contrato salvo e refaz a partir do orçamento
+  const initCE=(q,force)=>{const base=buildCE(q);if(!force&&q.contract){setCE({...base,...q.contract,novoServico:"",pag:{...base.pag,...(q.contract.pag||{})}})}else{setCE(base)}};
   // Auto-init contract when switching to contratos tab
   const [ceInit,setCeInit]=useState(null);
   useEffect(()=>{
@@ -1911,7 +2051,7 @@ export default function App(){
 
   const inc=items.filter(i=>i.on);
   // Calculate effective quantity based on unit type
-  const ar=calcA(pool,spa,wMode,walls,poolFmt,extras,spaType);
+  const ar=calcA(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho);
   const lowStockCount=Object.entries(stk).filter(([,s])=>s.qty>0&&s.qty<=(s.minQty||2)).length;
 
   const effQ=(i)=>{
@@ -1932,7 +2072,7 @@ export default function App(){
   const addM=()=>setItems(p=>[...p,{id:Date.now(),n:"Novo item",q:1,c:0,m:gM,nt:"",on:true,un:"un"}]);
   const apM=()=>{setItems(p=>p.map(i=>({...i,m:gM})));setFbMsg("Margem aplicada!");setTimeout(()=>setFbMsg(""),1500)};
 
-  const gData=()=>({client,pool,items,guar,ci,pay,totOv:totOv,vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,disps,customPos,isoView,invertSide,devHeights});
+  const gData=()=>({client,pool,items,guar,ci,pay,totOv:totOv,vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,includeIso,disps,customPos,isoView,invertSide,devHeights,desenho});
   const save=()=>{
     const errs={};
     if(!client.name||client.name.trim()==="")errs.clientName="Nome obrigatório";
@@ -1954,8 +2094,8 @@ export default function App(){
   };
   const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){saveFS(item);autoStockOut(item);}setFbMsg("✅ Cliente fechado!");setTimeout(()=>setFbMsg(""),3000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
-  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
-  const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4});setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setDevHeights(d.devHeights||{retorno:"",hidro:""});setEditingId(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
+  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
+  const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4});setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setDevHeights(d.devHeights||{retorno:"",hidro:""});setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
   const movePipe=(id,stage)=>{
     if(stage==="perdido"){const q=hist.find(h=>h.id===id);if(q){setLostReasonModal({q,days:getDaysSince(q.id),auto:false});return;}}
@@ -2165,6 +2305,32 @@ export default function App(){
             :<div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Comp. (m) *" value={pool.length} onChange={up("length")} t={t} error={fieldErrors.length}/><Inp label="Larg. (m) *" value={pool.width} onChange={up("width")} t={t} error={fieldErrors.width}/><Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
           }
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Formato" value={poolFmt} onChange={setPF} options={PFMT} t={t}/></div>
+
+          {/* MODELOS DE PISCINA — galeria + editor de desenho livre */}
+          <div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap",marginBottom:"8px"}}>
+              <label style={{fontFamily:"'Archivo',sans-serif",fontSize:"10px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".7px"}}>Modelos de Piscina</label>
+              {desenho&&<span style={{fontSize:"9px",fontWeight:"700",color:"#16a34a",background:"#16a34a18",padding:"2px 8px",borderRadius:"10px"}}>✓ desenho ativo — áreas reais no cálculo</span>}
+              {desenho&&<div style={{marginLeft:"auto",display:"flex",gap:"6px"}}>
+                <button onClick={()=>setShowFormaEd(v=>!v)} style={{padding:"4px 10px",borderRadius:"7px",border:`1.5px solid ${blue}`,background:showFormaEd?blue:"transparent",color:showFormaEd?"#fff":blue,fontSize:"10px",fontWeight:"700",cursor:"pointer"}}>{showFormaEd?"Fechar editor":"✏️ Editar desenho"}</button>
+                <button onClick={()=>{setDesenho(null);setShowFormaEd(false);setFbMsg("Desenho removido — cálculo paramétrico");setTimeout(()=>setFbMsg(""),2500)}} style={{padding:"4px 10px",borderRadius:"7px",border:`1.5px solid ${t.cardBorder}`,background:"transparent",color:t.textSec,fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>✕ Remover</button>
+              </div>}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(94px,1fr))",gap:"8px"}}>
+              {MODELOS.map(mo=>{
+                const mL=parseFloat(pool.length)||8,mW=parseFloat(pool.width)||4;
+                const dm=mo.build(mL,mW);
+                return <button key={mo.id} onClick={()=>{setDesenho(mo.build(mL,mW));setShowFormaEd(true);if(!["Personalizado"].includes(poolFmt))setPF("Personalizado");setFbMsg("Modelo aplicado! Ajuste no editor abaixo");setTimeout(()=>setFbMsg(""),2500)}} style={{padding:"8px 6px 6px",borderRadius:"9px",border:`1.5px solid ${t.cardBorder}`,background:t.card,cursor:"pointer",textAlign:"center"}}>
+                  <MiniForma desenho={dm} dark={dark}/>
+                  <div style={{fontSize:"8.5px",fontWeight:"700",color:t.textSec,marginTop:"4px",lineHeight:1.2}}>{mo.nome}</div>
+                </button>;
+              })}
+            </div>
+            <div style={{fontSize:"9px",color:t.textMuted,marginTop:"8px"}}>Toque num modelo para aplicar com as medidas atuais (C×L). Depois ajuste vértices, prainha, spa e escada no editor — chão, paredes e volume passam a ser calculados do desenho real.</div>
+            {desenho&&showFormaEd&&<div style={{marginTop:"12px"}}>
+              <FormaEditor desenho={desenho} profundidade={ar.depthInfo.avg||1.4} onChange={setDesenho} t={t} dark={dark}/>
+            </div>}
+          </div>
           {poolFmt==="Com Spa"&&<div style={{marginTop:"10px",background:"#fef9e7",borderRadius:"8px",padding:"12px",border:`1px solid #e8b10055`}}>
             <div style={{fontSize:"10px",fontWeight:"700",color:blue,marginBottom:"8px"}}>🌊 Configuração dos Spas</div>
             {/* SPA QUADRADO */}
@@ -2286,7 +2452,7 @@ export default function App(){
                 <button onClick={()=>{setDisps(p=>({...p,[k]:p[k]+1}));setCustomPos(p=>{const n={...p};Object.keys(n).forEach(key=>{if(key.startsWith(k.substring(0,3)))delete n[key]});return n})}} style={{width:"16px",height:"16px",borderRadius:"3px",border:"none",background:"#dcfce7",color:"#16a34a",fontSize:"10px",cursor:"pointer",fontWeight:"700"}}>+</button>
               </div>)}
             </div>
-            <PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} spaType={spaType}/>
+            <PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} spaType={spaType} desenho={desenho}/>
           </div>
         </Card>}
 
@@ -3262,7 +3428,8 @@ export default function App(){
         {/* PLANTA */}
         {tab==="planta"&&<Card t={t}><ST icon="📐">Planta Hidraulica</ST>
           <div style={{display:"flex",gap:"8px",marginBottom:"10px",alignItems:"center",flexWrap:"wrap"}}>
-            {!show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={includePlanta} onChange={e=>setIncludePlanta(e.target.checked)}/> Incluir no PDF</label>}
+            {!show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={includePlanta} onChange={e=>setIncludePlanta(e.target.checked)}/> 2D no PDF</label>}
+            {!show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={includeIso} onChange={e=>setIncludeIso(e.target.checked)}/> Isométrica no PDF</label>}
             {!isoView&&!show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={invertSide} onChange={e=>{setInvertSide(e.target.checked);setCustomPos({})}}/> Inverter lado</label>}
             {show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={invertSide} onChange={e=>{setInvertSide(e.target.checked);setCustomPos({})}}/> Inverter lado</label>}
             <div style={{marginLeft:"auto",display:"flex",gap:"6px",alignItems:"center"}}>
@@ -3310,10 +3477,10 @@ export default function App(){
             <span style={{fontSize:"8px",color:t.textMuted}}>(vazio = padrão {((parseFloat(pool?.depth)||1.4)*0.55).toFixed(2)}m)</span>
           </div>}
           {show3D
-            ?<Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights} stamp={stamp} spaType={spaType} extras={extras}/></Suspense>
+            ?<Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights} stamp={stamp} spaType={spaType} extras={extras} desenho={desenho}/></Suspense>
             :isoView
-              ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide} devHeights={devHeights} stamp={stamp} spaType={spaType} extras={extras}/>
-              :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} stamp={stamp} spaType={spaType} extras={extras}/>}
+              ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide} devHeights={devHeights} stamp={stamp} spaType={spaType} extras={extras} desenho={desenho}/>
+              :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} stamp={stamp} spaType={spaType} extras={extras} desenho={desenho}/>}
         </Card>}
 
         {/* CONTRATOS */}
@@ -3341,19 +3508,95 @@ export default function App(){
             const today=new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"});
 
 
-            const dlContract=()=>{
+            // Salva as edições do contrato dentro do orçamento (Firestore + localStorage)
+            const saveContract=()=>{
+              const bottomEl=document.querySelector("#contract-doc [contenteditable]");
+              const contract={...ce,novoServico:"",bottomHtml:bottomEl?bottomEl.innerHTML:ce.bottomHtml};
+              setCE(contract);
+              const nh=hist.map(q=>q.id===sel.id?{...q,contract}:q);
+              setHist(nh);saveLS(nh);
+              const item=nh.find(q=>q.id===sel.id);if(item)saveFS(item);
+              setFbMsg("💾 Contrato salvo!");setTimeout(()=>setFbMsg(""),2500);
+            };
+            const resetContract=()=>{initCE(sel,true);setCeRev(r=>r+1);setFbMsg("↺ Contrato refeito a partir do orçamento (salve para gravar)");setTimeout(()=>setFbMsg(""),3500)};
+            // PDF real com quebra entre cláusulas (nunca corta texto ao meio) e rodapé
+            // com numeração + rubrica por página; share=true compartilha no celular
+            const contractPdf=async(share)=>{
               const el=document.getElementById("contract-doc");if(!el)return;
-              // Clone e limpar elementos de UI (área editável marcada, labels) para impressão
               const clone=el.cloneNode(true);
               clone.querySelectorAll("[contenteditable]").forEach(ed=>{ed.removeAttribute("contenteditable");ed.style.border="none";ed.style.background="transparent";ed.style.padding="0";});
               clone.querySelectorAll("[data-edit-label]").forEach(lb=>lb.remove());
-              const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Contrato - ${d.client.name||"Cliente"}</title><style>*{margin:0;box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;padding:15mm 20mm;font-size:14px;line-height:1.8;color:#111}@page{size:A4;margin:12mm 18mm}p{text-align:justify;margin-bottom:10px}</style></head><body>${clone.innerHTML}<script>window.onload=function(){setTimeout(function(){window.print()},600)}<\/script></body></html>`;
-              const blob=new Blob([html],{type:"text/html;charset=utf-8"});
-              const url=URL.createObjectURL(blob);
-              const a=document.createElement("a");a.href=url;a.download=`Contrato_${(d.client.name||"Cliente").replace(/\s+/g,"_")}.html`;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),1000);
+              clone.style.border="none";clone.style.borderRadius="0";clone.style.boxShadow="none";
+              const clientName=(d.client.name||"Cliente").replace(/\s+/g,"_").replace(/[^\w\-]/g,"");
+              // clone entra inteiro (outerHTML) para preservar o padding interno que o cabeçalho timbrado usa
+              const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{margin:0;background:#fff}p{text-align:justify}</style></head><body>${clone.outerHTML}</body></html>`;
+              const iframe=document.createElement("iframe");
+              iframe.style.cssText="position:fixed;left:-9999px;top:0;width:820px;height:auto;border:none;visibility:hidden";
+              document.body.appendChild(iframe);
+              const idoc=iframe.contentDocument||iframe.contentWindow.document;
+              idoc.open();idoc.write(html);idoc.close();
+              await new Promise(r=>setTimeout(r,500));
+              try{
+                const {html2canvas,jsPDF}=await loadPdfLibs();
+                const canvas=await html2canvas(idoc.body,{scale:2,useCORS:true,backgroundColor:"#ffffff",logging:false});
+                const imgW=canvas.width,imgH=canvas.height;
+                const pdfW=210,pdfH=297,pageW=pdfW-16;
+                const pxPerMm=imgW/pageW;
+                const capPx=(pdfH-16-8)*pxPerMm; // reserva 8mm para o rodapé
+                // Pontos de quebra = limites dos blocos de 1º nível (títulos, parágrafos, boxes)
+                const cw=idoc.body.firstElementChild;
+                const bodyTop=idoc.body.getBoundingClientRect().top;
+                const ratio=imgH/idoc.body.scrollHeight;
+                const blocks=[...cw.children].map(b=>{const r=b.getBoundingClientRect();return{top:(r.top-bodyTop)*ratio,bottom:(r.bottom-bodyTop)*ratio,h:(r.bottom-r.top)*ratio}}).filter(b=>b.h>0);
+                const headingPx=48*ratio; // blocos curtos (títulos de cláusula) não ficam órfãos no pé da página
+                const pages=[];let start=0,i=0;
+                while(i<blocks.length){
+                  if(blocks[i].bottom-start>capPx&&blocks[i].h>capPx){ // bloco maior que a página: corte duro
+                    let s=Math.max(start,blocks[i].top);
+                    while(blocks[i].bottom-s>capPx){pages.push([s,s+capPx]);s+=capPx}
+                    pages.push([s,blocks[i].bottom]);start=blocks[i].bottom;i++;continue;
+                  }
+                  let last=i;
+                  while(last+1<blocks.length&&blocks[last+1].bottom-start<=capPx)last++;
+                  if(last<blocks.length-1&&last>i&&blocks[last].h<headingPx)last--;
+                  pages.push([start,Math.min(blocks[last].bottom+6*ratio,imgH)]);
+                  start=last+1<blocks.length?blocks[last+1].top-6*ratio:imgH;
+                  i=last+1;
+                }
+                const pdf=new jsPDF({orientation:"p",unit:"mm",format:"a4"});
+                pages.forEach(([s,e],idx)=>{
+                  if(idx>0)pdf.addPage();
+                  const hh=Math.max(1,Math.round(e-s));
+                  const c2=document.createElement("canvas");c2.width=imgW;c2.height=hh;
+                  const ctx=c2.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,imgW,hh);
+                  ctx.drawImage(canvas,0,Math.round(s),imgW,hh,0,0,imgW,hh);
+                  pdf.addImage(c2.toDataURL("image/jpeg",0.92),"JPEG",8,8,pageW,hh/pxPerMm);
+                  pdf.setFontSize(8);pdf.setTextColor(130);
+                  pdf.text(`Contrato Vinil Vale — ${d.client.name||"Cliente"}`,8,pdfH-5);
+                  pdf.text(`Página ${idx+1} de ${pages.length}`,pdfW-8,pdfH-5,{align:"right"});
+                  if(idx<pages.length-1)pdf.text("Rubrica: ________________",pdfW/2,pdfH-5,{align:"center"});
+                });
+                const pdfBlob=pdf.output("blob");
+                const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+                if(share&&isMobile&&navigator.canShare){
+                  try{
+                    const file=new File([pdfBlob],`Contrato_VinilVale_${clientName}.pdf`,{type:"application/pdf"});
+                    if(navigator.canShare({files:[file]})){await navigator.share({files:[file],title:"Contrato Vinil Vale"});document.body.removeChild(iframe);setFbMsg("✅ Contrato compartilhado!");setTimeout(()=>setFbMsg(""),4000);return}
+                  }catch{}
+                }
+                const url=URL.createObjectURL(pdfBlob);
+                const a=document.createElement("a");a.href=url;a.download=`Contrato_VinilVale_${clientName}.pdf`;a.style.display="none";
+                document.body.appendChild(a);a.click();
+                setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url)},1000);
+                setFbMsg("📥 Contrato em PDF baixado!");setTimeout(()=>setFbMsg(""),4000);
+              }catch(err){setFbMsg("❌ Erro ao gerar PDF");setTimeout(()=>setFbMsg(""),4000)}
+              document.body.removeChild(iframe);
             };
+            const dlContract=()=>contractPdf(false);
+            const sendContractWA=()=>contractPdf(true);
 
             const cs={p:{fontSize:"14px",lineHeight:"1.9",textAlign:"justify",marginBottom:"12px",color:"#222"},h:{fontSize:"15px",fontWeight:"700",color:"#0a1f44",marginTop:"24px",marginBottom:"10px",display:"flex",alignItems:"center",gap:"8px",borderBottom:"2px solid #e2e8f0",paddingBottom:"6px"},li:{fontSize:"14px",lineHeight:"1.8",marginBottom:"6px",paddingLeft:"8px",color:"#222"},sep:{borderTop:"none",margin:"8px 0"},ed:{background:"#fffff0",border:"1px dashed #e8b100",borderRadius:"4px",padding:"2px 6px",outline:"none",fontSize:"14px"}};
+            const pg=ce.pag||PAG_DEF;const pv=ceVal();
 
             return <>
               {/* SELETOR DE CLIENTE */}
@@ -3406,7 +3649,7 @@ export default function App(){
                     <input value={ce.obs} onChange={uce("obs")} style={{width:"100%",padding:"6px 8px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text,outline:"none"}}/>
                   </div>
                   <div>
-                    <label style={{fontSize:"8px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"3px"}}>GARANTIAS</label>
+                    <label style={{fontSize:"8px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"3px"}}>GARANTIAS (CLÁUSULA 3.1)</label>
                     <input value={ce.garantias} onChange={uce("garantias")} style={{width:"100%",padding:"6px 8px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text,outline:"none"}}/>
                   </div>
                 </div>
@@ -3426,26 +3669,56 @@ export default function App(){
                     <Btn onClick={()=>{if(ce.novoServico.trim()){setCE(p=>({...p,servicos:[...p.servicos,p.novoServico.trim()],novoServico:""}));}}} style={{fontSize:"10px",padding:"6px 12px",background:blue,color:"#fff",border:"none",flexShrink:0}}>Adicionar</Btn>
                   </div>
                 </div>
+
+                {/* Forma de pagamento — impressa na cláusula 5 do contrato */}
+                <div style={{marginTop:"14px",paddingTop:"12px",borderTop:`1.5px dashed ${t.cardBorder}`}}>
+                  <label style={{fontSize:"8px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"6px"}}>FORMA DE PAGAMENTO ACORDADA (IMPRESSA NO CONTRATO)</label>
+                  <div style={{display:"flex",gap:"6px",flexWrap:"wrap",marginBottom:"8px"}}>
+                    {[["parcelado","📋 Entrada + Término"],["pix","💚 Pix/Dinheiro"],["cartao","💳 Cartão"],["btc","₿ Bitcoin"]].map(([id,lb])=>{
+                      const on=(ce.pag?.forma||"parcelado")===id;
+                      return <button key={id} onClick={()=>upag("forma",id)} style={{padding:"7px 12px",borderRadius:"8px",border:on?`2px solid ${blue}`:`1.5px solid ${t.cardBorder}`,background:on?blue+"15":"transparent",color:on?blue:t.textSec,fontSize:"10px",fontWeight:"700",cursor:"pointer"}}>{lb}</button>;
+                    })}
+                  </div>
+                  {(()=>{const pg=ce.pag||PAG_DEF;const pv=ceVal();
+                    const numIn=(lb,key,suf)=><div key={key}><label style={{fontSize:"8px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"3px"}}>{lb}</label><input type="number" min="0" value={pg[key]} onChange={e=>upag(key,e.target.value)} style={{width:"100%",padding:"6px 8px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text,outline:"none"}}/></div>;
+                    const txtIn=(lb,key)=><div key={key}><label style={{fontSize:"8px",fontWeight:"700",color:t.textSec,display:"block",marginBottom:"3px"}}>{lb}</label><input value={pg[key]} onChange={e=>upag(key,e.target.value)} style={{width:"100%",padding:"6px 8px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"11px",background:t.inputBg,color:t.text,outline:"none"}}/></div>;
+                    if(pg.forma==="parcelado"){const eP=parseFloat(pg.entPct)||0,bP=parseFloat(pg.balPct)||0;return <>
+                      <div style={{display:"grid",gridTemplateColumns:"70px 1fr",gap:"8px",marginBottom:"8px"}}>{numIn("% ENTRADA","entPct")}{txtIn("ENTRADA DEVIDA...","entQuando")}</div>
+                      <div style={{display:"grid",gridTemplateColumns:"70px 1fr",gap:"8px",marginBottom:"8px"}}>{numIn("% SALDO","balPct")}{txtIn("SALDO DEVIDO...","balQuando")}</div>
+                      <div style={{fontSize:"10px",fontWeight:"700",color:"#16a34a"}}>Entrada: {fmt(pv*eP/100)} · Saldo: {fmt(pv*bP/100)}{eP+bP!==100&&<span style={{color:"#dc2626"}}> ⚠️ {eP+bP}% (não soma 100%)</span>}</div>
+                    </>;}
+                    if(pg.forma==="pix")return <div style={{display:"grid",gridTemplateColumns:"90px 1fr",gap:"8px",alignItems:"end"}}>{numIn("% DESCONTO","pixD")}<div style={{fontSize:"10px",fontWeight:"700",color:"#16a34a",paddingBottom:"7px"}}>Valor à vista: {fmt(pv*(1-(parseFloat(pg.pixD)||0)/100))}</div></div>;
+                    if(pg.forma==="cartao")return <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}}>{numIn("PARCELAS SEM JUROS","noFee")}{numIn("PARCELAS COM JUROS","wFee")}</div>;
+                    return <div style={{display:"grid",gridTemplateColumns:"90px 1fr",gap:"8px",alignItems:"end"}}>{numIn("% DESCONTO","btcD")}<div style={{fontSize:"10px",fontWeight:"700",color:"#16a34a",paddingBottom:"7px"}}>Valor em BTC: {fmt(pv*(1-(parseFloat(pg.btcD)||0)/100))}</div></div>;
+                  })()}
+                </div>
               </div>
 
               {/* AÇÕES */}
+              <div style={{display:"flex",gap:"10px",marginBottom:"10px"}}>
+                <Btn onClick={saveContract} style={{flex:2,background:"linear-gradient(135deg,#16a34a,#15803d)",color:"#fff",border:"none",padding:"12px",fontSize:"12px",fontWeight:"700",borderRadius:"10px",boxShadow:"0 3px 10px rgba(22,163,74,.3)",letterSpacing:".3px"}}>💾 Salvar Contrato</Btn>
+                <Btn onClick={resetContract} style={{flex:1,background:"transparent",border:`1.5px solid ${t.cardBorder}`,color:t.textSec,padding:"12px",fontSize:"11px",fontWeight:"600",borderRadius:"10px"}}>↺ Refazer do orçamento</Btn>
+              </div>
               <div style={{display:"flex",gap:"10px",marginBottom:"16px"}}>
                 <Btn onClick={dlContract} style={{flex:1,background:`linear-gradient(135deg,${navy},${blue})`,color:"#fff",border:"none",padding:"12px",fontSize:"12px",fontWeight:"700",borderRadius:"10px",display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",boxShadow:"0 3px 10px rgba(0,85,164,.3)",letterSpacing:".3px"}}><DownloadIcon size={16} color="#fff"/>Baixar Contrato (PDF)</Btn>
-                <Btn onClick={()=>sendOrcWA(sel)} style={{flex:1,background:"linear-gradient(135deg,#25d366,#128c7e)",color:"#fff",border:"none",padding:"12px",fontSize:"12px",fontWeight:"700",borderRadius:"10px",display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",boxShadow:"0 3px 10px rgba(37,211,102,.3)",letterSpacing:".3px"}}><SendIcon size={16} color="#fff"/>Enviar via WhatsApp</Btn>
+                <Btn onClick={sendContractWA} style={{flex:1,background:"linear-gradient(135deg,#25d366,#128c7e)",color:"#fff",border:"none",padding:"12px",fontSize:"12px",fontWeight:"700",borderRadius:"10px",display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",boxShadow:"0 3px 10px rgba(37,211,102,.3)",letterSpacing:".3px"}}><SendIcon size={16} color="#fff"/>Enviar Contrato (WhatsApp)</Btn>
               </div>
 
               {/* PREVIEW DO CONTRATO */}
               <div style={{fontSize:"10px",fontWeight:"600",color:t.textSec,textTransform:"uppercase",letterSpacing:"1px",marginBottom:"8px",display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontSize:"14px"}}>👁️</span>Pré-visualização do Contrato</div>
               <div id="contract-doc" style={{background:"#fff",color:"#111",padding:"36px",borderRadius:"12px",border:`2px solid ${blue}20`,fontFamily:"'Segoe UI','Helvetica Neue',Arial,sans-serif",fontSize:"14px",lineHeight:"1.9",boxShadow:"0 4px 20px rgba(0,0,0,.08)"}}>
 
-                <div style={{textAlign:"center",marginBottom:"28px",paddingBottom:"20px",borderBottom:`3px solid ${navy}`,position:"relative"}}>
-                  <img src="/logo.jpg" alt="Vinil Vale" style={{width:"120px",height:"auto",objectFit:"contain",marginBottom:"10px"}}/>
-                  <div style={{fontSize:"13px",fontWeight:"600",color:"#333",marginTop:"4px",letterSpacing:"1px"}}>REVESTIMENTOS E CAPAS PARA PISCINAS LTDA</div>
-                  <div style={{width:"60px",height:"3px",background:gold,margin:"10px auto",borderRadius:"2px"}}></div>
-                  <div style={{fontSize:"12px",color:"#555",marginTop:"6px"}}>{CO.addr}</div>
-                  <div style={{fontSize:"12px",color:"#555"}}>Fones: {CO.ph1} / {CO.ph2} · {CO.email}</div>
-                  <div style={{fontSize:"12px",color:"#555"}}>CNPJ: {CO.cnpj} · IE: {CO.ie}</div>
-                  {d.propNum&&<div style={{fontSize:"13px",fontWeight:"700",color:navy,marginTop:"10px",background:"#f0f7ff",display:"inline-block",padding:"4px 16px",borderRadius:"6px"}}>PROPOSTA Nº {d.propNum}</div>}
+                {/* Cabeçalho timbrado — mesma identidade do PDF do orçamento */}
+                <div style={{margin:"-36px -36px 24px",borderRadius:"10px 10px 0 0",overflow:"hidden"}}>
+                  <div style={{background:`linear-gradient(135deg,${navy},${blue})`,padding:"20px 28px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{display:"flex",flexDirection:"column",gap:"2px"}}>
+                      <div style={{fontFamily:"'Arial Black','Arial Bold',Impact,sans-serif",fontSize:"30px",fontWeight:"900",fontStyle:"italic",letterSpacing:"-1px",lineHeight:1,background:"linear-gradient(180deg,#4fc3f7 0%,#0077cc 40%,#003d7a 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text",filter:"drop-shadow(0 2px 4px rgba(0,0,0,.4))"}}>VINILVALE</div>
+                      <div style={{fontSize:"8px",color:"rgba(255,255,255,.75)",letterSpacing:"2px",textTransform:"uppercase",fontStyle:"italic",marginTop:"2px"}}>Revestimento e Capas para Piscinas</div>
+                    </div>
+                    {(ce.propNum||d.propNum)&&<div style={{background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.2)",borderRadius:"8px",padding:"6px 14px",textAlign:"right"}}><div style={{fontSize:"6.5px",textTransform:"uppercase",letterSpacing:"1px",color:"rgba(255,255,255,.6)"}}>Proposta</div><div style={{fontSize:"18px",fontWeight:"800",color:"#fff"}}>{ce.propNum||d.propNum}</div></div>}
+                  </div>
+                  <div style={{background:gold,padding:"5px 28px",display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:"3px",fontSize:"8.5px",color:navy,fontWeight:"600"}}><span>CNPJ: {CO.cnpj}</span><span>IE: {CO.ie}</span><span>{CO.ph1} / {CO.ph2}</span><span>{CO.email}</span></div>
+                  <div style={{textAlign:"center",fontSize:"10.5px",color:"#666",padding:"8px 28px 0"}}>{CO.addr}</div>
                 </div>
 
                 <div style={{textAlign:"center",margin:"24px 0"}}>
@@ -3498,10 +3771,16 @@ export default function App(){
 
                 <div style={cs.sep}/>
 
-                <div style={cs.h}>2. GARANTIA E ASSISTÊNCIA TÉCNICA</div>
-                <p style={cs.p}><b>2.1. Da Garantia:</b> {ce.vinil&&ce.vinil.includes("0,8")?<>A CONTRATADA oferece garantia de <b>3 anos</b> para confecção das Soldas, e <b>4 anos</b> na espessura 0.8mm, conforme termos do fabricante.</>:<>A CONTRATADA oferece garantia de <b>3 anos</b> para confecção das Soldas e <b>3 anos</b> para o vinil, conforme termos do fabricante.</>}</p>
-                <p style={cs.p}><b>2.2. Da Assistência Técnica:</b> Em caso de chamado para assistência, a CONTRATADA terá um prazo de até 10 (dez) dias úteis para realizar a vistoria técnica no local. A garantia cobre apenas defeitos de instalação quando a instalação seja feita pela fabricante Vinil Vale Revestimentos. Caso a vistoria identifique que o problema decorre de fatores externos (infiltração, mau uso, intervenção de terceiros, desequilíbrio químico, etc.), será apresentado orçamento separado para o reparo.</p>
-                <p style={cs.p}><b>2.3. Exclusões de Revestimento:</b> A garantia não cobre:</p>
+                <div style={cs.h}>2. CONDIÇÕES DO LOCAL</div>
+                <p style={cs.p}>2.1. O CONTRATANTE declara que a estrutura da piscina e o sistema de drenagem do local encontram-se em condições adequadas para a execução dos serviços, responsabilizando-se por vícios ocultos não detectáveis na vistoria da CONTRATADA, tais como infiltrações, lençol freático elevado ou falhas estruturais pré-existentes.</p>
+                <p style={cs.p}>2.2. A vistoria e a medição realizadas pela CONTRATADA limitam-se às condições aparentes do local. Problemas ocultos identificados durante a execução serão tratados conforme a cláusula 8 (Serviços Adicionais).</p>
+
+                <div style={cs.sep}/>
+
+                <div style={cs.h}>3. GARANTIA E ASSISTÊNCIA TÉCNICA</div>
+                <p style={cs.p}><b>3.1. Da Garantia:</b> {ce.garantias?<>A CONTRATADA oferece garantia de <b>{ce.garantias}</b>, conforme termos do fabricante.</>:ce.vinil&&ce.vinil.includes("0,8")?<>A CONTRATADA oferece garantia de <b>3 anos</b> para confecção das Soldas, e <b>4 anos</b> na espessura 0.8mm, conforme termos do fabricante.</>:<>A CONTRATADA oferece garantia de <b>3 anos</b> para confecção das Soldas e <b>3 anos</b> para o vinil, conforme termos do fabricante.</>}</p>
+                <p style={cs.p}><b>3.2. Da Assistência Técnica:</b> Em caso de chamado para assistência, a CONTRATADA terá o prazo de até 10 (dez) dias úteis para realizar a vistoria técnica no local. A garantia cobre exclusivamente defeitos de fabricação do vinil e defeitos de instalação executada pela própria CONTRATADA. Caso a vistoria identifique que o problema decorre de fatores externos (infiltração, mau uso, intervenção de terceiros, desequilíbrio químico, etc.), será apresentado orçamento à parte para o reparo.</p>
+                <p style={cs.p}><b>3.3. Exclusões da Garantia:</b> A garantia não cobre:</p>
                 <div style={{paddingLeft:"20px",marginBottom:"14px"}}>
                   <div style={cs.li}>• Levantamento de manta ou bolsão causado por infiltração de água externa (lençol freático ou falta de drenagem adequada).</div>
                   <div style={cs.li}>• Rugas ou manchas causadas por desequilíbrio químico da água (pH fora do padrão ou excesso de cloro).</div>
@@ -3511,50 +3790,79 @@ export default function App(){
 
                 <div style={cs.sep}/>
 
-                <div style={cs.h}>3. OBRIGAÇÕES DO CONTRATANTE</div>
+                <div style={cs.h}>4. OBRIGAÇÕES DO CONTRATANTE</div>
                 <div style={{paddingLeft:"20px",marginBottom:"14px"}}>
-                  <div style={cs.li}>3.1. Realizar o pagamento dos serviços conforme cláusula "4 – Pagamento";</div>
-                  <div style={cs.li}>3.2. Garantir o acesso livre ao local durante o período acordado;</div>
-                  <div style={cs.li}>3.3. Cumprir integralmente as recomendações técnicas para conservação do produto;</div>
-                  <div style={cs.li}>3.4. Enviar o contrato assinado com testemunhas para: <b>{CO.email}</b></div>
+                  <div style={cs.li}>4.1. Realizar o pagamento dos serviços conforme cláusula "5 – Pagamento";</div>
+                  <div style={cs.li}>4.2. Garantir o acesso livre ao local durante o período acordado;</div>
+                  <div style={cs.li}>4.3. Cumprir integralmente as recomendações técnicas para conservação do produto;</div>
+                  <div style={cs.li}>4.4. Enviar o contrato assinado com testemunhas para: <b>{CO.email}</b></div>
                 </div>
 
                 <div style={cs.sep}/>
 
-                <div style={cs.h}>4. PAGAMENTO</div>
-                <p style={cs.p}>4.1. O valor total acordado é de <b style={{fontSize:"17px",color:navy,background:"#f0f7ff",padding:"2px 8px",borderRadius:"4px"}}>{ce.valor}</b>, conforme condições de pagamento definidas no orçamento.</p>
-                <p style={cs.p}>4.2. Em caso de pagamento via <b>cartão de crédito</b>, o mesmo deverá ser realizado <b>no ato da assinatura do contrato</b>.</p>
+                <div style={cs.h}>5. PAGAMENTO</div>
+                <p style={cs.p}>5.1. O valor total acordado é de <b style={{fontSize:"17px",color:navy,background:"#f0f7ff",padding:"2px 8px",borderRadius:"4px"}}>{ce.valor}</b>.{(ce.propNum||d.propNum)?<> A Proposta Comercial nº <b>{ce.propNum||d.propNum}</b> é parte integrante deste contrato para todos os fins.</>:null}</p>
+                {pg.forma==="pix"&&<p style={cs.p}>5.2. O pagamento será realizado <b>à vista, via Pix ou dinheiro</b>, no valor de <b>{fmt(pv*(1-(parseFloat(pg.pixD)||0)/100))}</b> (já aplicado o desconto de {pg.pixD}% sobre o valor total), devido no ato da assinatura deste contrato.</p>}
+                {pg.forma==="cartao"&&<p style={cs.p}>5.2. O pagamento será realizado por meio de <b>cartão de crédito</b>, em até <b>{pg.noFee}x sem juros</b> ou em até <b>{pg.wFee}x com juros da operadora</b>, devendo ser efetuado <b>no ato da assinatura deste contrato</b>.</p>}
+                {pg.forma==="parcelado"&&<p style={cs.p}>5.2. O pagamento será realizado da seguinte forma: <b>entrada de {fmt(pv*(parseFloat(pg.entPct)||0)/100)}</b> ({pg.entPct}% do valor total), devida {pg.entQuando}; e <b>saldo de {fmt(pv*(parseFloat(pg.balPct)||0)/100)}</b> ({pg.balPct}% do valor total), devido {pg.balQuando}.</p>}
+                {pg.forma==="btc"&&<p style={cs.p}>5.2. O pagamento será realizado em <b>Bitcoin (BTC)</b>, no valor equivalente a <b>{fmt(pv*(1-(parseFloat(pg.btcD)||0)/100))}</b> (já aplicado o desconto de {pg.btcD}% sobre o valor total), convertido pela cotação da data do pagamento, devido no ato da assinatura deste contrato.</p>}
 
                 <div style={cs.sep}/>
 
-                <div style={cs.h}>5. PRAZO DE EXECUÇÃO</div>
-                <p style={cs.p}>5.1. Os serviços serão executados no prazo máximo de <b>{ce.prazo} dias úteis</b> da alvenaria, e o vinil para instalação 10 dias úteis contados a partir da medição detalhada da piscina.</p>
-                <p style={cs.p}>5.2. Caso ocorram atrasos decorrentes de fatores climáticos, dificuldades técnicas não previstas ou situações excepcionais, haverá negociação imediata de novo prazo entre as partes.</p>
+                <div style={cs.h}>6. INADIMPLÊNCIA</div>
+                <p style={cs.p}>6.1. O atraso em qualquer pagamento sujeitará o CONTRATANTE a multa moratória de <b>2% (dois por cento)</b> sobre o valor em atraso, acrescida de juros de mora de <b>1% (um por cento) ao mês</b> e correção monetária pelo IPCA.</p>
+                <p style={cs.p}>6.2. Havendo atraso superior a 5 (cinco) dias úteis, a CONTRATADA poderá suspender a execução dos serviços até a regularização, prorrogando-se automaticamente os prazos da cláusula 7 pelo período correspondente à suspensão.</p>
 
                 <div style={cs.sep}/>
 
-                <div style={cs.h}>6. CONFIDENCIALIDADE</div>
-                <p style={cs.p}>6.1. A CONTRATADA compromete-se a manter sigilo absoluto de todas as informações e documentos aos quais tiver acesso durante a execução do contrato.</p>
+                <div style={cs.h}>7. PRAZO DE EXECUÇÃO</div>
+                <p style={cs.p}>7.1. Os serviços de alvenaria e preparação serão executados em até <b>{ce.prazo} dias úteis</b>, contados do pagamento da entrada e da liberação do local pelo CONTRATANTE.</p>
+                <p style={cs.p}>7.2. A instalação do revestimento em vinil será realizada em até <b>10 (dez) dias úteis</b> contados da medição detalhada da piscina.</p>
+                <p style={cs.p}>7.3. Caso ocorram atrasos decorrentes de fatores climáticos, dificuldades técnicas não previstas ou situações excepcionais, haverá negociação imediata de novo prazo entre as partes.</p>
 
                 <div style={cs.sep}/>
 
-                <div style={cs.h}>7. PENALIDADES</div>
-                <p style={cs.p}>7.1. O descumprimento das obrigações contratuais sujeitará a parte infratora ao pagamento de multa equivalente a <b>10% do valor total do contrato</b>, acrescidos de juros e correção monetária aplicáveis.</p>
+                <div style={cs.h}>8. SERVIÇOS ADICIONAIS</div>
+                <p style={cs.p}>8.1. Serviços não previstos neste contrato, inclusive reparos decorrentes de condições ocultas do local (cláusula 2), serão objeto de orçamento adicional por escrito, a ser aprovado pelo CONTRATANTE antes da execução.</p>
+                <p style={cs.p}>8.2. A aprovação de serviços adicionais poderá implicar ajuste proporcional do prazo de execução.</p>
 
                 <div style={cs.sep}/>
 
-                <div style={cs.h}>8. DISPOSIÇÕES GERAIS</div>
-                <p style={cs.p}>8.1. Este documento representa o acordo integral entre as partes, revogando quaisquer acordos prévios verbais ou escritos.</p>
-                <p style={cs.p}>8.2. Qualquer alteração deverá ser formalizada por escrito e assinada pelas partes.</p>
-                <p style={cs.p}>8.3. Este contrato é regido pelas leis brasileiras, sendo eleito o Foro da Comarca de <b>Registro-SP</b> para dirimir quaisquer controvérsias.</p>
+                <div style={cs.h}>9. RESCISÃO E DESISTÊNCIA</div>
+                <p style={cs.p}>9.1. Nos termos do art. 49 do Código de Defesa do Consumidor, sendo este contrato firmado fora do estabelecimento comercial, o CONTRATANTE poderá desistir no prazo de <b>7 (sete) dias corridos</b> contados da assinatura, com devolução integral dos valores pagos, desde que não iniciada a execução dos serviços nem a produção do revestimento sob medida.</p>
+                <p style={cs.p}>9.2. Havendo desistência após o início da execução ou da produção do vinil sob medida, serão devidos à CONTRATADA os valores correspondentes aos serviços já executados e aos materiais já adquiridos ou produzidos, além da multa prevista na cláusula 11.</p>
+                <p style={cs.p}>9.3. Qualquer das partes poderá rescindir este contrato em caso de descumprimento de obrigação pela outra parte, mediante notificação por escrito.</p>
 
-                <div data-edit-label="1" style={{fontSize:"9px",color:blue,fontWeight:"700",textAlign:"center",margin:"20px 0 6px",textTransform:"uppercase",letterSpacing:".5px"}}>✏️ Área 100% editável — clique em qualquer parte abaixo para alterar</div>
+                <div style={cs.sep}/>
+
+                <div style={cs.h}>10. CONFIDENCIALIDADE</div>
+                <p style={cs.p}>10.1. A CONTRATADA compromete-se a manter sigilo absoluto de todas as informações e documentos aos quais tiver acesso durante a execução do contrato.</p>
+
+                <div style={cs.sep}/>
+
+                <div style={cs.h}>11. PENALIDADES</div>
+                <p style={cs.p}>11.1. O descumprimento das obrigações contratuais sujeitará a parte infratora ao pagamento de multa equivalente a <b>10% do valor total do contrato</b>, acrescidos de juros e correção monetária aplicáveis, sem prejuízo dos encargos moratórios da cláusula 6.</p>
+
+                <div style={cs.sep}/>
+
+                <div style={cs.h}>12. DISPOSIÇÕES GERAIS</div>
+                <p style={cs.p}>12.1. Este documento, em conjunto com a Proposta Comercial que o integra, representa o acordo integral entre as partes, revogando quaisquer acordos prévios verbais ou escritos.</p>
+                <p style={cs.p}>12.2. Qualquer alteração deverá ser formalizada por escrito e assinada pelas partes.</p>
+                <p style={cs.p}>12.3. Este contrato é regido pelas leis brasileiras, sendo eleito o Foro da Comarca de <b>Registro-SP</b> para dirimir quaisquer controvérsias, ressalvado o direito do consumidor de optar pelo foro de seu domicílio.</p>
+
+                {/* Data fora da área editável — reflete o campo DATA DO CONTRATO do editor */}
+                <div style={{textAlign:"center",margin:"20px 0 0"}}>
+                  <div style={{width:"60px",height:"3px",background:`linear-gradient(90deg,${blue},${gold})`,margin:"0 auto 12px",borderRadius:"2px"}}></div>
+                  <div style={{fontSize:"15px",fontWeight:"600",color:"#333"}}>{ce.data}</div>
+                </div>
+
+                <div data-edit-label="1" style={{fontSize:"9px",color:blue,fontWeight:"700",textAlign:"center",margin:"14px 0 6px",textTransform:"uppercase",letterSpacing:".5px"}}>✏️ Área 100% editável — clique em qualquer parte abaixo para alterar</div>
 
                 <div
-                  key={`bottom-${sel.id}`}
+                  key={`bottom-${sel.id}-${ceRev}-${ce.bottomHtml?1:0}`}
                   contentEditable
                   suppressContentEditableWarning
-                  ref={el=>{if(el&&!el.dataset.init){el.innerHTML=`<div style="text-align:center;margin:10px 0"><div style="width:60px;height:3px;background:linear-gradient(90deg,${blue},${gold});margin:0 auto 12px;border-radius:2px"></div><div style="font-size:15px;font-weight:600;color:#333">${ce.data}</div></div><div style="margin-top:40px"><div style="border-top:2px solid ${navy};width:55%;margin:0 auto;text-align:center;padding-top:10px"><div style="font-size:14px;font-weight:700;color:${navy}">Vinil Vale Revestimentos e Capas para Piscinas Ltda.</div><div style="font-size:12px;color:#666">CNPJ: ${CO.cnpj}</div></div></div><div style="margin-top:40px"><div style="border-top:2px solid ${navy};width:55%;margin:0 auto;text-align:center;padding-top:10px"><div style="font-size:14px;font-weight:700;color:${navy}">${d.client.name||"________________________"}</div><div style="font-size:12px;color:#666">CPF: ${d.client.cpf||"________________________"}</div></div></div><div style="margin-top:36px"><div style="font-size:14px;font-weight:700;margin-bottom:24px">TESTEMUNHAS:</div><div style="display:flex;justify-content:space-between"><div style="border-top:2px solid #333;width:42%;text-align:center;padding-top:8px;font-size:12px">Nome: _________________<br/>CPF: _________________</div><div style="border-top:2px solid #333;width:42%;text-align:center;padding-top:8px;font-size:12px">Nome: _________________<br/>CPF: _________________</div></div></div>`;el.dataset.init="1";}}}
+                  ref={el=>{if(el&&!el.dataset.init){el.innerHTML=ce.bottomHtml||`<div style="margin-top:24px"><div style="border-top:2px solid ${navy};width:55%;margin:0 auto;text-align:center;padding-top:10px"><div style="font-size:14px;font-weight:700;color:${navy}">Vinil Vale Revestimentos e Capas para Piscinas Ltda.</div><div style="font-size:12px;color:#666">CNPJ: ${CO.cnpj}</div></div></div><div style="margin-top:40px"><div style="border-top:2px solid ${navy};width:55%;margin:0 auto;text-align:center;padding-top:10px"><div style="font-size:14px;font-weight:700;color:${navy}">${d.client.name||"________________________"}</div><div style="font-size:12px;color:#666">CPF: ${d.client.cpf||"________________________"}</div></div></div><div style="margin-top:36px"><div style="font-size:14px;font-weight:700;margin-bottom:24px">TESTEMUNHAS:</div><div style="display:flex;justify-content:space-between"><div style="border-top:2px solid #333;width:42%;text-align:center;padding-top:8px;font-size:12px">Nome: _________________<br/>CPF: _________________</div><div style="border-top:2px solid #333;width:42%;text-align:center;padding-top:8px;font-size:12px">Nome: _________________<br/>CPF: _________________</div></div></div>`;el.dataset.init="1";}}}
                   style={{outline:"none",border:`2px dashed ${blue}40`,borderRadius:"10px",padding:"16px",background:"#fafcff",cursor:"text",minHeight:"100px"}}
                 />
               </div>

@@ -3,6 +3,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Line, GizmoHelper, GizmoViewcube, useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import { getEstampaByNome, swatchSizeMeters } from './data/estampas';
+import { contornoEfetivo, regioesProfundidade, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor } from './motor/formas.js';
 
 const SWATCH_SLUG={"Marmo Carrara Azul":"marmo-carrara-azul","Marmo Carrara Verde":"marmo-carrara-verde","Marmo Carrara Cinza":"marmo-carrara-cinza","Travertino":"travertino","Travertino Gris":"travertino-gris","Travertino Verde":"travertino-verde","Travertino Azul":"travertino-azul","Bali Hijau":"bali-hijau","Bali Blue":"bali-blue","Santorini":"santorini","Malibu Azul":"malibu-azul","Malibu Verde":"malibu-verde","Punta Cana":"punta-cana","Porto Vecchio Azul":"porto-vecchio-azul","Porto Vecchio Verde":"porto-vecchio-verde","Batu Blue":"batu-blue","Batu Vert":"batu-vert","Sukabumi Azul":"sukabumi-azul","Sukabumi Verde":"sukabumi-verde","Petra Natural Azul":"petra-natural-azul","Petra Natural Verde":"petra-natural-verde","Montblanc":"montblanc","Montblanc Block":"montblanc-block","Mid Blue Liso":"mid-blue-liso","Aquática Azul":"aquatica-azul"};
 const STAMP_COLOR={"Marmo Carrara Azul":"#a8cce8","Marmo Carrara Verde":"#a8d4c0","Marmo Carrara Cinza":"#b0bcc8","Travertino":"#c8b89a","Travertino Gris":"#b0a898","Travertino Verde":"#98b4a0","Travertino Azul":"#8ab0c8","Bali Hijau":"#5aaa88","Bali Blue":"#5090c0","Santorini":"#6aaccc","Malibu Azul":"#4a98d8","Malibu Verde":"#4aac7a","Porto Vecchio Azul":"#3d8fc0","Porto Vecchio Verde":"#3da878","Batu Blue":"#4a90c0","Batu Vert":"#4aa880","Sukabumi Azul":"#3aa8d0","Sukabumi Verde":"#3ab080","Petra Natural Azul":"#6aa8c0","Petra Natural Verde":"#6ab090","Montblanc":"#7ab8e0","Montblanc Block":"#5aa0c8","Mid Blue Liso":"#3a96d0","Aquática Azul":"#3aacdc","Punta Cana":"#50c0b0"};
@@ -376,11 +377,199 @@ function Ground({ L, W }) {
   );
 }
 
+// ── Forma livre (desenho do editor): geometria real no 3D ────────────────────
+// Convenção do desenho: x→direita, y→baixo (planta). Mundo three: x, y=altura,
+// z = y do desenho − W/2. Shape em XY com y invertido + rotação -π/2 no X.
+function shapeFromPoly(poly, L, W) {
+  const s = new THREE.Shape();
+  poly.forEach((p, i) => {
+    const x = p.x - L / 2, y = W / 2 - p.y;
+    if (i === 0) s.moveTo(x, y); else s.lineTo(x, y);
+  });
+  s.closePath();
+  return s;
+}
+
+/** Quads verticais ao longo das arestas do polígono, de yBot a yTop (UV em metros/sm). */
+function wallsGeom(poly, L, W, yBot, yTop, sm) {
+  const pos = [], uv = [], idx = [];
+  let acc = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const ax = a.x - L / 2, az = a.y - W / 2, bx = b.x - L / 2, bz = b.y - W / 2;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const vi = pos.length / 3;
+    pos.push(ax, yBot, az, bx, yBot, bz, bx, yTop, bz, ax, yTop, az);
+    uv.push(acc / sm, yBot / sm, (acc + len) / sm, yBot / sm, (acc + len) / sm, yTop / sm, acc / sm, yTop / sm);
+    idx.push(vi, vi + 1, vi + 2, vi, vi + 2, vi + 3);
+    acc += len;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+function FreeformStructure({ efetivo, L, W, D }) {
+  const wt = 0.14;
+  const outer = useMemo(() => offsetPoligono(efetivo, wt), [efetivo]);
+  const slabGeo = useMemo(() => {
+    const g = new THREE.ExtrudeGeometry(shapeFromPoly(outer, L, W), { depth: wt, bevelEnabled: false });
+    return g;
+  }, [outer, L, W]);
+  const wallGeo = useMemo(() => wallsGeom(outer, L, W, 0, D, 1), [outer, L, W, D]);
+  const rimPts = useMemo(() => {
+    const p = outer.map(q => [q.x - L / 2, D + 0.03, q.y - W / 2]);
+    p.push(p[0]);
+    return p;
+  }, [outer, L, W, D]);
+  return (
+    <group>
+      <mesh geometry={slabGeo} rotation={[-Math.PI / 2, 0, 0]} position={[0, -wt, 0]}>
+        <meshStandardMaterial color="#64748b" roughness={0.95} />
+      </mesh>
+      <mesh geometry={wallGeo}>
+        <meshStandardMaterial color="#94a3b8" roughness={0.85} side={THREE.DoubleSide} />
+      </mesh>
+      <Line points={rimPts} color="#cbd5e1" lineWidth={3} />
+    </group>
+  );
+}
+
+/** Interior da forma livre: chão, paredes e platôs rasos (prainha/spa/degraus). */
+function FreeformInterior({ efetivo, regioes, L, W, D, texUrl, swatchM }) {
+  const sm = swatchM > 0 ? swatchM : 0.5;
+  const base = useTexture(texUrl || '/swatches/mid-blue-liso.png');
+  const tex = useMemo(() => {
+    const t = base.clone(); t.needsUpdate = true;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(1 / sm, 1 / sm);
+    return t;
+  }, [base, sm]);
+  const temTex = !!texUrl;
+  const mat = p => temTex
+    ? <meshStandardMaterial map={tex} roughness={0.75} side={THREE.DoubleSide} {...p} />
+    : <meshStandardMaterial color="#bfdbfe" roughness={0.8} side={THREE.DoubleSide} {...p} />;
+  const floorGeo = useMemo(() => new THREE.ShapeGeometry(shapeFromPoly(efetivo, L, W)), [efetivo, L, W]);
+  const wallGeo = useMemo(() => wallsGeom(efetivo, L, W, 0, D, sm), [efetivo, L, W, D, sm]);
+  const regs = useMemo(() => regioes.map(r => {
+    // encolhe 2 cm para não brigar com a parede (z-fighting)
+    const poly = offsetPoligono(r.poligono, -0.02);
+    const yTop = Math.max(0.03, D - r.profundidadeM);
+    return {
+      plate: new THREE.ShapeGeometry(shapeFromPoly(poly, L, W)),
+      sides: wallsGeom(poly, L, W, 0, yTop, sm),
+      yTop,
+    };
+  }), [regioes, L, W, D, sm]);
+  return (
+    <group>
+      <mesh geometry={floorGeo} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>{mat()}</mesh>
+      <mesh geometry={wallGeo}>{mat()}</mesh>
+      {regs.map((r, i) => (
+        <group key={i}>
+          <mesh geometry={r.plate} rotation={[-Math.PI / 2, 0, 0]} position={[0, r.yTop, 0]}>{mat()}</mesh>
+          <mesh geometry={r.sides}>{mat()}</mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+function FreeformWater({ efetivo, L, W, D, color = '#38bdf8' }) {
+  const ref = useRef();
+  const wl = D * 0.91;
+  const geo = useMemo(() => new THREE.ExtrudeGeometry(shapeFromPoly(efetivo, L, W), { depth: wl, bevelEnabled: false }), [efetivo, L, W, wl]);
+  useFrame(({ clock }) => {
+    if (ref.current) ref.current.position.y = Math.sin(clock.elapsedTime * 0.6) * 0.006;
+  });
+  return (
+    <mesh ref={ref} geometry={geo} rotation={[-Math.PI / 2, 0, 0]}>
+      <meshStandardMaterial color={color} transparent opacity={0.38} roughness={0.05} metalness={0.15} />
+    </mesh>
+  );
+}
+
+/** Dispositivos + tubulação abraçando o contorno real (mesma lógica da planta 2D). */
+function buildSceneLivre(allPos, efetivo, L, W, D, customPos, devHeights) {
+  const lo = 0.32;
+  const sysOrder = ['retorno', 'hidro', 'dreno', 'aspiracao', 'skimmer', 'nivelador', 'refletor'];
+  const casaFrac = customPos?.casa || { x: 1.12, y: 0.5 };
+  const cmX0 = casaFrac.x * L;
+  const cmMidY = W * 0.5;
+  const cmWw = Math.min(1.4, W * 0.5);
+  const cmWd = W * 0.8;
+
+  const byType = {};
+  Object.entries(allPos).filter(([, p]) => !p.special).forEach(([key, p]) => {
+    if (!byType[p.type]) byType[p.type] = [];
+    byType[p.type].push([key, p]);
+  });
+
+  const devices = [];
+  const pipes = [];
+  const toP = pts => pts.map(([rx, ry, rz]) => i2t(rx, ry, rz, L, W));
+
+  let sysIdx = 0;
+  sysOrder.forEach(sysType => {
+    const devs = byType[sysType];
+    if (!devs || devs.length === 0) return;
+    const col = C[sysType] || '#999';
+    const ring = offsetPoligono(efetivo, lo + sysIdx * 0.16);
+    const tCasa = fracaoMaisProxima(ring, { x: cmX0, y: cmMidY });
+    // altura do ramal do sistema (dreno corre no nível do fundo elevado)
+    let zTronco = null;
+    // stubs: dispositivo → anel, no ponto mais próximo
+    const frDevs = [];
+    devs.forEach(([key, p]) => {
+      const ix = p.x * L;
+      const iy = p.y * W;
+      const iz = devZ(sysType, p.floor, D, devHeights);
+      devices.push({ key, pos: i2t(ix, iy, iz, L, W), color: col, type: sysType });
+      const zTubo = p.floor ? Math.max(0, D - 0.30) : iz;
+      if (zTronco === null) zTronco = zTubo;
+      const tDev = fracaoMaisProxima(ring, { x: ix, y: iy });
+      const q = pontoNaFracao(ring, tDev);
+      pipes.push({ points: toP([[ix, iy, iz], [q.x, q.y, iz], [q.x, q.y, zTronco]]), color: col, width: 2 });
+      frDevs.push(tDev);
+    });
+    // ramal coletor único interligando dispositivos + chegada da casa
+    trechosColetor([...frDevs, tCasa]).forEach(([a, b]) => {
+      const caminho = caminhoNoContorno(ring, a, b);
+      pipes.push({ points: toP(caminho.map(q => [q.x, q.y, zTronco])), color: col, width: 3 });
+    });
+    // tronco final: anel → casa de máquinas
+    const qc = pontoNaFracao(ring, tCasa);
+    pipes.push({ points: toP([[qc.x, qc.y, zTronco], [cmX0, cmMidY, zTronco]]), color: col, width: 3 });
+    sysIdx++;
+  });
+
+  const cmPos3 = i2t(cmX0 + cmWw / 2, cmMidY, 0, L, W);
+  return { devices, pipes, cmPos3, cmWw, cmWd };
+}
+
 // ── Main scene ───────────────────────────────────────────────────────────────
-function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide, devHeights, stamp="", spaType={}, extras=[] }) {
-  const L = parseFloat(pool?.length) || 6;
-  const W = parseFloat(pool?.width)  || 3;
+function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide, devHeights, stamp="", spaType={}, extras=[], desenho=null }) {
   const D = parseFloat(pool?.depth)  || 1.4;
+  // Desenho livre: contorno efetivo + regiões normalizados na origem; L/W = bounding box
+  const dn = useMemo(() => {
+    if (!desenho || !desenho.vertices || desenho.vertices.length < 3) return null;
+    const ef0 = contornoEfetivo(desenho);
+    if (ef0.length < 3) return null;
+    const xs = ef0.map(p => p.x), ys = ef0.map(p => p.y);
+    const mnX = Math.min(...xs), mnY = Math.min(...ys);
+    const norm = p => ({ x: p.x - mnX, y: p.y - mnY });
+    return {
+      efetivo: ef0.map(norm),
+      regioes: regioesProfundidade(desenho, D).filter(r => r.profundidadeM !== null).map(r => ({ ...r, poligono: r.poligono.map(norm) })),
+      L: Math.max(0.5, Math.max(...xs) - mnX),
+      W: Math.max(0.5, Math.max(...ys) - mnY),
+    };
+  }, [desenho, D]);
+  const L = dn ? dn.L : (parseFloat(pool?.length) || 6);
+  const W = dn ? dn.W : (parseFloat(pool?.width)  || 3);
 
   const allPos = autoPositions
     ? { ...autoPositions(L, W, disps, invertSide, poolFmt), ...(customPos || {}) }
@@ -391,7 +580,9 @@ function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide
     if (!p.special) active[k] = p;
   });
 
-  const { devices, pipes, cmPos3, cmWw, cmWd } = buildScene(active, L, W, D, invertSide, customPos, devHeights);
+  const { devices, pipes, cmPos3, cmWw, cmWd } = dn
+    ? buildSceneLivre(active, dn.efetivo, L, W, D, customPos, devHeights)
+    : buildScene(active, L, W, D, invertSide, customPos, devHeights);
 
   return (
     <>
@@ -401,18 +592,24 @@ function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide
       <pointLight position={[0, D*0.6, 0]} intensity={0.4} color={STAMP_COLOR[stamp]||"#38bdf8"} />
 
       <Ground L={L} W={W} />
-      <PoolWalls L={L} W={W} D={D} poolFmt={poolFmt} />
-      {SWATCH_SLUG[stamp] && <VinylInterior L={L} W={W} D={D} texUrl={`/swatches/${SWATCH_SLUG[stamp]}.png`} poolFmt={poolFmt} swatchM={swatchSizeMeters(getEstampaByNome(stamp))} />}
-      <Water L={L} W={W} D={D} poolFmt={poolFmt} color={STAMP_COLOR[stamp]||"#38bdf8"} />
+      {dn?<>
+        <FreeformStructure efetivo={dn.efetivo} L={L} W={W} D={D} />
+        <FreeformInterior efetivo={dn.efetivo} regioes={dn.regioes} L={L} W={W} D={D} texUrl={SWATCH_SLUG[stamp]?`/swatches/${SWATCH_SLUG[stamp]}.png`:null} swatchM={SWATCH_SLUG[stamp]?swatchSizeMeters(getEstampaByNome(stamp)):0.5} />
+        <FreeformWater efetivo={dn.efetivo} L={L} W={W} D={D} color={STAMP_COLOR[stamp]||"#38bdf8"} />
+      </>:<>
+        <PoolWalls L={L} W={W} D={D} poolFmt={poolFmt} />
+        {SWATCH_SLUG[stamp] && <VinylInterior L={L} W={W} D={D} texUrl={`/swatches/${SWATCH_SLUG[stamp]}.png`} poolFmt={poolFmt} swatchM={swatchSizeMeters(getEstampaByNome(stamp))} />}
+        <Water L={L} W={W} D={D} poolFmt={poolFmt} color={STAMP_COLOR[stamp]||"#38bdf8"} />
+      </>}
 
       {/* Prainha — plataforma rasa */}
-      {poolFmt==="Com prainha"&&<mesh position={[-L/2+L*0.125, D*0.2, 0]}>
+      {!dn&&poolFmt==="Com prainha"&&<mesh position={[-L/2+L*0.125, D*0.2, 0]}>
         <boxGeometry args={[L*0.25, D*0.4, W-0.1]} />
         <meshStandardMaterial color="#7dd3fc" roughness={0.8} transparent opacity={0.6} />
       </mesh>}
 
       {/* Spa do formato "Com Spa" */}
-      {poolFmt==="Com Spa"&&spaType.quadrado&&(()=>{
+      {!dn&&poolFmt==="Com Spa"&&spaType.quadrado&&(()=>{
         const sc=parseFloat(spaType.qComp)||2,sl=parseFloat(spaType.qLarg)||2,sp=parseFloat(spaType.qProf)||D;
         const c=spaType.qCanto||"bottom-right";
         const sx=(c.includes("left")?(-L/2+sc/2):(L/2-sc/2));
@@ -422,7 +619,7 @@ function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide
           <mesh position={[sx,-0.07,sz]}><boxGeometry args={[sc,0.14,sl]}/><meshStandardMaterial color="#64748b" roughness={0.95}/></mesh>
         </group>
       })()}
-      {poolFmt==="Com Spa"&&spaType.redondo&&(()=>{
+      {!dn&&poolFmt==="Com Spa"&&spaType.redondo&&(()=>{
         const isRSq=spaType.rFormato==="quadrado";
         const rc=isRSq?(parseFloat(spaType.rComp)||2):(parseFloat(spaType.rDiam)||2);
         const rl=isRSq?(parseFloat(spaType.rLarg)||2):rc;
@@ -440,8 +637,8 @@ function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide
         </group>
       })()}
 
-      {/* Extras (prainha, banco, degrau) */}
-      {extras.map((e,i)=>{
+      {/* Extras (prainha, banco, degrau) — no desenho livre já fazem parte da forma */}
+      {!dn&&extras.map((e,i)=>{
         const pf=v=>parseFloat(String(v||"").replace(",","."))||0;
         const el=pf(e.l),ew=pf(e.w),eh=pf(e.h);
         if(el<=0||ew<=0)return null;
@@ -498,7 +695,7 @@ function Legend({ disps }) {
 }
 
 // ── Export ───────────────────────────────────────────────────────────────────
-export default function Pool3DView({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide, dark, devHeights, stamp="", spaType={}, extras=[] }) {
+export default function Pool3DView({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide, dark, devHeights, stamp="", spaType={}, extras=[], desenho=null }) {
   const L  = parseFloat(pool?.length) || 6;
   const D  = parseFloat(pool?.depth)  || 1.4;
   const bg = dark ? '#0f172a' : '#bfdbfe';
@@ -520,6 +717,7 @@ export default function Pool3DView({ pool, spa, disps, customPos, poolFmt, autoP
             stamp={stamp}
             spaType={spaType}
             extras={extras}
+            desenho={desenho}
           />
         </Suspense>
       </Canvas>
