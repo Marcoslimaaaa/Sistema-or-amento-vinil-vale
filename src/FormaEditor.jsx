@@ -95,7 +95,8 @@ export default function FormaEditor({ desenho, profundidade, onChange, t, dark }
     else {
       const alvo = { x: m.x + arrasto.dx, y: m.y + arrasto.dy };
       const f = formas.find(x => x.id === arrasto.id);
-      if (snapParede && f && f.operacao !== "subtracao") atualizarForma(arrasto.id, encaixarNaParede(vertices, f, alvo));
+      // Prainha se ajusta às paredes por recorte (livre) — imã só p/ escada/spa (localizados)
+      if (snapParede && f && (f.tipo === "escada" || f.tipo === "spa")) atualizarForma(arrasto.id, encaixarNaParede(vertices, f, alvo));
       else atualizarForma(arrasto.id, { cxM: Math.round(alvo.x * 100) / 100, cyM: Math.round(alvo.y * 100) / 100 });
     }
   };
@@ -244,13 +245,13 @@ export default function FormaEditor({ desenho, profundidade, onChange, t, dark }
           {[["prainha", "+ Prainha"], ["escada", "+ Escada"], ["spa", "+ Spa"], ["recorte", "− Recorte"]].map(([tp, lb]) => (
             <button key={tp} onClick={() => adicionarForma(tp)} style={{ padding: "5px 10px", borderRadius: "7px", border: `1.5px solid ${tp === "recorte" ? "#ef4444" : "#16a34a"}44`, background: "transparent", color: tp === "recorte" ? "#ef4444" : "#16a34a", fontSize: "10px", fontWeight: "700", cursor: "pointer" }}>{lb}</button>
           ))}
-          <label title="Ao arrastar, a forma gira para o ângulo da parede mais próxima e encosta rente (por dentro ou por fora)" style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", fontWeight: "600", color: t.textSec, cursor: "pointer", marginLeft: "auto" }}>
-            <input type="checkbox" checked={snapParede} onChange={e => setSnapParede(e.target.checked)} /> 🧲 Encaixar na parede
+          <label title="Escada/spa: ao arrastar, giram para o ângulo da parede mais próxima e encostam rente. Prainha se ajusta às paredes automaticamente por recorte." style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", fontWeight: "600", color: t.textSec, cursor: "pointer", marginLeft: "auto" }}>
+            <input type="checkbox" checked={snapParede} onChange={e => setSnapParede(e.target.checked)} /> 🧲 Encaixar escada/spa
           </label>
         </div>
         {formas.length === 0 ? (
           <div style={{ fontSize: "9.5px", color: t.textMuted, marginTop: "6px" }}>
-            Prainha, escada e spa somam à piscina (com profundidade própria); recorte tira um pedaço.
+            Prainha: desenhe maior que o canto e jogue para dentro — ela se ajusta sozinha a todas as paredes (comprimento, largura e diagonal). Escada/spa somam à piscina; recorte tira um pedaço.
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px" }}>
