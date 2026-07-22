@@ -83,7 +83,12 @@ export function profundidadeForma(f, profCorpo) {
   return Math.min(Math.max(bruta, 0.05), profCorpo || bruta);
 }
 
-/** Contorno EFETIVO: base ⊕ formas (união/subtração). Sempre o maior corpo. */
+/**
+ * Contorno EFETIVO: base ⊕ formas (união/subtração). Sempre o maior corpo.
+ * Forma de UNIÃO com o centro DENTRO do corpo é região interna rasa (prainha
+ * dentro da piscina): não altera o contorno — nada "sobra para fora" mesmo que
+ * o retângulo cruze a parede; a região é recortada pelas paredes.
+ */
 export function contornoEfetivo(desenho) {
   const base = desenho?.vertices || [];
   if (base.length < 3) return base;
@@ -92,6 +97,7 @@ export function contornoEfetivo(desenho) {
   for (const f of formas) {
     if (f.larguraM <= 0 || f.comprimentoM <= 0) continue;
     const rect = retanguloForma(f);
+    if (f.operacao !== "subtracao" && pontoDentro({ x: f.cxM, y: f.cyM }, atual)) continue;
     const res = f.operacao === "subtracao" ? diferencaPoligonos(atual, rect) : uniaoPoligonos(atual, rect);
     const maior = maiorPoligono(res);
     if (maior.length >= 3) atual = maior;
@@ -147,9 +153,12 @@ export function regioesProfundidade(desenho, profCorpo) {
       removerDeTodas(rect);
       continue;
     }
-    const uniao = uniaoPoligonos(efetivo, rect);
-    if (uniao.length !== 1) continue; // forma solta não entra
-    efetivo = uniao[0];
+    const dentroDoCorpo = pontoDentro({ x: f.cxM, y: f.cyM }, efetivo);
+    if (!dentroDoCorpo) {
+      const uniao = uniaoPoligonos(efetivo, rect);
+      if (uniao.length !== 1) continue; // forma solta não entra
+      efetivo = uniao[0];
+    } // dentro do corpo: região interna — contorno intocado, recorte no final resolve
     removerDeTodas(rect);
     const prof = profundidadeForma(f, profCorpo);
     if (f.tipo === "escada") {

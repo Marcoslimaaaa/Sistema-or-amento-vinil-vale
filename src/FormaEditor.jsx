@@ -10,12 +10,56 @@ import {
   contornoEfetivo,
   retanguloForma,
   calcDesenho,
+  pontoDentro,
   PROFUNDIDADE_FORMA_DEFAULT,
 } from "./motor/formas.js";
 
 const LARGURA = 640, ALTURA = 430, MARGEM = 56, SNAP_M = 0.1;
 const ROTULO = { prainha: "Prainha", escada: "Escada", spa: "Spa", recorte: "Recorte" };
 let contadorForma = 0;
+
+/** Ponto mais próximo de `c` sobre as arestas do polígono + normal EXTERNA da aresta. */
+function paredeMaisProxima(poly, c) {
+  let melhor = null;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-9) continue;
+    const t = Math.max(0, Math.min(1, ((c.x - a.x) * dx + (c.y - a.y) * dy) / (len * len)));
+    const q = { x: a.x + dx * t, y: a.y + dy * t };
+    const d = Math.hypot(q.x - c.x, q.y - c.y);
+    if (!melhor || d < melhor.dist) {
+      // normal unitária da aresta; o teste de dentro/fora decide o lado externo
+      let nx = dy / len, ny = -dx / len;
+      const teste = { x: q.x + nx * 0.06, y: q.y + ny * 0.06 };
+      if (pontoDentro(teste, poly)) { nx = -nx; ny = -ny; }
+      melhor = { ponto: q, nx, ny, dist: d };
+    }
+  }
+  return melhor;
+}
+
+/**
+ * Imã de parede: perto de uma aresta, a forma gira para o ângulo da parede e
+ * encosta RENTE — por dentro (prainha/escada/região interna) se o centro está
+ * dentro da piscina, por fora (spa anexo) se está fora. Longe da parede, fica livre.
+ */
+function encaixarNaParede(poly, f, c) {
+  const p = paredeMaisProxima(poly, c);
+  const alcance = Math.max(1, f.comprimentoM);
+  if (!p || p.dist > alcance) return { cxM: c.x, cyM: c.y };
+  // rotação que alinha o eixo local +Y (comprimento) com a normal externa da parede
+  const rot = Math.round((Math.atan2(-p.nx, p.ny) * 180) / Math.PI * 2) / 2;
+  const dentro = pontoDentro(c, poly);
+  const meio = f.comprimentoM / 2;
+  const lado = dentro ? -1 : 1; // dentro: recua para o interior; fora: apoia no exterior
+  return {
+    cxM: Math.round((p.ponto.x + p.nx * meio * lado) * 100) / 100,
+    cyM: Math.round((p.ponto.y + p.ny * meio * lado) * 100) / 100,
+    rotacaoGraus: rot,
+  };
+}
 
 const numBR = (v, casas = 2) => (v ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: casas });
 
@@ -24,6 +68,7 @@ export default function FormaEditor({ desenho, profundidade, onChange, t, dark }
   const formas = desenho?.formas || [];
   const svgRef = useRef(null);
   const [arrasto, setArrasto] = useState(null);
+  const [snapParede, setSnapParede] = useState(true);
 
   // enquadramento: piscina + formas com margem
   const cantosFormas = formas.flatMap(f => retanguloForma(f));
@@ -47,7 +92,12 @@ export default function FormaEditor({ desenho, profundidade, onChange, t, dark }
     if (!arrasto) return;
     const m = eventoParaM(e);
     if (arrasto.tipo === "vertice") onChange({ ...desenho, vertices: vertices.map((v, j) => (j === arrasto.indice ? m : v)) });
-    else atualizarForma(arrasto.id, { cxM: Math.round((m.x + arrasto.dx) * 100) / 100, cyM: Math.round((m.y + arrasto.dy) * 100) / 100 });
+    else {
+      const alvo = { x: m.x + arrasto.dx, y: m.y + arrasto.dy };
+      const f = formas.find(x => x.id === arrasto.id);
+      if (snapParede && f && f.operacao !== "subtracao") atualizarForma(arrasto.id, encaixarNaParede(vertices, f, alvo));
+      else atualizarForma(arrasto.id, { cxM: Math.round(alvo.x * 100) / 100, cyM: Math.round(alvo.y * 100) / 100 });
+    }
   };
 
   const atualizarForma = (id, patch) => onChange({ ...desenho, formas: formas.map(f => (f.id === id ? { ...f, ...patch } : f)) });
@@ -194,6 +244,9 @@ export default function FormaEditor({ desenho, profundidade, onChange, t, dark }
           {[["prainha", "+ Prainha"], ["escada", "+ Escada"], ["spa", "+ Spa"], ["recorte", "− Recorte"]].map(([tp, lb]) => (
             <button key={tp} onClick={() => adicionarForma(tp)} style={{ padding: "5px 10px", borderRadius: "7px", border: `1.5px solid ${tp === "recorte" ? "#ef4444" : "#16a34a"}44`, background: "transparent", color: tp === "recorte" ? "#ef4444" : "#16a34a", fontSize: "10px", fontWeight: "700", cursor: "pointer" }}>{lb}</button>
           ))}
+          <label title="Ao arrastar, a forma gira para o ângulo da parede mais próxima e encosta rente (por dentro ou por fora)" style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", fontWeight: "600", color: t.textSec, cursor: "pointer", marginLeft: "auto" }}>
+            <input type="checkbox" checked={snapParede} onChange={e => setSnapParede(e.target.checked)} /> 🧲 Encaixar na parede
+          </label>
         </div>
         {formas.length === 0 ? (
           <div style={{ fontSize: "9.5px", color: t.textMuted, marginTop: "6px" }}>
