@@ -165,7 +165,16 @@ const PIPE=[
 const CO={name:"Vinil Vale Revestimentos e Capas para Piscinas Ltda",short:"Vinil Vale",addr:"Rodovia SP 139, KM 3, s/n, Jardim Hatori II, Registro-SP",cnpj:"42.749.688/0001-57",ie:"574.128.060.119",ph1:"(13) 99730-5949",ph2:"(13) 99678-1966",email:"vinilvale@hotmail.com",insta:"@vinilvaleoficial"};
 const SVC=[{id:"construcao",label:"Construção de Piscina",icon:"🏗️",lucide:Hammer},{id:"revestimento",label:"Revestimento em Vinil",icon:"🎨",lucide:Paintbrush},{id:"reforma",label:"Reforma de Piscina",icon:"🔧",lucide:Wrench}];
 const PFMT=["Retangular","Retangular irregular","Formato L","Oval","Feijão","Oitavada","Com prainha","Com Spa","Personalizado"];
-const VOPTS=[{t:"0,7mm",w:3},{t:"0,8mm",w:4}];
+// t=espessura (chave/valor salvo), w=anos de garantia do vinil, nome=material,
+// resist=tagline técnica, armada=manta armada (linha de alto padrão, sem estoque próprio)
+const VOPTS=[
+  {t:"0,7mm",w:3,nome:"ACQUALINER 0,7mm",resist:"Resist. até 32°C"},
+  {t:"0,8mm",w:4,nome:"ACQUALINER 0,8mm",resist:"Resist. até 32°C"},
+  {t:"1,5mm",w:10,nome:"Manta Armada 1,5mm",resist:"Alto padrão · reforçada com trama de poliéster",armada:true},
+];
+const vinilOpt=t=>VOPTS.find(v=>v.t===t)||VOPTS[0];
+const vinilNome=t=>vinilOpt(t).nome; // ex.: "Manta Armada 1,5mm"
+const vinilDesc=t=>{const o=vinilOpt(t);return o.nome+(o.resist?" · "+o.resist:"");};
 const STAMPS=[{c:"Marmo Carrara",i:["Marmo Carrara Azul","Marmo Carrara Verde","Marmo Carrara Cinza"]},{c:"Travertino",i:["Travertino","Travertino Gris","Travertino Verde","Travertino Azul"]},{c:"Bali",i:["Bali Hijau","Bali Blue"]},{c:"Malibu",i:["Malibu Azul","Malibu Verde"]},{c:"Porto Vecchio",i:["Porto Vecchio Azul","Porto Vecchio Verde"]},{c:"Batu",i:["Batu Blue","Batu Vert"]},{c:"Sukabumi",i:["Sukabumi Azul","Sukabumi Verde"]},{c:"Petra Natural",i:["Petra Natural Azul","Petra Natural Verde"]},{c:"Montblanc",i:["Montblanc","Montblanc Block"]},{c:"Liso",i:["Mid Blue Liso"]},{c:"Aquática",i:["Aquática Azul"]},{c:"Santorini",i:["Santorini"]},{c:"Punta Cana",i:["Punta Cana"]}];
 const ALLST=STAMPS.flatMap(s=>s.i);
 const SWATCH_SLUG={"Marmo Carrara Azul":"marmo-carrara-azul","Marmo Carrara Verde":"marmo-carrara-verde","Marmo Carrara Cinza":"marmo-carrara-cinza","Travertino":"travertino","Travertino Gris":"travertino-gris","Travertino Verde":"travertino-verde","Travertino Azul":"travertino-azul","Bali Hijau":"bali-hijau","Bali Blue":"bali-blue","Santorini":"santorini","Malibu Azul":"malibu-azul","Malibu Verde":"malibu-verde","Punta Cana":"punta-cana","Porto Vecchio Azul":"porto-vecchio-azul","Porto Vecchio Verde":"porto-vecchio-verde","Batu Blue":"batu-blue","Batu Vert":"batu-vert","Sukabumi Azul":"sukabumi-azul","Sukabumi Verde":"sukabumi-verde","Petra Natural Azul":"petra-natural-azul","Petra Natural Verde":"petra-natural-verde","Montblanc":"montblanc","Montblanc Block":"montblanc-block","Mid Blue Liso":"mid-blue-liso","Aquática Azul":"aquatica-azul"};
@@ -1183,7 +1192,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
             </div>
             <div style={{display:"flex",justifyContent:"center",gap:"8px",flexWrap:"wrap",fontSize:"8.5px"}}>
               <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Formato:</b> {d.poolFmt}{d.poolFmt==="Com Spa"&&d.spaType?` (${[d.spaType.quadrado&&"Quadrado",d.spaType.redondo&&"Redondo"].filter(Boolean).join(" + ")||"—"})`:""}</span>
-              <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Vinil:</b> ACQUALINER {d.vinilT} · Resist. até 32°C</span>
+              <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Vinil:</b> {vinilDesc(d.vinilT)}</span>
               <span style={{background:goldL,padding:"2px 7px",borderRadius:"10px",border:`1px solid ${gold}`}}><b>Estampa:</b> {d.stamp||"À escolha"}</span>
               <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Chão:</b> {ar.chao}m² <b>Paredes:</b> {ar.par}m²</span>
               {d.execDays&&<span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Prazo:</b> {d.execDays} dias úteis{d.svcType==="revestimento"?" após a medição detalhada":""}</span>}
@@ -1193,7 +1202,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
               <div>
                 <div style={{fontSize:"6.5px",textTransform:"uppercase",letterSpacing:"1.5px",color:"#999",fontWeight:"700"}}>Acabamento escolhido</div>
                 <div style={{fontSize:"12px",fontWeight:"800",color:navy,lineHeight:1.3}}>{d.stamp}</div>
-                <div style={{fontSize:"8px",color:"#666"}}>ACQUALINER {d.vinilT} · vinil de alta resistência</div>
+                <div style={{fontSize:"8px",color:"#666"}}>{vinilDesc(d.vinilT)}</div>
               </div>
             </div>:null})()}
             {spa.on&&<div style={{marginTop:"6px",background:goldL,borderRadius:"6px",padding:"6px 8px",border:`1px solid ${gold}44`,fontSize:"8.5px"}}><b style={{color:navy}}>🌊 SPA Externo:</b> {spa.length}×{spa.width}×{spa.depth}m — Chão: {ar.sChao}m² | Paredes: {ar.sPar}m²</div>}
@@ -1956,7 +1965,8 @@ export default function App(){
       const nm=i.n||"";
       if(nm.includes("Vinil ACQUALINER")){
         const stampClean=stamp.replace(/\s+/g," ").trim();
-        const vinilMatch=CAT.find(p=>p.c==="Vinil 0,"+thick+"mm"&&p.n.toUpperCase().includes(stampClean.toUpperCase()));
+        // Manta armada 1,5mm não tem estoque próprio no catálogo — não desconta vinil 0,7/0,8
+        const vinilMatch=vinilOpt(vinilT).armada?null:CAT.find(p=>p.c==="Vinil 0,"+thick+"mm"&&p.n.toUpperCase().includes(stampClean.toUpperCase()));
         if(vinilMatch){
           const m2needed=Math.ceil(areaTotal*1.1);
           const m2Aberto=stk[vinilMatch.id]?.m2Aberto||0;
@@ -2027,7 +2037,7 @@ export default function App(){
   const upag=(f,v)=>setCE(p=>({...p,pag:{...(p.pag||PAG_DEF),[f]:v}}));
   // Valor do contrato editável ("R$ 1.234,56") → número
   const ceVal=()=>{const n=parseFloat(String(ce.valor||"").replace(/[^\d,.\-]/g,"").replace(/\./g,"").replace(",","."));return isNaN(n)?0:n};
-  const buildCE=(q)=>{const d=q.data;const inc=(d.items||[]).filter(i=>i.on);const p=d.pool||{};const pay2=d.pay||{};const tot=parseFloat(q.tot)||0;const svcLabel=SVC.find(s=>s.id===d.svcType)?.label||"Serviço";const vt=d.vinilT||"0,7mm";const vo=VOPTS.find(o=>o.t===vt);const vinilAnos=vo?vo.w:3;const guarAdj=(d.guar||[]).filter(g=>g.on).map(g=>{const y=g.it==="Vinil (fabricação)"?vinilAnos:g.it==="Mão de obra/Soldas"?3:g.y;return y+" anos para "+g.it;}).join(", ");return{servicos:inc.map(it=>it.n+(it.q>1?" ("+it.q+"x)":"")+(it.nt?" - "+it.nt:"")),obs:(d.ci||[]).join(", ")||"Materiais de alvenaria e hidráulico, pedra de borda, água para enchimento, remoção de entulho",garantias:guarAdj,valor:fmt(tot),prazo:d.execDays||"20",data:new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"}),novoServico:"",tipoServico:svcLabel,piscina:p.length+"x"+p.width+"x"+p.depth+"m"+(d.poolFmt?" - "+d.poolFmt:""),vinil:"ACQUALINER "+vt,estampa:d.stamp||"",propNum:d.propNum||"",bottomHtml:undefined,pag:{...PAG_DEF,pixD:pay2.pixD??5,entPct:pay2.entPct??50,balPct:pay2.balPct??50,noFee:pay2.noFee||5,wFee:pay2.wFee||12,btcD:pay2.btcD??15}};};
+  const buildCE=(q)=>{const d=q.data;const inc=(d.items||[]).filter(i=>i.on);const p=d.pool||{};const pay2=d.pay||{};const tot=parseFloat(q.tot)||0;const svcLabel=SVC.find(s=>s.id===d.svcType)?.label||"Serviço";const vt=d.vinilT||"0,7mm";const vo=VOPTS.find(o=>o.t===vt);const vinilAnos=vo?vo.w:3;const guarAdj=(d.guar||[]).filter(g=>g.on).map(g=>{const y=g.it==="Vinil (fabricação)"?vinilAnos:g.it==="Mão de obra/Soldas"?3:g.y;return y+" anos para "+g.it;}).join(", ");return{servicos:inc.map(it=>it.n+(it.q>1?" ("+it.q+"x)":"")+(it.nt?" - "+it.nt:"")),obs:(d.ci||[]).join(", ")||"Materiais de alvenaria e hidráulico, pedra de borda, água para enchimento, remoção de entulho",garantias:guarAdj,valor:fmt(tot),prazo:d.execDays||"20",data:new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"}),novoServico:"",tipoServico:svcLabel,piscina:p.length+"x"+p.width+"x"+p.depth+"m"+(d.poolFmt?" - "+d.poolFmt:""),vinil:vinilNome(vt),estampa:d.stamp||"",propNum:d.propNum||"",bottomHtml:undefined,pag:{...PAG_DEF,pixD:pay2.pixD??5,entPct:pay2.entPct??50,balPct:pay2.balPct??50,noFee:pay2.noFee||5,wFee:pay2.wFee||12,btcD:pay2.btcD??15}};};
   // force=true ignora o contrato salvo e refaz a partir do orçamento
   const initCE=(q,force)=>{const base=buildCE(q);if(!force&&q.contract){setCE({...base,...q.contract,novoServico:"",pag:{...base.pag,...(q.contract.pag||{})}})}else{setCE(base)}};
   // Auto-init contract when switching to contratos tab
@@ -2121,7 +2131,7 @@ export default function App(){
 <div class="hdr"><h1>VINIL VALE</h1><div style="font-size:11px;margin-top:4px">Revestimentos e Capas para Piscinas</div><div style="font-size:10px;opacity:.7;margin-top:2px">CNPJ: ${escHtml(CO.cnpj)} · ${escHtml(CO.ph1)} / ${escHtml(CO.ph2)}</div></div>
 <div style="font-size:11px;text-align:right;color:#666;margin-bottom:8px">Proposta nº ${escHtml(d?.propNum||"—")} · Válido por 15 dias</div>
 <div class="info"><b>Cliente:</b> ${escHtml(c.name||"—")}<br><b>Tel:</b> ${escHtml(c.phone||"—")} · <b>Email:</b> ${escHtml(c.email||"—")}<br><b>End:</b> ${escHtml(c.address||"—")} – ${escHtml(c.city||"—")}</div>
-<div class="info"><b>Piscina:</b> ${escHtml(p.length||0)}×${escHtml(p.width||0)}×${escHtml(p.depth||0)}m · ${escHtml(d?.poolFmt||"")}<br><b>Vinil:</b> ACQUALINER ${escHtml(d?.vinilT||"")} · Resist. até 32°C${d?.stamp?` · <b>Estampa:</b> ${escHtml(d.stamp)}`:""}</div>
+<div class="info"><b>Piscina:</b> ${escHtml(p.length||0)}×${escHtml(p.width||0)}×${escHtml(p.depth||0)}m · ${escHtml(d?.poolFmt||"")}<br><b>Vinil:</b> ${escHtml(vinilDesc(d?.vinilT))}${d?.stamp?` · <b>Estampa:</b> ${escHtml(d.stamp)}`:""}</div>
 <div style="font-size:14px;font-weight:700;margin:14px 0 8px">Serviços Inclusos</div>
 <table class="tbl"><tr><th>Item</th><th>Obs</th><th>Qtd</th></tr>${inc.map(i=>`<tr><td><b>${escHtml(i.n)}</b></td><td style="color:#666;font-style:italic">${escHtml(i.nt||"")}</td><td>${i.q>1?i.q+"x":"1"}</td></tr>`).join("")}</table>
 <div class="tot">${fmt(tot)}</div>
@@ -2354,7 +2364,7 @@ export default function App(){
             </div>
             {!spaType.quadrado&&!spaType.redondo&&<div style={{fontSize:"9px",color:"#dc2626",marginTop:"6px"}}>⚠ Selecione pelo menos um tipo de spa</div>}
           </div>}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={v=>{setVT(v);const vo=VOPTS.find(o=>o.t===v);if(vo)setG(prev=>prev.map(g=>g.it==="Vinil (fabricação)"?{...g,y:vo.w}:g));}} options={VOPTS.map(v=>({value:v.t,label:`${v.t} (${v.w}a)`}))} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={v=>{setVT(v);const vo=VOPTS.find(o=>o.t===v);if(vo)setG(prev=>prev.map(g=>g.it==="Vinil (fabricação)"?{...g,y:vo.w}:g));}} options={VOPTS.map(v=>({value:v.t,label:`${v.nome} (${v.w}a)`}))} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
           <div style={{marginTop:"10px"}}><CatalogoPicker value={stamp} onChange={setSt} t={t} dark={dark}/></div>
 
           {/* MODO PAREDES */}
