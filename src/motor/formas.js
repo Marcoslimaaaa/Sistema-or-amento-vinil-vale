@@ -225,6 +225,30 @@ export function offsetPoligono(p, dist) {
   return out;
 }
 
+/**
+ * Ortogonaliza um caminho (padrão de prancha técnica/Revit): todo segmento vira
+ * horizontal OU vertical. Segmentos quase-retos encaixam no eixo dominante;
+ * diagonais reais viram um "L" (cotovelo 90°). `tol` na mesma unidade dos pontos
+ * (px aqui). O primeiro ponto é preservado.
+ */
+export function ortogonalizar(caminho, tol = 4) {
+  if (caminho.length < 2) return caminho;
+  const out = [{ ...caminho[0] }];
+  for (let i = 1; i < caminho.length; i++) {
+    const cur = out[out.length - 1];
+    const p = caminho[i];
+    const dx = p.x - cur.x, dy = p.y - cur.y;
+    if (Math.abs(dx) <= tol || Math.abs(dy) <= tol) {
+      if (Math.abs(dx) >= Math.abs(dy)) out.push({ x: p.x, y: cur.y });
+      else out.push({ x: cur.x, y: p.y });
+    } else {
+      out.push({ x: p.x, y: cur.y });
+      out.push({ x: p.x, y: p.y });
+    }
+  }
+  return out.filter((q, i) => i === 0 || Math.hypot(q.x - out[i - 1].x, q.y - out[i - 1].y) > 1e-6);
+}
+
 /** Ponto sobre o contorno na fração t ∈ [0,1) do perímetro. */
 export function pontoNaFracao(p, t) {
   const total = perimetroPoligono(p);

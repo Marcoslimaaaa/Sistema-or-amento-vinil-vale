@@ -5,7 +5,7 @@ import { User, Waves, ShoppingCart, ShieldCheck, Wallet, Ruler, FolderOpen, Tren
 import { getEstampaByNome } from "./data/estampas.js";
 import FormaEditor, { MiniForma } from "./FormaEditor.jsx";
 import { MODELOS } from "./data/modelos.js";
-import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor } from "./motor/formas.js";
+import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar } from "./motor/formas.js";
 // jspdf/html2canvas (~200KB gz) só carregam quando alguém gera PDF/imagem
 const loadPdfLibs=async()=>{const[h,j]=await Promise.all([import("html2canvas"),import("jspdf")]);return{html2canvas:h.default,jsPDF:j.jsPDF};};
 const Pool3DView = lazy(() => import('./Pool3DView'));
@@ -299,116 +299,65 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
       <rect x={cmX} y={cmY} width={cmW+8} height={cmH} rx="2" fill={dark?"#1e293b":"#f1f5f9"} stroke="#475569" strokeWidth="1.5" style={{cursor:"grab"}} onMouseDown={e=>{e.preventDefault();setDragging("casa")}} onTouchStart={e=>{e.preventDefault();setDragging("casa")}}/>
       <text x={cmX+(cmW+8)/2} y={cmY+cmH/2} textAnchor="middle" fontSize="5" fontWeight="700" fill="#475569">CM</text>
       {(() => {
+        // ROTEAMENTO INTELIGENTE UNIFICADO (padrão do motor da hidráulica):
+        // todo formato roteia pelo CONTORNO real da piscina — cada sistema corre
+        // num anel externo próprio (bandas paralelas, não se cruzam), cada bico
+        // entra pelo ponto mais próximo (caminho mais curto), um RAMAL COLETOR
+        // único interliga todos os bicos + a casa pelos menores arcos, e um tronco
+        // ortogonal fecha na casa de máquinas. Sem casos hardcoded → nunca trava.
         const pipes=[];
         const systems=SYSTEMS;
-        const cmMid=cmY+cmH/2;
-        let sysIdx=0;
         const sysData={};
-        const totalSys=systems.filter(s=>Object.entries(positions).some(([k,p])=>p.type===s&&!p.special&&autoPositions(L,W,disps,invertSide,poolFmt)[k])).length;
-        // Desenho livre: tubulação abraça o CONTORNO REAL — cada sistema corre num
-        // anel externo próprio (offset crescente): stub curto de cada dispositivo
-        // até o anel, RAMAL COLETOR único interligando todos e UM tronco até a
-        // casa de máquinas (sistemas interligados, sem tubo duplicado)
-        if(efMap){
-          const efPx=efPoly.map(p=>efMap(p));
-          const somaLen=arr=>{let s=0;for(let i2=1;i2<arr.length;i2++)s+=Math.hypot(arr[i2].x-arr[i2-1].x,arr[i2].y-arr[i2-1].y);return s};
-          systems.forEach(sysType=>{
-            const devs=Object.entries(positions).filter(([k,p])=>p.type===sysType&&!p.special&&autoPositions(L,W,disps,invertSide,poolFmt)[k]);
-            if(devs.length===0)return;
-            const col=tubeColors[sysType]||"#999";
-            const arriveY=cmY+8+sysIdx*((cmH-16)/Math.max(totalSys-1,1));
-            sysData[sysType]={devs,col,arriveY,lane:0,curvas:0,tes:0,tuboM:0};
-            const sd=sysData[sysType];
-            const ring=offsetPoligono(efPx,5+sysIdx*4);
-            const casaPt={x:cmX,y:arriveY};
-            const tCasa=fracaoMaisProxima(ring,casaPt);
-            // stubs: cada dispositivo entra no anel no ponto mais próximo
-            const frDevs=devs.map(([k,p2])=>{
-              const cx2=ox+p2.x*pw,cy2=oy+p2.y*ph;
-              const tDev=fracaoMaisProxima(ring,{x:cx2,y:cy2});
-              const q=pontoNaFracao(ring,tDev);
-              pipes.push(<line key={"st_"+k} x1={cx2} y1={cy2} x2={q.x} y2={q.y} stroke={col} strokeWidth="2" strokeLinecap="round" opacity="0.6"/>);
-              sd.tuboM+=Math.hypot(q.x-cx2,q.y-cy2)/efEsc;
-              return tDev;
-            });
-            // ramal coletor: trechos mínimos do anel interligando dispositivos + casa
-            trechosColetor([...frDevs,tCasa]).forEach(([a,b],ti)=>{
-              const caminho=caminhoNoContorno(ring,a,b);
-              pipes.push(<path key={"tr_"+sysType+ti} d={caminho.map((q,i2)=>(i2?"L":"M")+q.x.toFixed(1)+","+q.y.toFixed(1)).join(" ")} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>);
-              sd.tuboM+=somaLen(caminho)/efEsc;
-            });
-            // tronco final: anel → casa de máquinas
-            const qc=pontoNaFracao(ring,tCasa);
-            pipes.push(<path key={"cm_tr_"+sysType} d={"M"+qc.x.toFixed(1)+","+qc.y.toFixed(1)+" L"+cmX+","+arriveY} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" opacity="0.7"/>);
-            sd.tuboM+=Math.hypot(cmX-qc.x,arriveY-qc.y)/efEsc;
-            sd.tes+=Math.max(0,devs.length-1);
-            sd.curvas+=2+devs.length;
-            pipes.push(<rect key={"cm_"+sysType} x={cmX-1} y={arriveY-3} width="6" height="6" rx="1" fill={col} opacity="0.9"/>);
-            sysIdx++;
-          });
-          window._sysData=sysData;
-          return pipes;
-        }
+        let sysIdx=0;
+        const autoP=autoPositions(L,W,disps,invertSide,poolFmt);
+        const totalSys=systems.filter(s=>Object.entries(positions).some(([k,p])=>p.type===s&&!p.special&&autoP[k])).length;
+        // Contorno da piscina em PIXELS: real (desenho livre) ou derivado da forma
+        const contornoPx=efMap?efPoly.map(efMap):(()=>{
+          if(poolFmt==="Formato L")return[{x:ox,y:oy},{x:ox+pw,y:oy},{x:ox+pw,y:oy+ph*0.6},{x:ox+pw*0.6,y:oy+ph*0.6},{x:ox+pw*0.6,y:oy+ph},{x:ox,y:oy+ph}];
+          if(poolFmt==="Oval"||poolFmt==="Feijão"){const a=[];for(let i2=0;i2<32;i2++){const th=i2/32*2*Math.PI;a.push({x:ox+pw/2+pw/2*Math.cos(th),y:oy+ph/2+ph/2*Math.sin(th)})}return a;}
+          if(poolFmt==="Oitavada"){const c=(parseFloat(pool.chanfro)||1)/L*pw,cY=(parseFloat(pool.chanfro)||1)/W*ph;return[{x:ox+c,y:oy},{x:ox+pw-c,y:oy},{x:ox+pw,y:oy+cY},{x:ox+pw,y:oy+ph-cY},{x:ox+pw-c,y:oy+ph},{x:ox+c,y:oy+ph},{x:ox,y:oy+ph-cY},{x:ox,y:oy+cY}];}
+          return[{x:ox,y:oy},{x:ox+pw,y:oy},{x:ox+pw,y:oy+ph},{x:ox,y:oy+ph}];
+        })();
+        const pxPerM=efMap?efEsc:scale;
+        // ângulos retos (padrão prancha) só em formas de lados retos; oval/feijão/oitavada e desenho livre ficam suaves
+        const ortho=!efMap&&["Retangular","Retangular irregular","Formato L","Com prainha","Com Spa","Personalizado"].includes(poolFmt);
+        const somaLen=arr=>{let s=0;for(let i2=1;i2<arr.length;i2++)s+=Math.hypot(arr[i2].x-arr[i2-1].x,arr[i2].y-arr[i2-1].y);return s};
+        const toPath=arr=>arr.map((q,i2)=>(i2?"L":"M")+q.x.toFixed(1)+","+q.y.toFixed(1)).join(" ");
         systems.forEach(sysType=>{
-          const devs=Object.entries(positions).filter(([k,p])=>p.type===sysType&&!p.special&&autoPositions(L,W,disps,invertSide,poolFmt)[k]);
+          const devs=Object.entries(positions).filter(([k,p])=>p.type===sysType&&!p.special&&autoP[k]);
           if(devs.length===0)return;
           const col=tubeColors[sysType]||"#999";
           const arriveY=cmY+8+sysIdx*((cmH-16)/Math.max(totalSys-1,1));
-          const lane=3+sysIdx*2;
-          sysData[sysType]={devs,col,arriveY,lane,curvas:0,tes:0,tuboM:0};
+          sysData[sysType]={devs,col,arriveY,lane:0,curvas:0,tes:0,tuboM:0};
           const sd=sysData[sysType];
-          sysIdx++;
-          const isLeft=invertSide?(sysType==="dreno"||sysType==="skimmer"):(sysType==="retorno"||sysType==="hidro");
-          const sorted=[...devs].sort((a,b)=>(oy+a[1].y*ph)-(oy+b[1].y*ph));
-          if(sysType==="dreno"){
-            const eX=invertSide?ox-3-sysIdx*3:ox+pw+4+sysIdx*3;
-            if(devs.length>1){
-              sorted.forEach(([k,p2],di)=>{
-                const cx2=ox+p2.x*pw,cy2=oy+p2.y*ph;
-                pipes.push(<line key={"h_"+k} x1={cx2} y1={cy2} x2={eX} y2={cy2} stroke={col} strokeWidth="2" strokeLinecap="round" opacity="0.6"/>);
-                sd.tuboM+=Math.abs(cx2-eX)/scale;
-                if(di<sorted.length-1){const ny=oy+sorted[di+1][1].y*ph;pipes.push(<line key={"v_"+k} x1={eX} y1={cy2} x2={eX} y2={ny} stroke={col} strokeWidth="2.5" strokeLinecap="round" opacity="0.7"/>);sd.tes+=1;sd.tuboM+=Math.abs(ny-cy2)/scale;}
-              });
-              const midY=oy+(sorted[0][1].y*ph+sorted[sorted.length-1][1].y*ph)/2;
-              sd.curvas+=2;sd.tuboM+=(Math.abs(arriveY-midY)+Math.abs(cmX-eX))/scale;
-              pipes.push(<path key={"hEnd_drn"} d={"M"+eX+","+midY+" L"+eX+","+arriveY+" L"+cmX+","+arriveY} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>);
-            }else{
-              const cx2=ox+devs[0][1].x*pw,cy2=oy+devs[0][1].y*ph;
-              pipes.push(<path key={"tb_drn"} d={"M"+cx2+","+cy2+" L"+(ox+pw+4+sysIdx*3)+","+cy2+" L"+(ox+pw+4+sysIdx*3)+","+arriveY+" L"+cmX+","+arriveY} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.65"/>);
-              sd.curvas+=2;sd.tuboM+=(Math.abs(cx2-(ox+pw+4+sysIdx*3))+Math.abs(arriveY-cy2)+Math.abs(cmX-(ox+pw+4+sysIdx*3)))/scale;
-            }
-          }else if(isLeft&&devs.length>1){
-            const eX=ox-lane;
-            sorted.forEach(([k,p2],di)=>{
-              const cx2=ox+p2.x*pw,cy2=oy+p2.y*ph;
-              pipes.push(<line key={"h_"+k} x1={cx2} y1={cy2} x2={eX} y2={cy2} stroke={col} strokeWidth="2" strokeLinecap="round" opacity="0.6"/>);
-              sd.tuboM+=Math.abs(cx2-eX)/scale;
-              if(di<sorted.length-1){const ny=oy+sorted[di+1][1].y*ph;pipes.push(<line key={"v_"+k} x1={eX} y1={cy2} x2={eX} y2={ny} stroke={col} strokeWidth="2.5" strokeLinecap="round" opacity="0.7"/>);sd.tes+=1;sd.tuboM+=Math.abs(ny-cy2)/scale;}else{sd.curvas+=1;}
-            });
-            const lastCy=oy+sorted[sorted.length-1][1].y*ph;
-            const belowY=oy+ph+6+lane;const rightX=ox+pw+4+sysIdx*3;
-            sd.curvas+=3;sd.tuboM+=(Math.abs(belowY-lastCy)+Math.abs(rightX-eX)+Math.abs(arriveY-belowY)+Math.abs(cmX-rightX))/scale;
-            pipes.push(<path key={"m_"+sysType} d={"M"+eX+","+lastCy+" L"+eX+","+belowY+" L"+rightX+","+belowY+" L"+rightX+","+arriveY+" L"+cmX+","+arriveY} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>);
-          }else{
-            sorted.forEach(([k,p2])=>{
-              const cx2=ox+p2.x*pw,cy2=oy+p2.y*ph;
-              const eX2=p2.x<0.3?ox-lane:ox+pw+4+sysIdx*3;
-              if(eX2<ox){
-                const bY=oy+ph+8+lane;const rX=ox+pw+4+sysIdx*3;
-                pipes.push(<path key={"tb_"+k} d={"M"+cx2+","+cy2+" L"+eX2+","+cy2+" L"+eX2+","+bY+" L"+rX+","+bY+" L"+rX+","+arriveY+" L"+cmX+","+arriveY} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.65"/>);
-                sd.curvas+=4;sd.tuboM+=(Math.abs(cx2-eX2)+Math.abs(bY-cy2)+Math.abs(rX-eX2)+Math.abs(arriveY-bY)+Math.abs(cmX-rX))/scale;
-              }else if(p2.y>0.7||p2.floor){
-                pipes.push(<path key={"tb_"+k} d={"M"+cx2+","+cy2+" L"+cx2+","+(oy+ph+4)+" L"+eX2+","+(oy+ph+4)+" L"+eX2+","+arriveY+" L"+cmX+","+arriveY} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.65"/>);
-                sd.curvas+=3;sd.tuboM+=(Math.abs(oy+ph+4-cy2)+Math.abs(eX2-cx2)+Math.abs(arriveY-(oy+ph+4))+Math.abs(cmX-eX2))/scale;
-              }else{
-                pipes.push(<path key={"tb_"+k} d={"M"+cx2+","+cy2+" L"+eX2+","+cy2+" L"+eX2+","+arriveY+" L"+cmX+","+arriveY} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.65"/>);
-                sd.curvas+=2;sd.tuboM+=(Math.abs(cx2-eX2)+Math.abs(arriveY-cy2)+Math.abs(cmX-eX2))/scale;
-              }
-            });
-          }
-          const lblX=(isLeft?ox-lane:ox+pw+4+sysIdx*3);const lblMX=(lblX+cmX)/2;
-          
+          // anel do sistema: afastado da parede e ESCALONADO (feixe paralelo)
+          const ring=offsetPoligono(contornoPx,5+sysIdx*4);
+          const tCasa=fracaoMaisProxima(ring,{x:cmX,y:arriveY});
+          // espeta de cada bico até o anel, no ponto mais próximo (caminho mais curto)
+          const frDevs=devs.map(([k,p2])=>{
+            const cx2=ox+p2.x*pw,cy2=oy+p2.y*ph;
+            const tDev=fracaoMaisProxima(ring,{x:cx2,y:cy2});
+            const q=pontoNaFracao(ring,tDev);
+            pipes.push(<line key={"st_"+k} x1={cx2} y1={cy2} x2={q.x} y2={q.y} stroke={col} strokeWidth="2" strokeLinecap="round" opacity="0.6"/>);
+            sd.tuboM+=Math.hypot(q.x-cx2,q.y-cy2)/pxPerM;
+            return tDev;
+          });
+          // ramal coletor: interliga todos os bicos + casa pelos MENORES arcos do anel
+          trechosColetor([...frDevs,tCasa]).forEach(([a,b],ti)=>{
+            let caminho=caminhoNoContorno(ring,a,b);
+            if(ortho)caminho=ortogonalizar(caminho,4);
+            pipes.push(<path key={"tr_"+sysType+ti} d={toPath(caminho)} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>);
+            sd.tuboM+=somaLen(caminho)/pxPerM;
+          });
+          // tronco até a casa em ângulo reto (padrão prancha)
+          const qc=pontoNaFracao(ring,tCasa);
+          const tronco=(Math.abs(qc.x-cmX)<3||Math.abs(qc.y-arriveY)<3)?[qc,{x:cmX,y:arriveY}]:[qc,{x:cmX,y:qc.y},{x:cmX,y:arriveY}];
+          pipes.push(<path key={"cm_tr_"+sysType} d={toPath(tronco)} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>);
+          sd.tuboM+=somaLen(tronco)/pxPerM;
+          sd.tes+=Math.max(0,devs.length-1);
+          sd.curvas+=2+devs.length;
           pipes.push(<rect key={"cm_"+sysType} x={cmX-1} y={arriveY-3} width="6" height="6" rx="1" fill={col} opacity="0.9"/>);
+          sysIdx++;
         });
         window._sysData=sysData;
         return pipes;
