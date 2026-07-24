@@ -29,6 +29,11 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         // Firestore/Auth usam a própria persistência; nunca cachear
         navigateFallbackDenylist: [/^\/__/],
+        // Ativa o novo SW na hora e apaga o precache de deploys antigos —
+        // sem isso o navegador servia chunks com hash já inexistente.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
       },
     }),
   ],

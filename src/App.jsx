@@ -7,7 +7,20 @@ import FormaEditor, { MiniForma } from "./FormaEditor.jsx";
 import { MODELOS } from "./data/modelos.js";
 import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar } from "./motor/formas.js";
 // jspdf/html2canvas (~200KB gz) só carregam quando alguém gera PDF/imagem
-const loadPdfLibs=async()=>{const[h,j]=await Promise.all([import("html2canvas"),import("jspdf")]);return{html2canvas:h.default,jsPDF:j.jsPDF};};
+const loadPdfLibs=async()=>{
+  try{
+    const[h,j]=await Promise.all([import("html2canvas"),import("jspdf")]);
+    return{html2canvas:h.default,jsPDF:j.jsPDF};
+  }catch(err){
+    // Chunk com hash antigo sumiu após um novo deploy → recarrega uma vez
+    // para o navegador pegar o index.html/chunks novos.
+    if(!sessionStorage.getItem("vv-chunk-reload")){
+      sessionStorage.setItem("vv-chunk-reload","1");
+      window.location.reload();
+    }
+    throw err;
+  }
+};
 const Pool3DView = lazy(() => import('./Pool3DView'));
 import RescueModal from "./components/rescue/RescueModal";
 import LostReasonModal from "./components/rescue/LostReasonModal";
