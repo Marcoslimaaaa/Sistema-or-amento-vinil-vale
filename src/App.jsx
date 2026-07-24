@@ -170,7 +170,7 @@ const PFMT=["Retangular","Retangular irregular","Formato L","Oval","Feijão","Oi
 const VOPTS=[
   {t:"0,7mm",w:3,nome:"ACQUALINER 0,7mm",resist:"Resist. até 32°C"},
   {t:"0,8mm",w:4,nome:"ACQUALINER 0,8mm",resist:"Resist. até 32°C"},
-  {t:"1,5mm",w:10,nome:"Manta Armada 1,5mm",resist:"Alto padrão · reforçada com trama de poliéster",armada:true},
+  {t:"1,5mm",w:5,nome:"Manta Armada 1,5mm",resist:"Alto padrão · reforçada com trama de poliéster",armada:true},
 ];
 const vinilOpt=t=>VOPTS.find(v=>v.t===t)||VOPTS[0];
 const vinilNome=t=>vinilOpt(t).nome; // ex.: "Manta Armada 1,5mm"
