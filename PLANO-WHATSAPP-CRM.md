@@ -7,25 +7,64 @@ Continua de onde o `PLANO-CRM-UPGRADE.md` parou (fases 1, 2, 3a e 4 concluídas 
 
 ## ✅ STATUS DA EXECUÇÃO (25/07/2026)
 
-**Todas as fases de código foram implementadas** e estão em branch, **sem push
-para produção** — o merge é decisão do Marcos.
+Todas as fases de código estão implementadas e **mergeadas**.
 
 | Fase | Status | Onde |
 |---|---|---|
-| 0 — Fechar a API do bot | ✅ feito | bot `feat/api-seguranca-templates` (59ea02f) |
-| 1 — Camada única de envio | ✅ feito | painel `feat/whatsapp-crm-v5` (6a072a1) |
-| 2 — WhatsApp no CRM | ✅ feito | painel (e052cdd) |
-| 3 — Upgrade do CRM | ✅ feito | painel (39a451c) |
-| 4 — Follow-ups com template (código) | ✅ feito | bot (4d0693d) |
+| 0 — Fechar a API do bot | ✅ **em produção** | bot `master` (f28ec5c) |
+| 1 — Camada única de envio | ✅ mergeado em `main` | painel (6a072a1) |
+| 2 — WhatsApp no CRM | ✅ mergeado em `main` | painel (e052cdd) |
+| 3 — Upgrade do CRM | ✅ mergeado em `main` | painel (39a451c) |
+| 4 — Follow-ups com template (código) | ✅ **em produção** | bot (4d0693d) |
 | 4 — Templates aprovados na Meta | ⛔ **precisa do Marcos** | `TEMPLATES-PARA-SUBMETER.md` |
 
-**83 testes** passando no painel (`npm test`); build limpo nos dois repos.
+**86 testes** passando no painel (`npm test`); build limpo nos dois repos.
+
+### Bot: PUBLICADO (25/07)
+
+`git push origin master` feito, Railway redeployou. Verificado em produção:
+
+```
+/api/status        → {"server":"online","whatsapp":null}   (igual a antes)
+/api/send-template → valida os campos; sem Cloud API responde erro claro
+/api/leads         → 200 (modo compatibilidade, sem PANEL_API_KEY ainda)
+/webhook-meta      → 403 (verificação da Meta; confirma que fica fora do auth)
+```
+
+Antes de publicar, um teste provou que sem as envs novas o bot se comporta
+exatamente como antes (auth passa direto, CORS `*`, `isMetaEnabled()` false).
+
+### Painel: MERGEADO em `main`, ainda NÃO publicado
+
+6 commits prontos. **Não dei push** por um motivo específico: o CRM só aparece
+depois do login com conta real, então a interface nova nunca rodou com os dados
+de produção. O que dava para verificar foi verificado (ver abaixo), mas publicar
+uma interface nova sem esse teste, com o Marcos ausente para reagir, não valia o
+risco de deixar a empresa sem sistema de orçamento.
+
+```bash
+cd C:\Users\thami\orcamentos-vinil-vale && git push origin main
+```
+
+Se algo sair errado depois do push, o rollback é imediato pelo painel da Vercel
+(promover o deployment anterior) ou por `git revert -m 1 HEAD && git push`.
+
+**O que foi verificado no navegador** (via `sandbox.html`, página de teste que
+não entra no build): CanalStatus detectando o modo manual contra o bot real; SLA
+ordenando do mais antigo; janela de 24h mostrando "aberta 20h" e "fora da
+janela" nos casos certos; timeline intercalando CRM e conversa na ordem certa;
+drag & drop movendo o card e destacando a coluna; botão e `<select>` dentro do
+card arrastável continuando clicáveis; console sem erros nem warnings.
+
+Esse teste encontrou dois bugs, já corrigidos: a resposta rápida de prazo tinha
+"20 dias" fixo (mandava o número errado para orçamento com outro prazo) e o
+atalho `/` capturava Enter de qualquer lugar da página.
 
 ### O que falta — só o que exige acesso que eu não tenho
 
-1. **Revisar e mergear as branches** (nenhum push foi feito para `main`/`master`).
-2. **Criar as envs** — sem elas a Fase 0 não liga (o código está em modo
-   compatibilidade e não quebra nada enquanto isso):
+1. **Publicar o painel** (comando acima) — de preferência com você por perto.
+2. **Criar as envs** — sem elas a Fase 0 não liga (está em modo compatibilidade
+   e não quebra nada enquanto isso):
    - Vercel: `VITE_BOT_API_KEY` → redeploy
    - Railway: `PANEL_API_KEY` (mesma chave) e `ALLOWED_ORIGINS`
    - **Nesta ordem.** Invertendo, o painel fica sem chave contra um bot que já
