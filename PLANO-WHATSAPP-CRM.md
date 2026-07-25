@@ -60,9 +60,28 @@ Esse teste encontrou dois bugs, já corrigidos: a resposta rápida de prazo tinh
 "20 dias" fixo (mandava o número errado para orçamento com outro prazo) e o
 atalho `/` capturava Enter de qualquer lugar da página.
 
+### Templates na Meta: 2 de 9 submetidos (25/07)
+
+| Template | Categoria | Status |
+|---|---|---|
+| `followup_orcamento_recebido` | Utilidade | ✅ **ATIVO** (aprovado) |
+| `followup_orcamento_condicoes` | Marketing | 🕐 Em análise |
+| outros 7 | — | ⛔ a submeter |
+
+**Descoberta importante**: a conta tem 4 WABAs e a config apontava a de TESTE.
+O número real (+55 13 99730-5949) está na WABA `1740068426953762` e já aparece
+como **Conectado, qualidade Alta**. Template aprovado na conta de teste não vale
+para produção. Detalhes e link direto em `TEMPLATES-PARA-SUBMETER.md` (repo do bot).
+
+Os 7 restantes ficaram por fazer: o formulário da Meta tem rodapé fixo e scroll
+dinâmico que torna a automação por clique pouco confiável — várias tentativas
+falharam no meio. Feito à mão leva ~3 min cada, e o documento já traz as
+armadilhas mapeadas (autocomplete das chaves, espaço comido pelo botão de
+variável, variável não pode abrir nem fechar o corpo).
+
 ### O que falta — só o que exige acesso que eu não tenho
 
-1. **Publicar o painel** (comando acima) — de preferência com você por perto.
+1. **Submeter os 7 templates restantes** na WABA `1740068426953762`.
 2. **Criar as envs** — sem elas a Fase 0 não liga (está em modo compatibilidade
    e não quebra nada enquanto isso):
    - Vercel: `VITE_BOT_API_KEY` → redeploy
