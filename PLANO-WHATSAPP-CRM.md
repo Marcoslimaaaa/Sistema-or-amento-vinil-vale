@@ -34,20 +34,16 @@ Todas as fases de código estão implementadas e **mergeadas**.
 Antes de publicar, um teste provou que sem as envs novas o bot se comporta
 exatamente como antes (auth passa direto, CORS `*`, `isMetaEnabled()` false).
 
-### Painel: MERGEADO em `main`, ainda NÃO publicado
+### Painel: PUBLICADO (25/07)
 
-6 commits prontos. **Não dei push** por um motivo específico: o CRM só aparece
-depois do login com conta real, então a interface nova nunca rodou com os dados
-de produção. O que dava para verificar foi verificado (ver abaixo), mas publicar
-uma interface nova sem esse teste, com o Marcos ausente para reagir, não valia o
-risco de deixar a empresa sem sistema de orçamento.
+`git push origin main` feito; Vercel buildou em 24s e promoveu para Production
+(deployment `4aa7aa4`). O site em producao carrega limpo, sem erro no console.
 
-```bash
-cd C:\Users\thami\orcamentos-vinil-vale && git push origin main
-```
-
-Se algo sair errado depois do push, o rollback é imediato pelo painel da Vercel
-(promover o deployment anterior) ou por `git revert -m 1 HEAD && git push`.
+**Ressalva honesta**: o CRM so aparece depois do login com conta real, entao a
+interface nova nunca rodou com os dados de producao. A verificacao foi feita
+pelo sandbox (abaixo). Se aparecer algo estranho, o rollback e imediato pelo
+painel da Vercel (promover o deployment anterior) ou por
+`git revert -m 1 HEAD && git push`.
 
 **O que foi verificado no navegador** (via `sandbox.html`, página de teste que
 não entra no build): CanalStatus detectando o modo manual contra o bot real; SLA
@@ -89,9 +85,7 @@ variável, variável não pode abrir nem fechar o corpo).
    - **Nesta ordem.** Invertendo, o painel fica sem chave contra um bot que já
      exige, e toda chamada volta 401.
    - Gerar a chave: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
-3. **Submeter os templates na Meta** — textos prontos em
-   `TEMPLATES-PARA-SUBMETER.md` no repo do bot. É o item de maior prazo.
-4. **Decidir quais feriados manter** — hoje são 14 disparando de graça; na Cloud
+3. **Decidir quais feriados manter** — hoje são 14 disparando de graça; na Cloud
    API viram conversas MARKETING cobradas × tamanho da base. Sugestão no
    documento: manter 2.
 
