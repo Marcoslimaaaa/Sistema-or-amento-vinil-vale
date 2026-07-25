@@ -30,6 +30,10 @@ import LossAnalysis from "./components/dashboard/LossAnalysis";
 import { REGUA, normalizePhone, openWaMe } from "./components/crm/regua";
 import TodayTasks from "./components/crm/TodayTasks";
 import CanalStatus from "./components/crm/CanalStatus";
+import RespostasRapidas from "./components/crm/RespostasRapidas";
+import LeadNoChat from "./components/crm/LeadNoChat";
+import Timeline from "./components/crm/Timeline";
+import { conversaDoLead, leadDaConversa, leadsCandidatos } from "./services/vinculo.js";
 import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, CANAL } from "./services/wa.js";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
@@ -1212,7 +1216,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
 };
 
 // ═══ NOTE PANEL (definido fora do App para evitar remount a cada render) ═══
-const NotePanel=({q,t,crmNoteType,setCrmNoteType,noteInputRef,newNote,setNewNote,addInteracao,crmNextContact,isNextContactOverdue,setNextContact,crmTags,setLeadTag,interacoes})=>{
+const NotePanel=({q,t,crmNoteType,setCrmNoteType,noteInputRef,newNote,setNewNote,addInteracao,crmNextContact,isNextContactOverdue,setNextContact,crmTags,setLeadTag,interacoes,conv})=>{
   const ti=TIPO_ICONS[crmNoteType]||TIPO_ICONS.nota;
   return <div style={{marginTop:"8px",borderTop:`1px solid ${t.cardBorder}`,paddingTop:"8px"}}>
     <div style={{display:"flex",gap:"3px",marginBottom:"8px",flexWrap:"wrap"}}>
@@ -1238,9 +1242,9 @@ const NotePanel=({q,t,crmNoteType,setCrmNoteType,noteInputRef,newNote,setNewNote
     <div style={{display:"flex",gap:"3px",flexWrap:"wrap",marginBottom:"8px"}}>
       {TAGS_OPTS.map(tag=>{const active=(crmTags[q.id]||[]).includes(tag);return <button key={tag} title={active?"Remover tag":"Adicionar tag"} onClick={()=>setLeadTag(q.id,tag)} style={{fontSize:"8px",padding:"2px 8px",borderRadius:"10px",border:`1px solid ${active?blue:t.cardBorder}`,background:active?blue+"22":"transparent",color:active?blue:t.textMuted,cursor:"pointer",fontWeight:active?"700":"400"}}>{active?"✓ ":""}{tag}</button>})}
     </div>
-    <div style={{maxHeight:"130px",overflow:"auto",display:"flex",flexDirection:"column",gap:"3px"}}>
-      {(interacoes[q.id]||[]).map((it,i)=>{const tip=TIPO_ICONS[it.tipo]||TIPO_ICONS.nota;return <div key={i} style={{fontSize:"8px",display:"flex",gap:"5px",alignItems:"flex-start",padding:"4px 6px",borderRadius:"5px",background:t.sectionBg,border:`1px solid ${t.cardBorder}`}}><span style={{color:tip.color,flexShrink:0,fontSize:"10px"}}>{tip.icon}</span><div style={{flex:1}}><span style={{fontWeight:"700",color:t.textSec}}>{it.data} {it.hora} · </span><span style={{color:t.text}}>{it.texto}</span></div></div>})}
-      {(!interacoes[q.id]||interacoes[q.id].length===0)&&<div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",padding:"12px"}}>Nenhuma interação registrada ainda</div>}
+    {/* Timeline unificada: interacoes do CRM + mensagens reais do WhatsApp */}
+    <div style={{maxHeight:"260px",overflow:"auto"}}>
+      <Timeline interacoes={interacoes[q.id]} conv={conv} t={t}/>
     </div>
   </div>;
 };
@@ -1592,6 +1596,20 @@ export default function App(){
   const [crmNoteType,setCrmNoteType]=useState("nota");
   const [crmSort,setCrmSort]=useState("data");
   const crmNoteInputRef=useRef(null);
+  // Vínculo manual lead↔conversa: { [quoteId]: phone }. Tem precedência sobre o
+  // crmQuoteId do bot e sobre o telefone — é decisão humana.
+  const [crmVinculos,setCrmVinculos]=useState({});
+  const [respostasRapidas,setRespostasRapidas]=useState([]);
+  const [mostrarRespostas,setMostrarRespostas]=useState(false);
+  const [canalOficial,setCanalOficial]=useState(false);
+
+  // Estado do canal para a interface (a decisão de envio é do services/wa.js)
+  useEffect(()=>{
+    let vivo=true;
+    const checar=async()=>{const s=await getChannelStatus();if(vivo)setCanalOficial(s.canal===CANAL.OFICIAL)};
+    checar();const id=setInterval(checar,60000);
+    return ()=>{vivo=false;clearInterval(id)};
+  },[]);
 
   // FINANCEIRO
 
@@ -1629,7 +1647,7 @@ export default function App(){
     try{
       const ref=fbFns.doc(fb.db,"users",user.uid,"config","crmMeta");
       const unsub=fbFns.onSnapshot(ref,(snap)=>{
-        if(snap.exists()){const d=snap.data();if(d.nextContact)setCrmNextContact(d.nextContact);if(d.tags)setCrmTags(d.tags);}
+        if(snap.exists()){const d=snap.data();if(d.nextContact)setCrmNextContact(d.nextContact);if(d.tags)setCrmTags(d.tags);if(d.vinculos)setCrmVinculos(d.vinculos);}
         setCrmMetaLoaded(true);
       });
       return ()=>unsub();
@@ -1648,10 +1666,30 @@ export default function App(){
   const patchCrmMeta=(patch)=>{
     if(patch.nextContact)setCrmNextContact(prev=>({...prev,...patch.nextContact}));
     if(patch.tags)setCrmTags(prev=>({...prev,...patch.tags}));
+    if(patch.vinculos)setCrmVinculos(prev=>({...prev,...patch.vinculos}));
     if(fbReady&&fb.db&&user&&user.uid!=="local"){
       try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","crmMeta"),patch,{merge:true})}catch{}
     }
   };
+
+  // Liga uma conversa do WhatsApp a um orçamento (ou desfaz, com phone=null)
+  const vincularConversa=(quoteId,phone)=>{
+    patchCrmMeta({vinculos:{[String(quoteId)]:phone}});
+    setFbMsg(phone?"🔗 Conversa vinculada ao orçamento":"🔗 Vínculo removido");
+    setTimeout(()=>setFbMsg(""),2500);
+  };
+
+  // Respostas rápidas do WhatsApp (users/{uid}/config/respostasRapidas)
+  useEffect(()=>{
+    if(!user||!fbReady||!fb.db||user.uid==="local")return;
+    try{
+      const ref=fbFns.doc(fb.db,"users",user.uid,"config","respostasRapidas");
+      const unsub=fbFns.onSnapshot(ref,(snap)=>{
+        if(snap.exists()&&Array.isArray(snap.data().lista))setRespostasRapidas(snap.data().lista);
+      });
+      return ()=>unsub();
+    }catch{}
+  },[user,fbReady]);
 
   const addInteracao=(qId,tipo,texto)=>{
     const list=[{tipo,texto,data:new Date().toLocaleDateString("pt-BR"),hora:new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}),ts:Date.now()},...(interacoes[qId]||[])];
@@ -1674,12 +1712,13 @@ export default function App(){
       if(last.ts)refs.push(last.ts);
       else if(last.data){const p=last.data.split("/");const d=new Date(p[2],p[1]-1,p[0]);if(!isNaN(d))refs.push(d.getTime());}
     }
+    // Conversa do lead pelo vínculo forte (manual → crmQuoteId → telefone).
+    // Antes cruzava só por telefone, o que errava com cliente que trocou de
+    // número ou que tem mais de um orçamento no mesmo telefone.
     const q=histRef.current.find(h=>String(h.id)===String(qId));
-    const ph=(q?.data?.client?.phone||q?.tel||"").replace(/\D/g,"");
-    if(ph){
-      const full=ph.startsWith("55")?ph:"55"+ph;
-      const conv=waConvs.find(c=>c.phone===full||c.phone===ph);
-      const la=conv?.lastActivity;
+    const conv=conversaDoLead(q,waConvs,crmVinculos);
+    if(conv){
+      const la=conv.lastActivity;
       const ms=la?.toMillis?la.toMillis():(typeof la==="number"?la:(la?new Date(la).getTime():0));
       if(ms>0)refs.push(ms);
     }
@@ -2788,7 +2827,7 @@ export default function App(){
                           </select>}
                           <button title="Notas" onClick={()=>setCrmDetail(crmDetail===q.id?null:q.id)} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:`1px solid ${crmDetail===q.id?blue:t.cardBorder}`,background:crmDetail===q.id?blue:"transparent",color:crmDetail===q.id?"#fff":t.text,cursor:"pointer"}}>📋</button>
                         </div>
-                        {crmDetail===q.id&&<NotePanel q={q} {...notePanelProps}/>}
+                        {crmDetail===q.id&&<NotePanel q={q} conv={conversaDoLead(q,waConvs,crmVinculos)} {...notePanelProps}/>}
                       </div>
                     })}
                   </div>
@@ -2903,7 +2942,7 @@ export default function App(){
                       <RescueButton q={q} daysSince={days} onClick={(q)=>setRescueModal({q,days:getCachedDays(q.id)})} compact={false}/>
                     </div>
                   </div>
-                  {crmDetail===q.id&&<div style={{padding:"8px 10px",background:t.card,borderRadius:"0 0 8px 8px",border:`1px solid ${t.cardBorder}`,borderTop:`1px dashed ${t.cardBorder}`,marginTop:"-1px"}}><NotePanel q={q} {...notePanelProps}/></div>}
+                  {crmDetail===q.id&&<div style={{padding:"8px 10px",background:t.card,borderRadius:"0 0 8px 8px",border:`1px solid ${t.cardBorder}`,borderTop:`1px dashed ${t.cardBorder}`,marginTop:"-1px"}}><NotePanel q={q} conv={conversaDoLead(q,waConvs,crmVinculos)} {...notePanelProps}/></div>}
                 </div>
               })}
               {filteredHist.length===0&&<div style={{textAlign:"center",padding:"24px",color:t.textMuted,fontSize:"11px"}}>Nenhum lead encontrado</div>}
@@ -3268,8 +3307,12 @@ export default function App(){
                 <button title="Anexar arquivo" onClick={()=>waFileInputRef.current?.click()} style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#54656f" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
                 </button>
-                <div style={{flex:1,background:"#fff",borderRadius:"8px",display:"flex",alignItems:"center",padding:"0 12px",minHeight:"42px"}}>
-                  <input value={waMsg} onChange={e=>setWaMsg(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();waSendMessage();setWaReply(null)}}} placeholder="Digite uma mensagem" style={{flex:1,border:"none",outline:"none",fontSize:"14px",color:"#111b21",background:"transparent",padding:"10px 0"}}/>
+                <div style={{flex:1,background:"#fff",borderRadius:"8px",display:"flex",alignItems:"center",padding:"0 12px",minHeight:"42px",position:"relative"}}>
+                  {/* Respostas rápidas: "/" no início do texto abre a lista */}
+                  {mostrarRespostas&&waMsg.startsWith("/")&&
+                    <RespostasRapidas filtro={waMsg} respostas={respostasRapidas} lead={leadDaConversa(waChatData,hist,crmVinculos)} t={t}
+                      onEscolher={(txt)=>{setWaMsg(txt);setMostrarRespostas(false)}} onFechar={()=>setMostrarRespostas(false)}/>}
+                  <input value={waMsg} onChange={e=>{const v=e.target.value;setWaMsg(v);setMostrarRespostas(v.startsWith("/"))}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&!(mostrarRespostas&&waMsg.startsWith("/"))){e.preventDefault();waSendMessage();setWaReply(null)}}} placeholder="Digite uma mensagem (ou / para respostas rápidas)" style={{flex:1,border:"none",outline:"none",fontSize:"14px",color:"#111b21",background:"transparent",padding:"10px 0"}}/>
                 </div>
                 {waMsg.trim()?
                   <button onClick={()=>{waSendMessage();setWaReply(null)}} disabled={waSending} style={{background:"none",border:"none",cursor:waSending?"wait":"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
@@ -3282,6 +3325,21 @@ export default function App(){
                 }
               </div>
             </div>}
+
+            {/* === PAINEL DO LEAD — o orçamento ao lado da conversa === */}
+            {waChat&&!waInfoPanel&&(()=>{
+              const leadConv=leadDaConversa(waChatData,hist,crmVinculos);
+              return <LeadNoChat
+                lead={leadConv} conv={waChatData} t={t} fmt={fmt}
+                dias={leadConv?getDaysSince(leadConv.id):0}
+                canalOficial={canalOficial}
+                candidatos={leadsCandidatos(waChatData,hist)}
+                onAbrirLead={(q)=>{setTab("crm");setCrmView("lista");setCrmSearch(q.cN||"")}}
+                onMover={movePipe}
+                onEnviarOrcamento={enviarOrcamento}
+                onVincular={(quoteId)=>vincularConversa(quoteId,waChat)}
+              />;
+            })()}
 
             {/* === PAINEL DIREITO - Info do Contato === */}
             {waInfoPanel&&waChatData&&<div style={{width:"340px",background:"#fff",borderLeft:"1px solid #e2ddd1",display:"flex",flexDirection:"column",overflowY:"auto"}}>
