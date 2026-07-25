@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { REGUA, openWaMe } from "./regua";
+import { REGUA } from "./regua";
 import { getRescueMsg } from "../rescue/RescueModal";
+import { sendWA } from "../../services/wa.js";
 
 // "Tarefas de Hoje" — transforma o badge de follow-up em lista acionável:
-// quem contatar hoje, por quê, e envio em 1 clique via wa.me (WhatsApp do
-// próprio aparelho — sem bot, sem risco de banimento).
+// quem contatar hoje, por quê, e envio em 1 clique. O envio passa pela camada
+// única (services/wa.js): usa o bot quando está conectado, wa.me quando não.
 
 const toISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -49,12 +50,18 @@ export default function TodayTasks({ hist, getDays, fmt, t, blue, crmNextContact
     setNextContact(q.id, toISO(next));
   };
 
-  const sendWa = (task) => {
+  // Passa pela camada única: usa o bot quando ele está conectado e cai no
+  // wa.me quando não está. Registra a interação só em envio confirmado.
+  const sendWa = async (task) => {
     const phone = task.q.data?.client?.phone || "";
     const name = (task.q.cN || "").split(" ")[0];
-    const opened = openWaMe(phone, getRescueMsg(task.days, name));
-    if (!opened) { alert("Lead sem telefone cadastrado — edite o orçamento e adicione o telefone."); return; }
-    addInteracao(task.q.id, "whatsapp", "Follow-up enviado (Tarefas de Hoje)");
+    const r = await sendWA({ phone, text: getRescueMsg(task.days, name) });
+    if (!r.ok) { alert(r.erro || "Não foi possível enviar."); return; }
+    addInteracao(
+      task.q.id,
+      "whatsapp",
+      r.canal === "wa.me" ? "Follow-up enviado (Tarefas de Hoje)" : "Follow-up enviado pelo sistema (Tarefas de Hoje)"
+    );
     doneFollowUp(task.q);
   };
 

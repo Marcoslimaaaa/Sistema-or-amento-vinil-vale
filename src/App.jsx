@@ -29,6 +29,8 @@ import { useRescueAutomation } from "./components/rescue/useRescueAutomation";
 import LossAnalysis from "./components/dashboard/LossAnalysis";
 import { REGUA, normalizePhone, openWaMe } from "./components/crm/regua";
 import TodayTasks from "./components/crm/TodayTasks";
+import CanalStatus from "./components/crm/CanalStatus";
+import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, CANAL } from "./services/wa.js";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
 const FB_CFG = {
@@ -993,7 +995,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
     if(!phone){setEnviadoStatus("⚠️ Sem telefone");setTimeout(()=>setEnviadoStatus(""),3000);return}
     const full=phone.length<=11?"55"+phone:phone;
     try{
-      const r=await fetch(`https://vinil-vale-whatsapp-bot-production.up.railway.app/api/quote-sent/${full}`,{method:"POST"});
+      const r=await botFetch(`/api/quote-sent/${full}`,{method:"POST"});
       if(r.ok){setEnviadoStatus("✅ Marcado!")}else{setEnviadoStatus("⚠️ Erro")}
     }catch(e){setEnviadoStatus("⚠️ Erro de conexão")}
     setTimeout(()=>setEnviadoStatus(""),3000);
@@ -1540,7 +1542,6 @@ export default function App(){
   const waChatRef=useRef(null);
   const waMsgAreaRef=useRef(null);
   const waFileInputRef=useRef(null);
-  const BOT_URL="https://vinil-vale-whatsapp-bot-production.up.railway.app";
 
   // Processa arquivo para envio (drag-drop ou input)
   const waProcessFile=(file)=>{
@@ -1555,14 +1556,18 @@ export default function App(){
     reader.readAsDataURL(file);
   };
 
-  // Envia arquivo via API do bot
+  // Envia arquivo pela camada única. Sem canal online não há fallback possível
+  // (wa.me não anexa arquivo), então avisamos em vez de fingir que enviou.
   const waSendFile=async()=>{
     if(!waFilePreview||!waChat||waSendingFile)return;
     setWaSendingFile(true);
-    try{
-      await fetch(`${BOT_URL}/api/send-media`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:waChat,media:waFilePreview.base64,mimetype:waFilePreview.type,fileName:waFilePreview.name,caption:waFileCaption})});
+    const conv=waConvs.find(c=>c.phone===waChat);
+    const r=await sendWAFile({phone:waChat,base64:waFilePreview.base64,mimetype:waFilePreview.type,fileName:waFilePreview.name,caption:waFileCaption,conv});
+    if(r.ok){
       setWaFilePreview(null);setWaFileCaption("");
-    }catch(e){alert("Erro ao enviar arquivo: "+e.message)}
+    }else{
+      setFbMsg("⚠️ "+(r.erro||"Não foi possível enviar o arquivo"));setTimeout(()=>setFbMsg(""),5000);
+    }
     setWaSendingFile(false);
   };
 
@@ -1711,17 +1716,24 @@ export default function App(){
   // phoneOverride: permite enviar direto do chat inline do CRM sem depender do
   // estado waChat (o setTimeout+setWaChat antigo usava closure velho e falhava
   // em silêncio ou mandava a mensagem para o contato errado)
+  // Envia pela camada única (src/services/wa.js): tenta o bot e cai para o
+  // wa.me quando o provider está fora. Antes ia direto no fetch e, com o bot
+  // desconectado, a mensagem sumia sem o usuário perceber.
   const waSendMessage=async(phoneOverride)=>{
     const phone=phoneOverride||waChat;
     if(!waMsg.trim()||!phone||waSending)return;
     setWaSending(true);
-    try{
-      await fetch(`${BOT_URL}/api/send-message`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,message:waMsg})});
-      // Registra contato real no CRM se o telefone corresponder a um lead
+    const conv=waConvs.find(c=>c.phone===normalizePhone(phone)||c.phone===phone);
+    const r=await sendWA({phone,text:waMsg,conv});
+    if(r.ok){
+      // Interação só depois do envio confirmado — registrar antes zerava o
+      // contador de dias sem contato e tirava o lead do follow-up à toa.
       const lead=histRef.current.find(h=>{const p=(h.data?.client?.phone||h.tel||"").replace(/\D/g,"");return p&&(normalizePhone(p)===normalizePhone(phone))});
-      if(lead)addInteracao(lead.id,"whatsapp","Mensagem enviada pelo sistema");
+      if(lead)addInteracao(lead.id,"whatsapp",r.canal==="wa.me"?"Mensagem enviada (WhatsApp do aparelho)":"Mensagem enviada pelo sistema");
       setWaMsg("");
-    }catch(e){alert("Erro ao enviar: "+e.message);}
+    }else{
+      setFbMsg("⚠️ "+(r.erro||"Não foi possível enviar"));setTimeout(()=>setFbMsg(""),4000);
+    }
     setWaSending(false);
   };
 
@@ -2084,6 +2096,19 @@ export default function App(){
   const salvarMotivoPerda=async(q,motivo)=>{const nh=hist.map(h=>h.id===q.id?{...h,status:"perdido",...motivo}:h);setHist(nh);saveLS(nh);const item=nh.find(h=>h.id===q.id);if(item)saveFS(item);addInteracao(q.id,"perda",`Marcado como perdido: ${motivo.motivoLabel}`);setFbMsg("❌ Marcado como perdido");setTimeout(()=>setFbMsg(""),2000)};
   useRescueAutomation({hist,crmTags,getDaysSince,patchCrmMeta,ready:histLoaded&&interacoesLoaded&&crmMetaLoaded,onSugerirPerda:(q,days)=>setLostReasonModal({q,days,auto:true})});
   const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const fullNum=num.startsWith("55")?num:`55${num}`;const conv=waConvs.find(c=>c.phone===fullNum||c.phone===num);if(conv){setTab("whatsapp");setWaChat(conv.phone);if(msg)setWaMsg(msg)}else{setTab("whatsapp");setFbMsg("📱 Conversa não encontrada no sistema. Inicie pelo WhatsApp.");setTimeout(()=>setFbMsg(""),3000)}};
+  // Handler dos botões de PDF do pipeline/lista: registra a interação e move o
+  // lead SÓ quando o envio confirma. Se o PDF só foi baixado (canal manual),
+  // nada é registrado — senão o lead sai da régua de follow-up sem ter recebido
+  // o orçamento.
+  const enviarOrcamento=async(q)=>{
+    const r=await sendOrcWA(q);
+    if(r?.ok){
+      addInteracao(q.id,"orcamento",r.canal==="compartilhado"?"Orçamento compartilhado (WhatsApp)":"Orçamento enviado via WhatsApp");
+      if((q.status||"lead")==="lead")movePipe(q.id,"orcamento");
+    }
+    return r;
+  };
+
   const sendOrcWA=async(q)=>{
     const d=q.data;const c=d?.client||{};const inc=(d?.items||[]).filter(i=>i.on);
     const p=d?.pool||{};const pay2=d?.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
@@ -2131,20 +2156,60 @@ export default function App(){
         }
       }
       const pdfBlob=pdf.output("blob");
+      const fileName=`Orcamento_VinilVale_${clientName}.pdf`;
+      const telefone=c.phone||"";
+      const conv=waConvs.find(cv=>cv.phone===normalizePhone(telefone));
+
+      // 1) Canal online: envia o PDF DE VERDADE pelo WhatsApp. Antes esta função
+      // só baixava o arquivo, mas quem chamava registrava "Orçamento enviado via
+      // WhatsApp" e movia o lead de etapa — falso positivo que tirava o lead da
+      // régua de follow-up sem ninguém ter mandado nada.
+      if(telefone){
+        const base64=await blobParaBase64(pdfBlob);
+        const legenda=`Olá ${c.name||""}! Segue o orçamento da Vinil Vale no valor de ${fmt(tot)}. Qualquer dúvida é só chamar aqui.`.replace(/\s+/g," ").trim();
+        const env=await sendWAFile({phone:telefone,base64,mimetype:"application/pdf",fileName,caption:legenda,conv});
+        if(env.ok){
+          document.body.removeChild(iframe);
+          setFbMsg("✅ Orçamento enviado pelo WhatsApp!");setTimeout(()=>setFbMsg(""),4000);
+          return{ok:true,canal:env.canal};
+        }
+      }
+
+      // 2) Sem canal: no celular usa o compartilhamento nativo (o usuário escolhe
+      // a conversa e o arquivo vai junto).
       const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
       if(isMobile&&navigator.canShare){
         try{
-          const file=new File([pdfBlob],`Orcamento_VinilVale_${clientName}.pdf`,{type:"application/pdf"});
-          if(navigator.canShare({files:[file]})){await navigator.share({files:[file],title:"Orçamento Vinil Vale"});document.body.removeChild(iframe);setFbMsg("✅ PDF compartilhado!");setTimeout(()=>setFbMsg(""),4000);return}
-        }catch{}
+          const file=new File([pdfBlob],fileName,{type:"application/pdf"});
+          if(navigator.canShare({files:[file]})){
+            await navigator.share({files:[file],title:"Orçamento Vinil Vale"});
+            document.body.removeChild(iframe);
+            setFbMsg("✅ PDF compartilhado!");setTimeout(()=>setFbMsg(""),4000);
+            return{ok:true,canal:"compartilhado"};
+          }
+        }catch{/* cancelou o compartilhamento — segue para o download */}
       }
+
+      // 3) Desktop sem canal: baixa o PDF E abre a conversa com o texto pronto.
+      // O wa.me não anexa arquivo, então o aviso diz o que falta fazer.
       const url=URL.createObjectURL(pdfBlob);
-      const a=document.createElement("a");a.href=url;a.download=`Orcamento_VinilVale_${clientName}.pdf`;a.style.display="none";
+      const a=document.createElement("a");a.href=url;a.download=fileName;a.style.display="none";
       document.body.appendChild(a);a.click();
       setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url)},1000);
-      setFbMsg("📥 PDF baixado!");setTimeout(()=>setFbMsg(""),4000);
-    }catch(err){setFbMsg("❌ Erro ao gerar PDF");setTimeout(()=>setFbMsg(""),4000)}
-    document.body.removeChild(iframe);
+      if(telefone){
+        openWaMe(telefone,`Olá ${c.name||""}! Segue o orçamento da Vinil Vale no valor de ${fmt(tot)}.`);
+        setFbMsg("📥 PDF baixado — anexe na conversa que abriu");setTimeout(()=>setFbMsg(""),6000);
+      }else{
+        setFbMsg("📥 PDF baixado (cliente sem telefone cadastrado)");setTimeout(()=>setFbMsg(""),5000);
+      }
+      document.body.removeChild(iframe);
+      // Não é envio confirmado: quem chama NÃO deve registrar interação.
+      return{ok:false,canal:"manual",baixado:true};
+    }catch(err){
+      setFbMsg("❌ Erro ao gerar PDF");setTimeout(()=>setFbMsg(""),4000);
+      document.body.removeChild(iframe);
+      return{ok:false,erro:err.message};
+    }
   };
   const msgWA=(q)=>{
     const c=q.data?.client||{};const tot=parseFloat(q.tot)||0;
@@ -2589,7 +2654,10 @@ export default function App(){
           return <>
           {/* HEADER */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px",flexWrap:"wrap",gap:"8px"}}>
-            <div style={{fontSize:"14px",fontWeight:"800",color:blue}}>📈 CRM — Pipeline de Vendas</div>
+            <div style={{display:"flex",alignItems:"center",gap:"10px",flexWrap:"wrap"}}>
+              <span style={{fontSize:"14px",fontWeight:"800",color:blue}}>📈 CRM — Pipeline de Vendas</span>
+              <CanalStatus/>
+            </div>
             <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
               <button onClick={syncGoogleContacts} disabled={syncingContacts} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${t.cardBorder}`,background:"transparent",color:t.textSec,fontSize:"9px",fontWeight:"700",cursor:syncingContacts?"wait":"pointer",opacity:syncingContacts?0.6:1}}>{syncingContacts?"⏳ Sincronizando...":"🔄 Contatos Google"}</button>
               {syncMsg&&<span style={{fontSize:"9px",color:syncMsg.includes("Erro")?"#e74c3c":"#27ae60"}}>{syncMsg}</span>}
@@ -2712,7 +2780,7 @@ export default function App(){
                         {crmNextContact[q.id]&&<div style={{fontSize:"7px",marginBottom:"4px",color:overdue?"#dc2626":"#16a34a",fontWeight:"600"}}>📅 {overdue?"Atrasado":"Próx"}: {new Date(crmNextContact[q.id]+"T12:00").toLocaleDateString("pt-BR")}</div>}
                         <div style={{display:"flex",gap:"2px",marginTop:"4px"}}>
                           <button title="Abrir Chat WhatsApp" onClick={()=>{const ph=(q.data?.client?.phone||"").replace(/\D/g,"");const fullPh=ph.startsWith("55")?ph:`55${ph}`;const conv=waConvs.find(c=>c.phone===fullPh||c.phone===ph);if(conv){setCrmChatPhone(conv.phone)}else{msgWA(q)}}} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><MessageCircleIcon size={13} color="#fff"/></button>
-                          <button title="PDF" onClick={()=>{sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado via WhatsApp");if((q.status||"lead")==="lead")movePipe(q.id,"orcamento")}} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><FileTextIcon size={13} color="#fff"/></button>
+                          <button title="PDF" onClick={()=>enviarOrcamento(q)} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><FileTextIcon size={13} color="#fff"/></button>
                           <RescueButton q={q} daysSince={days} onClick={(q)=>setRescueModal({q,days:getCachedDays(q.id)})} compact={true}/>
                           {!["concluido","perdido"].includes(stage.id)&&<select title="Mover" value="" onChange={e=>{if(e.target.value)movePipe(q.id,e.target.value);e.target.value=""}} style={{flex:2,fontSize:"7px",padding:"2px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer"}}>
                             <option value="">→ Mover</option>
@@ -2831,7 +2899,7 @@ export default function App(){
                     <div style={{fontSize:"10px",fontWeight:"700",color:days<=5?"#16a34a":days<=10?"#f59e0b":"#dc2626",flexShrink:0,minWidth:"26px",textAlign:"right"}}>{days<999?days+"d":"—"}</div>
                     <div style={{display:"flex",gap:"3px",flexShrink:0}}>
                       <button title="Abrir Chat WhatsApp" onClick={e=>{e.stopPropagation();const ph=(q.data?.client?.phone||"").replace(/\D/g,"");const fullPh=ph.startsWith("55")?ph:`55${ph}`;const conv=waConvs.find(c=>c.phone===fullPh||c.phone===ph);if(conv){setCrmChatPhone(conv.phone)}else{msgWA(q)}}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><MessageCircleIcon size={14} color="#fff"/></button>
-                      <button title="PDF" onClick={e=>{e.stopPropagation();sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado");if((q.status||"lead")==="lead")movePipe(q.id,"orcamento")}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><FileTextIcon size={14} color="#fff"/></button>
+                      <button title="PDF" onClick={e=>{e.stopPropagation();enviarOrcamento(q)}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><FileTextIcon size={14} color="#fff"/></button>
                       <RescueButton q={q} daysSince={days} onClick={(q)=>setRescueModal({q,days:getCachedDays(q.id)})} compact={false}/>
                     </div>
                   </div>
@@ -2869,8 +2937,8 @@ export default function App(){
                   </div>
                 </div>
                 <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
-                  <button onClick={()=>{fetch(`${BOT_URL}/api/bot-on/${crmChatPhone}`,{method:"POST"})}} style={{padding:"4px 8px",borderRadius:"4px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#25d366",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>🤖 Bot ON</button>
-                  <button onClick={()=>{fetch(`${BOT_URL}/api/handoff/${crmChatPhone}`,{method:"POST"})}} style={{padding:"4px 8px",borderRadius:"4px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#ffc107",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>✋ Assumir</button>
+                  <button onClick={()=>{botFetch(`/api/bot-on/${crmChatPhone}`,{method:"POST"})}} style={{padding:"4px 8px",borderRadius:"4px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#25d366",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>🤖 Bot ON</button>
+                  <button onClick={()=>{botFetch(`/api/handoff/${crmChatPhone}`,{method:"POST"})}} style={{padding:"4px 8px",borderRadius:"4px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#ffc107",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>✋ Assumir</button>
                   <button onClick={()=>{setTab("whatsapp");setWaChat(crmChatPhone);setCrmChatPhone(null)}} style={{padding:"4px 8px",borderRadius:"4px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#aebac1",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>↗️ Expandir</button>
                   <button onClick={()=>setCrmChatPhone(null)} style={{background:"none",border:"none",cursor:"pointer",padding:"4px",display:"flex"}}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#aebac1" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -2912,7 +2980,11 @@ export default function App(){
         })()}</Card>}
 
         {/* ESTOQUE */}
-        {tab==="whatsapp"&&<Card t={t}><ST icon="💬">WhatsApp</ST>
+        {tab==="whatsapp"&&<Card t={t}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"10px",flexWrap:"wrap",marginBottom:"4px"}}>
+            <ST icon="💬">WhatsApp</ST>
+            <CanalStatus/>
+          </div>
           <div style={{display:"flex",height:"calc(100vh - 220px)",gap:"0",borderRadius:"4px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}} onClick={()=>{setWaCtxMenu(null);setWaConvCtx(null)}}>
             {/* === PAINEL ESQUERDO - Lista de Conversas === */}
             <div style={{width:waChat?"35%":"100%",minWidth:"300px",maxWidth:waChat?"420px":"100%",display:"flex",flexDirection:"column",borderRight:"1px solid #e2ddd1",background:"#fff"}}>
@@ -3093,8 +3165,8 @@ export default function App(){
                   <button onClick={()=>{setWaChatSearchOpen(!waChatSearchOpen);setWaChatSearch("")}} title="Buscar na conversa" style={{background:"none",border:"none",cursor:"pointer",padding:"8px",display:"flex",borderRadius:"50%"}}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#aebac1" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                   </button>
-                  <button onClick={()=>{fetch(`${BOT_URL}/api/bot-on/${waChat}`,{method:"POST"});}} title="Ativar Bot" style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#25d366",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>🤖 Bot ON</button>
-                  <button onClick={()=>{fetch(`${BOT_URL}/api/handoff/${waChat}`,{method:"POST"});}} title="Assumir conversa" style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#ffc107",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>✋ Assumir</button>
+                  <button onClick={()=>{botFetch(`/api/bot-on/${waChat}`,{method:"POST"});}} title="Ativar Bot" style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#25d366",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>🤖 Bot ON</button>
+                  <button onClick={()=>{botFetch(`/api/handoff/${waChat}`,{method:"POST"});}} title="Assumir conversa" style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#ffc107",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>✋ Assumir</button>
                   <button onClick={async()=>{if(!waChatRef.current)return;const canvas=await html2canvas(waChatRef.current,{backgroundColor:null,scale:2});const link=document.createElement("a");link.download=`whatsapp-${waChatData.leadData?.nome||waChat}-${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.png`;link.href=canvas.toDataURL("image/png");link.click()}} title="Capturar PNG" style={{background:"none",border:"none",cursor:"pointer",padding:"8px",display:"flex",borderRadius:"50%"}}>
                     <DownloadIcon size={18} color="#aebac1"/>
                   </button>
