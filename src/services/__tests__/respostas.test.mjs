@@ -21,6 +21,12 @@ check("texto sem variavel intacto", preencher("Bom dia!", lead), "Bom dia!");
 check("valor vazio nao deixa espaco orfao", preencher("O total fica em {{valor}} certo?", { cN: "Ana" }), "O total fica em certo?");
 check("variavel no inicio some com a virgula", preencher("{{nome}}, bom dia!", null), "bom dia!");
 check("cidade vazia", preencher("Atendemos em {{cidade}} sim", { cN: "Ana" }), "Atendemos em sim");
+// o texto de prazo tinha "20" fixo e mandava o numero errado quando o
+// orcamento usava outro prazo
+const tplPrazo = PADRAO.find(r => r.atalho === "prazo").texto;
+check("resposta de prazo usa a variavel", tplPrazo.includes("{{prazo}}"), true);
+check("prazo do orcamento chega na mensagem", preencher(tplPrazo, lead).includes("25 dias"), true);
+check("prazo padrao quando o orcamento nao define", preencher(tplPrazo, { cN: "Ana" }).includes("20 dias"), true);
 check("todos os padroes tem atalho e texto", PADRAO.every(r => r.atalho && r.texto && r.titulo), true);
 
 console.log(`\n${ok}/${total} casos`);

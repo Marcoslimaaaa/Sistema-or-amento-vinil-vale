@@ -30,6 +30,14 @@ export default function RespostasRapidas({ filtro, respostas, lead, onEscolher, 
 
   useEffect(() => {
     const onKey = (e) => {
+      // Só reage com o foco num campo de texto — o listener é global (window,
+      // em captura) e sem isso um Enter dado em qualquer outro lugar da página
+      // escolheria uma resposta enquanto a lista estivesse aberta.
+      const alvo = e.target;
+      const emCampo = alvo instanceof HTMLElement &&
+        (alvo.tagName === "INPUT" || alvo.tagName === "TEXTAREA" || alvo.isContentEditable);
+      if (!emCampo) return;
+
       if (e.key === "ArrowDown") { e.preventDefault(); setIdx((i) => Math.min(i + 1, lista.length - 1)); }
       else if (e.key === "ArrowUp") { e.preventDefault(); setIdx((i) => Math.max(i - 1, 0)); }
       else if (e.key === "Enter" && lista[idx]) { e.preventDefault(); onEscolher(preencher(lista[idx].texto, lead)); }
