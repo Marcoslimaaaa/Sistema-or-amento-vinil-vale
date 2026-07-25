@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { openWaMe } from "../crm/regua";
+import { sendWA } from "../../services/wa.js";
 
 export const RESCUE_MSGS = [
   { min: 3, max: 8, msg: (name) => `Ol\u00e1 ${name}! \ud83d\ude0a\n\nTudo bem? Passando pra saber se voc\u00ea ainda tem interesse no or\u00e7amento da piscina.\n\nQualquer d\u00favida estamos \u00e0 disposi\u00e7\u00e3o! \ud83d\udcaa` },
@@ -13,21 +13,21 @@ export const getRescueMsg = (days, name) => {
   return tmpl.msg(name || "");
 };
 
-export default function RescueModal({ q, t, daysSince, onClose, openWA, addInteracao, setLeadTag, crmTags }) {
+export default function RescueModal({ q, t, daysSince, onClose, addInteracao, setLeadTag, crmTags }) {
   const clientName = q.data?.client?.name || q.cN || "Cliente";
   const [msg, setMsg] = useState(() => getRescueMsg(daysSince, clientName));
 
-  const handleSend = () => {
-    // Envio via wa.me (WhatsApp do próprio aparelho) — funciona mesmo com o bot
-    // desconectado e sem risco de banimento. Só registra a interação se o
-    // WhatsApp realmente abriu; antes registrava "enviado" até sem telefone.
+  const handleSend = async () => {
+    // Passa pela camada única (services/wa.js): bot quando conectado, wa.me
+    // quando não. Só registra a interação em envio confirmado — antes
+    // registrava "enviado" mesmo sem telefone cadastrado.
     const phone = q.data?.client?.phone || q.tel || "";
-    const opened = openWaMe(phone, msg);
-    if (!opened) {
-      alert("Lead sem telefone cadastrado — edite o orçamento e adicione o telefone.");
+    const r = await sendWA({ phone, text: msg });
+    if (!r.ok) {
+      alert(r.erro || "Não foi possível enviar.");
       return;
     }
-    addInteracao(q.id, "whatsapp", "Follow-up de resgate enviado (wa.me)");
+    addInteracao(q.id, "whatsapp", r.canal === "wa.me" ? "Follow-up de resgate enviado (wa.me)" : "Follow-up de resgate enviado pelo sistema");
     const tags = crmTags[q.id] || [];
     if (!tags.includes("Retornar")) {
       setLeadTag(q.id, "Retornar");

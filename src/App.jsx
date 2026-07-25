@@ -29,6 +29,15 @@ import { useRescueAutomation } from "./components/rescue/useRescueAutomation";
 import LossAnalysis from "./components/dashboard/LossAnalysis";
 import { REGUA, normalizePhone, openWaMe } from "./components/crm/regua";
 import TodayTasks from "./components/crm/TodayTasks";
+import CanalStatus from "./components/crm/CanalStatus";
+import RespostasRapidas from "./components/crm/RespostasRapidas";
+import LeadNoChat from "./components/crm/LeadNoChat";
+import Timeline from "./components/crm/Timeline";
+import { conversaDoLead, leadDaConversa, leadsCandidatos } from "./services/vinculo.js";
+import { leadScore, faixaScore, conversasSemResposta } from "./services/score.js";
+import AlertaSLA from "./components/crm/AlertaSLA";
+import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
+import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, CANAL } from "./services/wa.js";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
 const FB_CFG = {
@@ -993,7 +1002,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
     if(!phone){setEnviadoStatus("⚠️ Sem telefone");setTimeout(()=>setEnviadoStatus(""),3000);return}
     const full=phone.length<=11?"55"+phone:phone;
     try{
-      const r=await fetch(`https://vinil-vale-whatsapp-bot-production.up.railway.app/api/quote-sent/${full}`,{method:"POST"});
+      const r=await botFetch(`/api/quote-sent/${full}`,{method:"POST"});
       if(r.ok){setEnviadoStatus("✅ Marcado!")}else{setEnviadoStatus("⚠️ Erro")}
     }catch(e){setEnviadoStatus("⚠️ Erro de conexão")}
     setTimeout(()=>setEnviadoStatus(""),3000);
@@ -1210,7 +1219,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
 };
 
 // ═══ NOTE PANEL (definido fora do App para evitar remount a cada render) ═══
-const NotePanel=({q,t,crmNoteType,setCrmNoteType,noteInputRef,newNote,setNewNote,addInteracao,crmNextContact,isNextContactOverdue,setNextContact,crmTags,setLeadTag,interacoes})=>{
+const NotePanel=({q,t,crmNoteType,setCrmNoteType,noteInputRef,newNote,setNewNote,addInteracao,crmNextContact,isNextContactOverdue,setNextContact,crmTags,setLeadTag,interacoes,conv})=>{
   const ti=TIPO_ICONS[crmNoteType]||TIPO_ICONS.nota;
   return <div style={{marginTop:"8px",borderTop:`1px solid ${t.cardBorder}`,paddingTop:"8px"}}>
     <div style={{display:"flex",gap:"3px",marginBottom:"8px",flexWrap:"wrap"}}>
@@ -1236,9 +1245,9 @@ const NotePanel=({q,t,crmNoteType,setCrmNoteType,noteInputRef,newNote,setNewNote
     <div style={{display:"flex",gap:"3px",flexWrap:"wrap",marginBottom:"8px"}}>
       {TAGS_OPTS.map(tag=>{const active=(crmTags[q.id]||[]).includes(tag);return <button key={tag} title={active?"Remover tag":"Adicionar tag"} onClick={()=>setLeadTag(q.id,tag)} style={{fontSize:"8px",padding:"2px 8px",borderRadius:"10px",border:`1px solid ${active?blue:t.cardBorder}`,background:active?blue+"22":"transparent",color:active?blue:t.textMuted,cursor:"pointer",fontWeight:active?"700":"400"}}>{active?"✓ ":""}{tag}</button>})}
     </div>
-    <div style={{maxHeight:"130px",overflow:"auto",display:"flex",flexDirection:"column",gap:"3px"}}>
-      {(interacoes[q.id]||[]).map((it,i)=>{const tip=TIPO_ICONS[it.tipo]||TIPO_ICONS.nota;return <div key={i} style={{fontSize:"8px",display:"flex",gap:"5px",alignItems:"flex-start",padding:"4px 6px",borderRadius:"5px",background:t.sectionBg,border:`1px solid ${t.cardBorder}`}}><span style={{color:tip.color,flexShrink:0,fontSize:"10px"}}>{tip.icon}</span><div style={{flex:1}}><span style={{fontWeight:"700",color:t.textSec}}>{it.data} {it.hora} · </span><span style={{color:t.text}}>{it.texto}</span></div></div>})}
-      {(!interacoes[q.id]||interacoes[q.id].length===0)&&<div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",padding:"12px"}}>Nenhuma interação registrada ainda</div>}
+    {/* Timeline unificada: interacoes do CRM + mensagens reais do WhatsApp */}
+    <div style={{maxHeight:"260px",overflow:"auto"}}>
+      <Timeline interacoes={interacoes[q.id]} conv={conv} t={t}/>
     </div>
   </div>;
 };
@@ -1540,7 +1549,6 @@ export default function App(){
   const waChatRef=useRef(null);
   const waMsgAreaRef=useRef(null);
   const waFileInputRef=useRef(null);
-  const BOT_URL="https://vinil-vale-whatsapp-bot-production.up.railway.app";
 
   // Processa arquivo para envio (drag-drop ou input)
   const waProcessFile=(file)=>{
@@ -1555,14 +1563,18 @@ export default function App(){
     reader.readAsDataURL(file);
   };
 
-  // Envia arquivo via API do bot
+  // Envia arquivo pela camada única. Sem canal online não há fallback possível
+  // (wa.me não anexa arquivo), então avisamos em vez de fingir que enviou.
   const waSendFile=async()=>{
     if(!waFilePreview||!waChat||waSendingFile)return;
     setWaSendingFile(true);
-    try{
-      await fetch(`${BOT_URL}/api/send-media`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:waChat,media:waFilePreview.base64,mimetype:waFilePreview.type,fileName:waFilePreview.name,caption:waFileCaption})});
+    const conv=waConvs.find(c=>c.phone===waChat);
+    const r=await sendWAFile({phone:waChat,base64:waFilePreview.base64,mimetype:waFilePreview.type,fileName:waFilePreview.name,caption:waFileCaption,conv});
+    if(r.ok){
       setWaFilePreview(null);setWaFileCaption("");
-    }catch(e){alert("Erro ao enviar arquivo: "+e.message)}
+    }else{
+      setFbMsg("⚠️ "+(r.erro||"Não foi possível enviar o arquivo"));setTimeout(()=>setFbMsg(""),5000);
+    }
     setWaSendingFile(false);
   };
 
@@ -1587,6 +1599,33 @@ export default function App(){
   const [crmNoteType,setCrmNoteType]=useState("nota");
   const [crmSort,setCrmSort]=useState("data");
   const crmNoteInputRef=useRef(null);
+  // Vínculo manual lead↔conversa: { [quoteId]: phone }. Tem precedência sobre o
+  // crmQuoteId do bot e sobre o telefone — é decisão humana.
+  const [crmVinculos,setCrmVinculos]=useState({});
+  // Kanban: lead sendo arrastado e coluna sob o cursor
+  const [dragLead,setDragLead]=useState(null);
+  const [dragOverStage,setDragOverStage]=useState(null);
+  const [respostasRapidas,setRespostasRapidas]=useState([]);
+  const [mostrarRespostas,setMostrarRespostas]=useState(false);
+  const [canalOficial,setCanalOficial]=useState(false);
+  const [notifPerm,setNotifPerm]=useState(()=>permissaoNotificacao());
+
+  // Notificações: avisa quando um cliente novo entra na fila do SLA.
+  // Guarda quem já foi avisado para não repetir o alarme a cada verificação.
+  const avisadosSLA=useRef(new Set());
+  useEffect(()=>{
+    if(!suportaNotificacao()||permissaoNotificacao()!=="granted")return;
+    const fila=conversasSemResposta(waConvs);
+    avisadosSLA.current=notificarSLA(fila,avisadosSLA.current);
+  },[waConvs]);
+
+  // Estado do canal para a interface (a decisão de envio é do services/wa.js)
+  useEffect(()=>{
+    let vivo=true;
+    const checar=async()=>{const s=await getChannelStatus();if(vivo)setCanalOficial(s.canal===CANAL.OFICIAL)};
+    checar();const id=setInterval(checar,60000);
+    return ()=>{vivo=false;clearInterval(id)};
+  },[]);
 
   // FINANCEIRO
 
@@ -1624,7 +1663,7 @@ export default function App(){
     try{
       const ref=fbFns.doc(fb.db,"users",user.uid,"config","crmMeta");
       const unsub=fbFns.onSnapshot(ref,(snap)=>{
-        if(snap.exists()){const d=snap.data();if(d.nextContact)setCrmNextContact(d.nextContact);if(d.tags)setCrmTags(d.tags);}
+        if(snap.exists()){const d=snap.data();if(d.nextContact)setCrmNextContact(d.nextContact);if(d.tags)setCrmTags(d.tags);if(d.vinculos)setCrmVinculos(d.vinculos);}
         setCrmMetaLoaded(true);
       });
       return ()=>unsub();
@@ -1643,10 +1682,30 @@ export default function App(){
   const patchCrmMeta=(patch)=>{
     if(patch.nextContact)setCrmNextContact(prev=>({...prev,...patch.nextContact}));
     if(patch.tags)setCrmTags(prev=>({...prev,...patch.tags}));
+    if(patch.vinculos)setCrmVinculos(prev=>({...prev,...patch.vinculos}));
     if(fbReady&&fb.db&&user&&user.uid!=="local"){
       try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","crmMeta"),patch,{merge:true})}catch{}
     }
   };
+
+  // Liga uma conversa do WhatsApp a um orçamento (ou desfaz, com phone=null)
+  const vincularConversa=(quoteId,phone)=>{
+    patchCrmMeta({vinculos:{[String(quoteId)]:phone}});
+    setFbMsg(phone?"🔗 Conversa vinculada ao orçamento":"🔗 Vínculo removido");
+    setTimeout(()=>setFbMsg(""),2500);
+  };
+
+  // Respostas rápidas do WhatsApp (users/{uid}/config/respostasRapidas)
+  useEffect(()=>{
+    if(!user||!fbReady||!fb.db||user.uid==="local")return;
+    try{
+      const ref=fbFns.doc(fb.db,"users",user.uid,"config","respostasRapidas");
+      const unsub=fbFns.onSnapshot(ref,(snap)=>{
+        if(snap.exists()&&Array.isArray(snap.data().lista))setRespostasRapidas(snap.data().lista);
+      });
+      return ()=>unsub();
+    }catch{}
+  },[user,fbReady]);
 
   const addInteracao=(qId,tipo,texto)=>{
     const list=[{tipo,texto,data:new Date().toLocaleDateString("pt-BR"),hora:new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}),ts:Date.now()},...(interacoes[qId]||[])];
@@ -1669,12 +1728,13 @@ export default function App(){
       if(last.ts)refs.push(last.ts);
       else if(last.data){const p=last.data.split("/");const d=new Date(p[2],p[1]-1,p[0]);if(!isNaN(d))refs.push(d.getTime());}
     }
+    // Conversa do lead pelo vínculo forte (manual → crmQuoteId → telefone).
+    // Antes cruzava só por telefone, o que errava com cliente que trocou de
+    // número ou que tem mais de um orçamento no mesmo telefone.
     const q=histRef.current.find(h=>String(h.id)===String(qId));
-    const ph=(q?.data?.client?.phone||q?.tel||"").replace(/\D/g,"");
-    if(ph){
-      const full=ph.startsWith("55")?ph:"55"+ph;
-      const conv=waConvs.find(c=>c.phone===full||c.phone===ph);
-      const la=conv?.lastActivity;
+    const conv=conversaDoLead(q,waConvs,crmVinculos);
+    if(conv){
+      const la=conv.lastActivity;
       const ms=la?.toMillis?la.toMillis():(typeof la==="number"?la:(la?new Date(la).getTime():0));
       if(ms>0)refs.push(ms);
     }
@@ -1711,17 +1771,24 @@ export default function App(){
   // phoneOverride: permite enviar direto do chat inline do CRM sem depender do
   // estado waChat (o setTimeout+setWaChat antigo usava closure velho e falhava
   // em silêncio ou mandava a mensagem para o contato errado)
+  // Envia pela camada única (src/services/wa.js): tenta o bot e cai para o
+  // wa.me quando o provider está fora. Antes ia direto no fetch e, com o bot
+  // desconectado, a mensagem sumia sem o usuário perceber.
   const waSendMessage=async(phoneOverride)=>{
     const phone=phoneOverride||waChat;
     if(!waMsg.trim()||!phone||waSending)return;
     setWaSending(true);
-    try{
-      await fetch(`${BOT_URL}/api/send-message`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,message:waMsg})});
-      // Registra contato real no CRM se o telefone corresponder a um lead
+    const conv=waConvs.find(c=>c.phone===normalizePhone(phone)||c.phone===phone);
+    const r=await sendWA({phone,text:waMsg,conv});
+    if(r.ok){
+      // Interação só depois do envio confirmado — registrar antes zerava o
+      // contador de dias sem contato e tirava o lead do follow-up à toa.
       const lead=histRef.current.find(h=>{const p=(h.data?.client?.phone||h.tel||"").replace(/\D/g,"");return p&&(normalizePhone(p)===normalizePhone(phone))});
-      if(lead)addInteracao(lead.id,"whatsapp","Mensagem enviada pelo sistema");
+      if(lead)addInteracao(lead.id,"whatsapp",r.canal==="wa.me"?"Mensagem enviada (WhatsApp do aparelho)":"Mensagem enviada pelo sistema");
       setWaMsg("");
-    }catch(e){alert("Erro ao enviar: "+e.message);}
+    }else{
+      setFbMsg("⚠️ "+(r.erro||"Não foi possível enviar"));setTimeout(()=>setFbMsg(""),4000);
+    }
     setWaSending(false);
   };
 
@@ -2080,10 +2147,46 @@ export default function App(){
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
   const movePipe=(id,stage)=>{
     if(stage==="perdido"){const q=hist.find(h=>h.id===id);if(q){setLostReasonModal({q,days:getDaysSince(q.id),auto:false});return;}}
-    const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
-  const salvarMotivoPerda=async(q,motivo)=>{const nh=hist.map(h=>h.id===q.id?{...h,status:"perdido",...motivo}:h);setHist(nh);saveLS(nh);const item=nh.find(h=>h.id===q.id);if(item)saveFS(item);addInteracao(q.id,"perda",`Marcado como perdido: ${motivo.motivoLabel}`);setFbMsg("❌ Marcado como perdido");setTimeout(()=>setFbMsg(""),2000)};
+    // stageSince marca a entrada na etapa — base do "Xd nesta etapa" no card e
+    // do tempo medio por etapa no Analytics.
+    const nh=hist.map(q=>q.id===id?{...q,status:stage,stageSince:Date.now(),closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);addInteracao(id,"etapa",`Movido para ${PIPE.find(p=>p.id===stage)?.label}`);setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
+
+  // Dias na etapa atual. Sem stageSince (leads anteriores a este campo) só
+  // sabemos para quem está em "lead": o id é o timestamp de criação. Nos outros
+  // devolve null e a interface omite, em vez de inventar um número.
+  const diasNaEtapa=(q)=>{
+    const base=q.stageSince||((q.status||"lead")==="lead"&&Number(q.id)>1e12?Number(q.id):null);
+    if(!base)return null;
+    return Math.max(0,Math.floor((Date.now()-base)/86400000));
+  };
+  const salvarMotivoPerda=async(q,motivo)=>{const nh=hist.map(h=>h.id===q.id?{...h,status:"perdido",stageSince:Date.now(),...motivo}:h);setHist(nh);saveLS(nh);const item=nh.find(h=>h.id===q.id);if(item)saveFS(item);addInteracao(q.id,"perda",`Marcado como perdido: ${motivo.motivoLabel}`);setFbMsg("❌ Marcado como perdido");setTimeout(()=>setFbMsg(""),2000)};
   useRescueAutomation({hist,crmTags,getDaysSince,patchCrmMeta,ready:histLoaded&&interacoesLoaded&&crmMetaLoaded,onSugerirPerda:(q,days)=>setLostReasonModal({q,days,auto:true})});
-  const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const fullNum=num.startsWith("55")?num:`55${num}`;const conv=waConvs.find(c=>c.phone===fullNum||c.phone===num);if(conv){setTab("whatsapp");setWaChat(conv.phone);if(msg)setWaMsg(msg)}else{setTab("whatsapp");setFbMsg("📱 Conversa não encontrada no sistema. Inicie pelo WhatsApp.");setTimeout(()=>setFbMsg(""),3000)}};
+  // Abre a conversa com o texto pronto para revisar antes de mandar.
+  // Sem conversa no sistema (cliente que nunca falou com o bot), cai no wa.me
+  // em vez do antigo "conversa não encontrada", que era um beco sem saída:
+  // não dava para mandar mensagem para cliente novo por este caminho.
+  const openWA=(phone,msg)=>{
+    const num=(phone||"").replace(/\D/g,"");
+    if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}
+    const fullNum=normalizePhone(num);
+    const conv=waConvs.find(c=>c.phone===fullNum||c.phone===num);
+    if(conv){setTab("whatsapp");setWaChat(conv.phone);if(msg)setWaMsg(msg);return}
+    if(openWaMe(num,msg)){setFbMsg("📱 Abrindo no WhatsApp do aparelho");setTimeout(()=>setFbMsg(""),2500)}
+    else{setFbMsg("⚠️ Não foi possível abrir o WhatsApp");setTimeout(()=>setFbMsg(""),3000)}
+  };
+  // Handler dos botões de PDF do pipeline/lista: registra a interação e move o
+  // lead SÓ quando o envio confirma. Se o PDF só foi baixado (canal manual),
+  // nada é registrado — senão o lead sai da régua de follow-up sem ter recebido
+  // o orçamento.
+  const enviarOrcamento=async(q)=>{
+    const r=await sendOrcWA(q);
+    if(r?.ok){
+      addInteracao(q.id,"orcamento",r.canal==="compartilhado"?"Orçamento compartilhado (WhatsApp)":"Orçamento enviado via WhatsApp");
+      if((q.status||"lead")==="lead")movePipe(q.id,"orcamento");
+    }
+    return r;
+  };
+
   const sendOrcWA=async(q)=>{
     const d=q.data;const c=d?.client||{};const inc=(d?.items||[]).filter(i=>i.on);
     const p=d?.pool||{};const pay2=d?.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
@@ -2131,20 +2234,60 @@ export default function App(){
         }
       }
       const pdfBlob=pdf.output("blob");
+      const fileName=`Orcamento_VinilVale_${clientName}.pdf`;
+      const telefone=c.phone||"";
+      const conv=waConvs.find(cv=>cv.phone===normalizePhone(telefone));
+
+      // 1) Canal online: envia o PDF DE VERDADE pelo WhatsApp. Antes esta função
+      // só baixava o arquivo, mas quem chamava registrava "Orçamento enviado via
+      // WhatsApp" e movia o lead de etapa — falso positivo que tirava o lead da
+      // régua de follow-up sem ninguém ter mandado nada.
+      if(telefone){
+        const base64=await blobParaBase64(pdfBlob);
+        const legenda=`Olá ${c.name||""}! Segue o orçamento da Vinil Vale no valor de ${fmt(tot)}. Qualquer dúvida é só chamar aqui.`.replace(/\s+/g," ").trim();
+        const env=await sendWAFile({phone:telefone,base64,mimetype:"application/pdf",fileName,caption:legenda,conv});
+        if(env.ok){
+          document.body.removeChild(iframe);
+          setFbMsg("✅ Orçamento enviado pelo WhatsApp!");setTimeout(()=>setFbMsg(""),4000);
+          return{ok:true,canal:env.canal};
+        }
+      }
+
+      // 2) Sem canal: no celular usa o compartilhamento nativo (o usuário escolhe
+      // a conversa e o arquivo vai junto).
       const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
       if(isMobile&&navigator.canShare){
         try{
-          const file=new File([pdfBlob],`Orcamento_VinilVale_${clientName}.pdf`,{type:"application/pdf"});
-          if(navigator.canShare({files:[file]})){await navigator.share({files:[file],title:"Orçamento Vinil Vale"});document.body.removeChild(iframe);setFbMsg("✅ PDF compartilhado!");setTimeout(()=>setFbMsg(""),4000);return}
-        }catch{}
+          const file=new File([pdfBlob],fileName,{type:"application/pdf"});
+          if(navigator.canShare({files:[file]})){
+            await navigator.share({files:[file],title:"Orçamento Vinil Vale"});
+            document.body.removeChild(iframe);
+            setFbMsg("✅ PDF compartilhado!");setTimeout(()=>setFbMsg(""),4000);
+            return{ok:true,canal:"compartilhado"};
+          }
+        }catch{/* cancelou o compartilhamento — segue para o download */}
       }
+
+      // 3) Desktop sem canal: baixa o PDF E abre a conversa com o texto pronto.
+      // O wa.me não anexa arquivo, então o aviso diz o que falta fazer.
       const url=URL.createObjectURL(pdfBlob);
-      const a=document.createElement("a");a.href=url;a.download=`Orcamento_VinilVale_${clientName}.pdf`;a.style.display="none";
+      const a=document.createElement("a");a.href=url;a.download=fileName;a.style.display="none";
       document.body.appendChild(a);a.click();
       setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url)},1000);
-      setFbMsg("📥 PDF baixado!");setTimeout(()=>setFbMsg(""),4000);
-    }catch(err){setFbMsg("❌ Erro ao gerar PDF");setTimeout(()=>setFbMsg(""),4000)}
-    document.body.removeChild(iframe);
+      if(telefone){
+        openWaMe(telefone,`Olá ${c.name||""}! Segue o orçamento da Vinil Vale no valor de ${fmt(tot)}.`);
+        setFbMsg("📥 PDF baixado — anexe na conversa que abriu");setTimeout(()=>setFbMsg(""),6000);
+      }else{
+        setFbMsg("📥 PDF baixado (cliente sem telefone cadastrado)");setTimeout(()=>setFbMsg(""),5000);
+      }
+      document.body.removeChild(iframe);
+      // Não é envio confirmado: quem chama NÃO deve registrar interação.
+      return{ok:false,canal:"manual",baixado:true};
+    }catch(err){
+      setFbMsg("❌ Erro ao gerar PDF");setTimeout(()=>setFbMsg(""),4000);
+      document.body.removeChild(iframe);
+      return{ok:false,erro:err.message};
+    }
   };
   const msgWA=(q)=>{
     const c=q.data?.client||{};const tot=parseFloat(q.tot)||0;
@@ -2574,6 +2717,8 @@ export default function App(){
           const decididos=fechados.length+perdidos.length;
           const winRate=decididos>0?Math.round((fechados.length/decididos)*100):0;
           const ticketMedio=fechados.length>0?receita/fechados.length:0;
+          // Maior orçamento em aberto — normaliza o peso do valor no lead score
+          const maiorValorPipe=Math.max(0,...ativos.map(q=>parseFloat(q.tot)||0));
           const followUps=hist.filter(q=>{const s=q.status||"lead";if(!["lead","negociacao"].includes(s))return false;const d=getCachedDays(q.id);return d>=REGUA.followUp&&d<REGUA.desconhecido});
           const overdueNC=Object.keys(crmNextContact).filter(id=>isNextContactOverdue(id)&&hist.find(q=>q.id==id&&!["concluido","perdido"].includes(q.status)));
 
@@ -2589,7 +2734,12 @@ export default function App(){
           return <>
           {/* HEADER */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px",flexWrap:"wrap",gap:"8px"}}>
-            <div style={{fontSize:"14px",fontWeight:"800",color:blue}}>📈 CRM — Pipeline de Vendas</div>
+            <div style={{display:"flex",alignItems:"center",gap:"10px",flexWrap:"wrap"}}>
+              <span style={{fontSize:"14px",fontWeight:"800",color:blue}}>📈 CRM — Pipeline de Vendas</span>
+              <CanalStatus/>
+              {suportaNotificacao()&&notifPerm!=="granted"&&
+                <button onClick={async()=>{const p=await pedirPermissao();setNotifPerm(p)}} title="Avisa quando um cliente ficar esperando resposta (só com o painel aberto)" style={{padding:"4px 9px",borderRadius:"20px",border:`1px solid ${t.cardBorder}`,background:"transparent",color:t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>🔔 Ativar avisos</button>}
+            </div>
             <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
               <button onClick={syncGoogleContacts} disabled={syncingContacts} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${t.cardBorder}`,background:"transparent",color:t.textSec,fontSize:"9px",fontWeight:"700",cursor:syncingContacts?"wait":"pointer",opacity:syncingContacts?0.6:1}}>{syncingContacts?"⏳ Sincronizando...":"🔄 Contatos Google"}</button>
               {syncMsg&&<span style={{fontSize:"9px",color:syncMsg.includes("Erro")?"#e74c3c":"#27ae60"}}>{syncMsg}</span>}
@@ -2622,6 +2772,30 @@ export default function App(){
               <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Funil de Vendas</div>
               {activePipe.map(stage=>{const cnt=hist.filter(q=>(q.status||"lead")===stage.id).length;const pct=hist.length>0?Math.round((cnt/hist.length)*100):0;const val=hist.filter(q=>(q.status||"lead")===stage.id).reduce((s,q)=>s+(parseFloat(q.tot)||0),0);return <div key={stage.id} style={{marginBottom:"6px"}}><div style={{display:"flex",justifyContent:"space-between",fontSize:"9px",marginBottom:"2px"}}><span style={{fontWeight:"700",color:stage.color}}>{stage.icon} {stage.label}</span><span style={{color:t.textSec}}>{cnt} leads · {fmt(val)}</span></div><div style={{height:"10px",background:t.cardBorder,borderRadius:"5px",overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:stage.color,borderRadius:"5px",transition:"width .5s"}}/></div></div>})}
             </div>
+            {/* Tempo médio por etapa — só conta leads com stageSince gravado */}
+            {(()=>{
+              const porEtapa=activePipe.map(stage=>{
+                const comData=hist.filter(q=>(q.status||"lead")===stage.id&&diasNaEtapa(q)!==null);
+                if(comData.length===0)return null;
+                const media=Math.round(comData.reduce((s2,q)=>s2+diasNaEtapa(q),0)/comData.length);
+                return{stage,media,n:comData.length};
+              }).filter(Boolean);
+              if(porEtapa.length===0)return null;
+              const maxM=Math.max(...porEtapa.map(p=>p.media),1);
+              return <div style={{background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`,marginBottom:"14px"}}>
+                <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"3px"}}>⏱️ Tempo Médio em Cada Etapa</div>
+                <div style={{fontSize:"8px",color:t.textMuted,marginBottom:"9px"}}>Onde os negócios ficam parados. Conta só os leads movidos depois desta atualização.</div>
+                {porEtapa.map(({stage,media,n})=><div key={stage.id} style={{marginBottom:"6px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:"9px",marginBottom:"2px"}}>
+                    <span style={{fontWeight:"700",color:stage.color}}>{stage.icon} {stage.label}</span>
+                    <span style={{color:t.textSec}}>{media}d em média · {n} lead{n!==1?"s":""}</span>
+                  </div>
+                  <div style={{height:"8px",background:t.cardBorder,borderRadius:"4px",overflow:"hidden"}}>
+                    <div style={{height:"100%",width:Math.round((media/maxM)*100)+"%",background:stage.color,borderRadius:"4px"}}/>
+                  </div>
+                </div>)}
+              </div>;
+            })()}
             {/* Por tipo de serviço */}
             <div style={{background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`,marginBottom:"14px"}}>
               <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Receita por Tipo de Serviço</div>
@@ -2670,12 +2844,20 @@ export default function App(){
               </select>
               <button onClick={()=>setCrmShowLost(p=>!p)} style={{padding:"6px 10px",borderRadius:"6px",border:`1.5px solid ${crmShowLost?"#dc2626":t.cardBorder}`,background:crmShowLost?"#fef2f2":"transparent",color:crmShowLost?"#dc2626":t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>❌ Perdidos</button>
             </div>
-            {/* Tarefas de Hoje — follow-up acionável em 1 clique (wa.me) */}
-            <TodayTasks hist={hist} getDays={getCachedDays} fmt={fmt} t={t} blue={blue} crmNextContact={crmNextContact} setNextContact={setNextContact} addInteracao={addInteracao}/>
+            {/* SLA: cliente esperando resposta humana há mais de 1h */}
+            <AlertaSLA waConvs={waConvs} t={t} fmtPhone={waFmtPhone} onAbrirConversa={(ph)=>{setTab("whatsapp");setWaChat(ph)}}/>
+            {/* Tarefas de Hoje — follow-up acionável em 1 clique */}
+            <TodayTasks hist={hist} getDays={getCachedDays} fmt={fmt} t={t} blue={blue} crmNextContact={crmNextContact} setNextContact={setNextContact} addInteracao={addInteracao} onResumo={notificarResumoDiario}/>
             {/* Pipeline columns */}
             <div style={{display:"flex",gap:"8px",overflowX:"auto",paddingBottom:"8px"}}>
               {(crmShowLost?PIPE:activePipe).map(stage=>{
-                const items=filteredHist.filter(q=>(q.status||"lead")===stage.id||(stage.id==="lead"&&!PIPE.find(p=>p.id===(q.status||"lead"))));
+                // Ordena por prioridade: quem tem mais chance de fechar primeiro
+                // aparece no topo da coluna (valor x etapa x tempo parado x engajamento).
+                const items=filteredHist
+                  .filter(q=>(q.status||"lead")===stage.id||(stage.id==="lead"&&!PIPE.find(p=>p.id===(q.status||"lead"))))
+                  .map(q=>({q,_s:leadScore({q,dias:getCachedDays(q.id),conv:conversaDoLead(q,waConvs,crmVinculos),maiorValor:maiorValorPipe})}))
+                  .sort((a,b)=>b._s-a._s)
+                  .map(x=>x.q);
                 const stageVal=items.reduce((s,q)=>s+(parseFloat(q.tot)||0),0);
                 return <div key={stage.id} style={{minWidth:"175px",flex:1}}>
                   <div style={{background:stage.color+"22",borderRadius:"8px 8px 0 0",padding:"8px 10px",borderBottom:`3px solid ${stage.color}`}}>
@@ -2685,7 +2867,11 @@ export default function App(){
                     </div>
                     <div style={{fontSize:"8px",color:stage.color,opacity:.8,fontWeight:"600",marginTop:"2px"}}>{fmt(stageVal)}</div>
                   </div>
-                  <div style={{background:t.sectionBg,borderRadius:"0 0 8px 8px",padding:"6px",minHeight:"80px",border:`1px solid ${t.cardBorder}`,borderTop:"none",display:"flex",flexDirection:"column",gap:"5px"}}>
+                  <div
+                    onDragOver={e=>{e.preventDefault();if(dragOverStage!==stage.id)setDragOverStage(stage.id)}}
+                    onDragLeave={()=>setDragOverStage(null)}
+                    onDrop={e=>{e.preventDefault();if(dragLead&&(dragLead.status||"lead")!==stage.id)movePipe(dragLead.id,stage.id);setDragLead(null);setDragOverStage(null)}}
+                    style={{background:dragOverStage===stage.id?stage.color+"18":t.sectionBg,borderRadius:"0 0 8px 8px",padding:"6px",minHeight:"80px",border:`1px ${dragOverStage===stage.id?"dashed":"solid"} ${dragOverStage===stage.id?stage.color:t.cardBorder}`,borderTop:"none",display:"flex",flexDirection:"column",gap:"5px",transition:"background .15s"}}>
                     {items.length===0?<div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",padding:"16px"}}>—</div>:
                     items.map(q=>{
                       const days=getCachedDays(q.id);
@@ -2693,16 +2879,24 @@ export default function App(){
                       const overdue=isNextContactOverdue(q.id);
                       const tags=crmTags[q.id]||[];
                       const isFollowUp=["lead","negociacao"].includes(q.status||"lead")&&days>=REGUA.followUp&&days<REGUA.desconhecido;
-                      return <div key={q.id} style={{background:t.card,borderRadius:"8px",padding:"8px",border:`1px solid ${overdue?"#fca5a5":t.cardBorder}`,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
+                      const score=leadScore({q,dias:days,conv:conversaDoLead(q,waConvs,crmVinculos),maiorValor:maiorValorPipe});
+                      const faixa=faixaScore(score);
+                      const naEtapa=diasNaEtapa(q);
+                      return <div key={q.id}
+                        draggable
+                        onDragStart={()=>setDragLead(q)}
+                        onDragEnd={()=>{setDragLead(null);setDragOverStage(null)}}
+                        style={{background:t.card,borderRadius:"8px",padding:"8px",border:`1px solid ${overdue?"#fca5a5":t.cardBorder}`,boxShadow:"0 1px 3px rgba(0,0,0,.04)",opacity:dragLead?.id===q.id?0.4:1,cursor:"grab"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"3px"}}>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:"11px",fontWeight:"700",color:t.text,lineHeight:"1.2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.cN||"Sem nome"}</div>
-                            <div style={{fontSize:"8px",color:t.textMuted,marginTop:"2px"}}>{[q.data?.client?.city,q.ps&&q.ps+"m",days<999&&(days+"d")].filter(Boolean).join(" · ")}</div>
+                            <div style={{fontSize:"8px",color:t.textMuted,marginTop:"2px"}}>{[q.data?.client?.city,q.ps&&q.ps+"m",days<999&&(days+"d"),naEtapa!==null&&`${naEtapa}d nesta etapa`].filter(Boolean).join(" · ")}</div>
                           </div>
                           <div style={{textAlign:"right",flexShrink:0,marginLeft:"6px"}}>
                             <div style={{fontSize:"12px",fontWeight:"800",color:stage.color}}>{fmt(parseFloat(q.tot)||0)}</div>
                             <div style={{display:"flex",gap:"2px",justifyContent:"flex-end",marginTop:"1px"}}>
                               {temp&&<span style={{fontSize:"10px"}}>{temp.icon}</span>}
+                              <span title={`Prioridade ${faixa.label} (${score}/100): valor x etapa x tempo parado x engajamento`} style={{fontSize:"6px",background:faixa.cor+"1f",color:faixa.cor,padding:"1px 3px",borderRadius:"3px",fontWeight:"800"}}>{score}</span>
                               {isFollowUp&&<span style={{fontSize:"6px",background:"#fef2f2",color:"#dc2626",padding:"1px 3px",borderRadius:"3px",fontWeight:"700"}}>UP</span>}
                               {overdue&&<span style={{fontSize:"6px",background:"#fef2f2",color:"#dc2626",padding:"1px 3px",borderRadius:"3px",fontWeight:"700"}}>⏰</span>}
                             </div>
@@ -2712,7 +2906,7 @@ export default function App(){
                         {crmNextContact[q.id]&&<div style={{fontSize:"7px",marginBottom:"4px",color:overdue?"#dc2626":"#16a34a",fontWeight:"600"}}>📅 {overdue?"Atrasado":"Próx"}: {new Date(crmNextContact[q.id]+"T12:00").toLocaleDateString("pt-BR")}</div>}
                         <div style={{display:"flex",gap:"2px",marginTop:"4px"}}>
                           <button title="Abrir Chat WhatsApp" onClick={()=>{const ph=(q.data?.client?.phone||"").replace(/\D/g,"");const fullPh=ph.startsWith("55")?ph:`55${ph}`;const conv=waConvs.find(c=>c.phone===fullPh||c.phone===ph);if(conv){setCrmChatPhone(conv.phone)}else{msgWA(q)}}} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><MessageCircleIcon size={13} color="#fff"/></button>
-                          <button title="PDF" onClick={()=>{sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado via WhatsApp");if((q.status||"lead")==="lead")movePipe(q.id,"orcamento")}} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><FileTextIcon size={13} color="#fff"/></button>
+                          <button title="PDF" onClick={()=>enviarOrcamento(q)} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><FileTextIcon size={13} color="#fff"/></button>
                           <RescueButton q={q} daysSince={days} onClick={(q)=>setRescueModal({q,days:getCachedDays(q.id)})} compact={true}/>
                           {!["concluido","perdido"].includes(stage.id)&&<select title="Mover" value="" onChange={e=>{if(e.target.value)movePipe(q.id,e.target.value);e.target.value=""}} style={{flex:2,fontSize:"7px",padding:"2px",borderRadius:"4px",border:`1px solid ${t.cardBorder}`,background:t.inputBg,color:t.text,cursor:"pointer"}}>
                             <option value="">→ Mover</option>
@@ -2720,7 +2914,7 @@ export default function App(){
                           </select>}
                           <button title="Notas" onClick={()=>setCrmDetail(crmDetail===q.id?null:q.id)} style={{flex:1,fontSize:"8px",padding:"3px",borderRadius:"4px",border:`1px solid ${crmDetail===q.id?blue:t.cardBorder}`,background:crmDetail===q.id?blue:"transparent",color:crmDetail===q.id?"#fff":t.text,cursor:"pointer"}}>📋</button>
                         </div>
-                        {crmDetail===q.id&&<NotePanel q={q} {...notePanelProps}/>}
+                        {crmDetail===q.id&&<NotePanel q={q} conv={conversaDoLead(q,waConvs,crmVinculos)} {...notePanelProps}/>}
                       </div>
                     })}
                   </div>
@@ -2831,11 +3025,11 @@ export default function App(){
                     <div style={{fontSize:"10px",fontWeight:"700",color:days<=5?"#16a34a":days<=10?"#f59e0b":"#dc2626",flexShrink:0,minWidth:"26px",textAlign:"right"}}>{days<999?days+"d":"—"}</div>
                     <div style={{display:"flex",gap:"3px",flexShrink:0}}>
                       <button title="Abrir Chat WhatsApp" onClick={e=>{e.stopPropagation();const ph=(q.data?.client?.phone||"").replace(/\D/g,"");const fullPh=ph.startsWith("55")?ph:`55${ph}`;const conv=waConvs.find(c=>c.phone===fullPh||c.phone===ph);if(conv){setCrmChatPhone(conv.phone)}else{msgWA(q)}}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#25d366",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><MessageCircleIcon size={14} color="#fff"/></button>
-                      <button title="PDF" onClick={e=>{e.stopPropagation();sendOrcWA(q);addInteracao(q.id,"orcamento","Orçamento enviado");if((q.status||"lead")==="lead")movePipe(q.id,"orcamento")}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><FileTextIcon size={14} color="#fff"/></button>
+                      <button title="PDF" onClick={e=>{e.stopPropagation();enviarOrcamento(q)}} style={{fontSize:"9px",padding:"4px 6px",borderRadius:"4px",border:"none",background:"#128c7e",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center"}}><FileTextIcon size={14} color="#fff"/></button>
                       <RescueButton q={q} daysSince={days} onClick={(q)=>setRescueModal({q,days:getCachedDays(q.id)})} compact={false}/>
                     </div>
                   </div>
-                  {crmDetail===q.id&&<div style={{padding:"8px 10px",background:t.card,borderRadius:"0 0 8px 8px",border:`1px solid ${t.cardBorder}`,borderTop:`1px dashed ${t.cardBorder}`,marginTop:"-1px"}}><NotePanel q={q} {...notePanelProps}/></div>}
+                  {crmDetail===q.id&&<div style={{padding:"8px 10px",background:t.card,borderRadius:"0 0 8px 8px",border:`1px solid ${t.cardBorder}`,borderTop:`1px dashed ${t.cardBorder}`,marginTop:"-1px"}}><NotePanel q={q} conv={conversaDoLead(q,waConvs,crmVinculos)} {...notePanelProps}/></div>}
                 </div>
               })}
               {filteredHist.length===0&&<div style={{textAlign:"center",padding:"24px",color:t.textMuted,fontSize:"11px"}}>Nenhum lead encontrado</div>}
@@ -2869,8 +3063,8 @@ export default function App(){
                   </div>
                 </div>
                 <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
-                  <button onClick={()=>{fetch(`${BOT_URL}/api/bot-on/${crmChatPhone}`,{method:"POST"})}} style={{padding:"4px 8px",borderRadius:"4px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#25d366",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>🤖 Bot ON</button>
-                  <button onClick={()=>{fetch(`${BOT_URL}/api/handoff/${crmChatPhone}`,{method:"POST"})}} style={{padding:"4px 8px",borderRadius:"4px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#ffc107",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>✋ Assumir</button>
+                  <button onClick={()=>{botFetch(`/api/bot-on/${crmChatPhone}`,{method:"POST"})}} style={{padding:"4px 8px",borderRadius:"4px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#25d366",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>🤖 Bot ON</button>
+                  <button onClick={()=>{botFetch(`/api/handoff/${crmChatPhone}`,{method:"POST"})}} style={{padding:"4px 8px",borderRadius:"4px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#ffc107",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>✋ Assumir</button>
                   <button onClick={()=>{setTab("whatsapp");setWaChat(crmChatPhone);setCrmChatPhone(null)}} style={{padding:"4px 8px",borderRadius:"4px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#aebac1",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>↗️ Expandir</button>
                   <button onClick={()=>setCrmChatPhone(null)} style={{background:"none",border:"none",cursor:"pointer",padding:"4px",display:"flex"}}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#aebac1" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -2912,7 +3106,11 @@ export default function App(){
         })()}</Card>}
 
         {/* ESTOQUE */}
-        {tab==="whatsapp"&&<Card t={t}><ST icon="💬">WhatsApp</ST>
+        {tab==="whatsapp"&&<Card t={t}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"10px",flexWrap:"wrap",marginBottom:"4px"}}>
+            <ST icon="💬">WhatsApp</ST>
+            <CanalStatus/>
+          </div>
           <div style={{display:"flex",height:"calc(100vh - 220px)",gap:"0",borderRadius:"4px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}} onClick={()=>{setWaCtxMenu(null);setWaConvCtx(null)}}>
             {/* === PAINEL ESQUERDO - Lista de Conversas === */}
             <div style={{width:waChat?"35%":"100%",minWidth:"300px",maxWidth:waChat?"420px":"100%",display:"flex",flexDirection:"column",borderRight:"1px solid #e2ddd1",background:"#fff"}}>
@@ -3093,8 +3291,8 @@ export default function App(){
                   <button onClick={()=>{setWaChatSearchOpen(!waChatSearchOpen);setWaChatSearch("")}} title="Buscar na conversa" style={{background:"none",border:"none",cursor:"pointer",padding:"8px",display:"flex",borderRadius:"50%"}}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#aebac1" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                   </button>
-                  <button onClick={()=>{fetch(`${BOT_URL}/api/bot-on/${waChat}`,{method:"POST"});}} title="Ativar Bot" style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#25d366",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>🤖 Bot ON</button>
-                  <button onClick={()=>{fetch(`${BOT_URL}/api/handoff/${waChat}`,{method:"POST"});}} title="Assumir conversa" style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#ffc107",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>✋ Assumir</button>
+                  <button onClick={()=>{botFetch(`/api/bot-on/${waChat}`,{method:"POST"});}} title="Ativar Bot" style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#25d366",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>🤖 Bot ON</button>
+                  <button onClick={()=>{botFetch(`/api/handoff/${waChat}`,{method:"POST"});}} title="Assumir conversa" style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#ffc107",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>✋ Assumir</button>
                   <button onClick={async()=>{if(!waChatRef.current)return;const canvas=await html2canvas(waChatRef.current,{backgroundColor:null,scale:2});const link=document.createElement("a");link.download=`whatsapp-${waChatData.leadData?.nome||waChat}-${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.png`;link.href=canvas.toDataURL("image/png");link.click()}} title="Capturar PNG" style={{background:"none",border:"none",cursor:"pointer",padding:"8px",display:"flex",borderRadius:"50%"}}>
                     <DownloadIcon size={18} color="#aebac1"/>
                   </button>
@@ -3196,8 +3394,12 @@ export default function App(){
                 <button title="Anexar arquivo" onClick={()=>waFileInputRef.current?.click()} style={{background:"none",border:"none",cursor:"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#54656f" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
                 </button>
-                <div style={{flex:1,background:"#fff",borderRadius:"8px",display:"flex",alignItems:"center",padding:"0 12px",minHeight:"42px"}}>
-                  <input value={waMsg} onChange={e=>setWaMsg(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();waSendMessage();setWaReply(null)}}} placeholder="Digite uma mensagem" style={{flex:1,border:"none",outline:"none",fontSize:"14px",color:"#111b21",background:"transparent",padding:"10px 0"}}/>
+                <div style={{flex:1,background:"#fff",borderRadius:"8px",display:"flex",alignItems:"center",padding:"0 12px",minHeight:"42px",position:"relative"}}>
+                  {/* Respostas rápidas: "/" no início do texto abre a lista */}
+                  {mostrarRespostas&&waMsg.startsWith("/")&&
+                    <RespostasRapidas filtro={waMsg} respostas={respostasRapidas} lead={leadDaConversa(waChatData,hist,crmVinculos)} t={t}
+                      onEscolher={(txt)=>{setWaMsg(txt);setMostrarRespostas(false)}} onFechar={()=>setMostrarRespostas(false)}/>}
+                  <input value={waMsg} onChange={e=>{const v=e.target.value;setWaMsg(v);setMostrarRespostas(v.startsWith("/"))}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&!(mostrarRespostas&&waMsg.startsWith("/"))){e.preventDefault();waSendMessage();setWaReply(null)}}} placeholder="Digite uma mensagem (ou / para respostas rápidas)" style={{flex:1,border:"none",outline:"none",fontSize:"14px",color:"#111b21",background:"transparent",padding:"10px 0"}}/>
                 </div>
                 {waMsg.trim()?
                   <button onClick={()=>{waSendMessage();setWaReply(null)}} disabled={waSending} style={{background:"none",border:"none",cursor:waSending?"wait":"pointer",padding:"6px",display:"flex",borderRadius:"50%"}}>
@@ -3210,6 +3412,21 @@ export default function App(){
                 }
               </div>
             </div>}
+
+            {/* === PAINEL DO LEAD — o orçamento ao lado da conversa === */}
+            {waChat&&!waInfoPanel&&(()=>{
+              const leadConv=leadDaConversa(waChatData,hist,crmVinculos);
+              return <LeadNoChat
+                lead={leadConv} conv={waChatData} t={t} fmt={fmt}
+                dias={leadConv?getDaysSince(leadConv.id):0}
+                canalOficial={canalOficial}
+                candidatos={leadsCandidatos(waChatData,hist)}
+                onAbrirLead={(q)=>{setTab("crm");setCrmView("lista");setCrmSearch(q.cN||"")}}
+                onMover={movePipe}
+                onEnviarOrcamento={enviarOrcamento}
+                onVincular={(quoteId)=>vincularConversa(quoteId,waChat)}
+              />;
+            })()}
 
             {/* === PAINEL DIREITO - Info do Contato === */}
             {waInfoPanel&&waChatData&&<div style={{width:"340px",background:"#fff",borderLeft:"1px solid #e2ddd1",display:"flex",flexDirection:"column",overflowY:"auto"}}>
@@ -3994,7 +4211,7 @@ export default function App(){
         <button onClick={()=>setSidebarOpen(true)}><Menu size={19}/>Mais</button>
       </div>
 
-      {rescueModal&&<RescueModal q={rescueModal.q} t={t} daysSince={rescueModal.days} onClose={()=>setRescueModal(null)} openWA={openWA} addInteracao={addInteracao} setLeadTag={setLeadTag} crmTags={crmTags}/>}
+      {rescueModal&&<RescueModal q={rescueModal.q} t={t} daysSince={rescueModal.days} onClose={()=>setRescueModal(null)} addInteracao={addInteracao} setLeadTag={setLeadTag} crmTags={crmTags}/>}
       {lostReasonModal&&<LostReasonModal q={lostReasonModal.q} t={t} daysSince={lostReasonModal.days} sugestaoAutomatica={lostReasonModal.auto} onClose={()=>setLostReasonModal(null)} onConfirm={(motivo)=>{salvarMotivoPerda(lostReasonModal.q,motivo);setLostReasonModal(null)}}/>}
     </div>
   );
