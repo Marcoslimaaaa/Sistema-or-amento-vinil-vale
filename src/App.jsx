@@ -34,6 +34,9 @@ import RespostasRapidas from "./components/crm/RespostasRapidas";
 import LeadNoChat from "./components/crm/LeadNoChat";
 import Timeline from "./components/crm/Timeline";
 import { conversaDoLead, leadDaConversa, leadsCandidatos } from "./services/vinculo.js";
+import { leadScore, faixaScore, conversasSemResposta } from "./services/score.js";
+import AlertaSLA from "./components/crm/AlertaSLA";
+import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
 import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, CANAL } from "./services/wa.js";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
@@ -1599,9 +1602,22 @@ export default function App(){
   // Vínculo manual lead↔conversa: { [quoteId]: phone }. Tem precedência sobre o
   // crmQuoteId do bot e sobre o telefone — é decisão humana.
   const [crmVinculos,setCrmVinculos]=useState({});
+  // Kanban: lead sendo arrastado e coluna sob o cursor
+  const [dragLead,setDragLead]=useState(null);
+  const [dragOverStage,setDragOverStage]=useState(null);
   const [respostasRapidas,setRespostasRapidas]=useState([]);
   const [mostrarRespostas,setMostrarRespostas]=useState(false);
   const [canalOficial,setCanalOficial]=useState(false);
+  const [notifPerm,setNotifPerm]=useState(()=>permissaoNotificacao());
+
+  // Notificações: avisa quando um cliente novo entra na fila do SLA.
+  // Guarda quem já foi avisado para não repetir o alarme a cada verificação.
+  const avisadosSLA=useRef(new Set());
+  useEffect(()=>{
+    if(!suportaNotificacao()||permissaoNotificacao()!=="granted")return;
+    const fila=conversasSemResposta(waConvs);
+    avisadosSLA.current=notificarSLA(fila,avisadosSLA.current);
+  },[waConvs]);
 
   // Estado do canal para a interface (a decisão de envio é do services/wa.js)
   useEffect(()=>{
@@ -2131,8 +2147,19 @@ export default function App(){
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
   const movePipe=(id,stage)=>{
     if(stage==="perdido"){const q=hist.find(h=>h.id===id);if(q){setLostReasonModal({q,days:getDaysSince(q.id),auto:false});return;}}
-    const nh=hist.map(q=>q.id===id?{...q,status:stage,closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
-  const salvarMotivoPerda=async(q,motivo)=>{const nh=hist.map(h=>h.id===q.id?{...h,status:"perdido",...motivo}:h);setHist(nh);saveLS(nh);const item=nh.find(h=>h.id===q.id);if(item)saveFS(item);addInteracao(q.id,"perda",`Marcado como perdido: ${motivo.motivoLabel}`);setFbMsg("❌ Marcado como perdido");setTimeout(()=>setFbMsg(""),2000)};
+    // stageSince marca a entrada na etapa — base do "Xd nesta etapa" no card e
+    // do tempo medio por etapa no Analytics.
+    const nh=hist.map(q=>q.id===id?{...q,status:stage,stageSince:Date.now(),closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);addInteracao(id,"etapa",`Movido para ${PIPE.find(p=>p.id===stage)?.label}`);setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
+
+  // Dias na etapa atual. Sem stageSince (leads anteriores a este campo) só
+  // sabemos para quem está em "lead": o id é o timestamp de criação. Nos outros
+  // devolve null e a interface omite, em vez de inventar um número.
+  const diasNaEtapa=(q)=>{
+    const base=q.stageSince||((q.status||"lead")==="lead"&&Number(q.id)>1e12?Number(q.id):null);
+    if(!base)return null;
+    return Math.max(0,Math.floor((Date.now()-base)/86400000));
+  };
+  const salvarMotivoPerda=async(q,motivo)=>{const nh=hist.map(h=>h.id===q.id?{...h,status:"perdido",stageSince:Date.now(),...motivo}:h);setHist(nh);saveLS(nh);const item=nh.find(h=>h.id===q.id);if(item)saveFS(item);addInteracao(q.id,"perda",`Marcado como perdido: ${motivo.motivoLabel}`);setFbMsg("❌ Marcado como perdido");setTimeout(()=>setFbMsg(""),2000)};
   useRescueAutomation({hist,crmTags,getDaysSince,patchCrmMeta,ready:histLoaded&&interacoesLoaded&&crmMetaLoaded,onSugerirPerda:(q,days)=>setLostReasonModal({q,days,auto:true})});
   const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const fullNum=num.startsWith("55")?num:`55${num}`;const conv=waConvs.find(c=>c.phone===fullNum||c.phone===num);if(conv){setTab("whatsapp");setWaChat(conv.phone);if(msg)setWaMsg(msg)}else{setTab("whatsapp");setFbMsg("📱 Conversa não encontrada no sistema. Inicie pelo WhatsApp.");setTimeout(()=>setFbMsg(""),3000)}};
   // Handler dos botões de PDF do pipeline/lista: registra a interação e move o
@@ -2678,6 +2705,8 @@ export default function App(){
           const decididos=fechados.length+perdidos.length;
           const winRate=decididos>0?Math.round((fechados.length/decididos)*100):0;
           const ticketMedio=fechados.length>0?receita/fechados.length:0;
+          // Maior orçamento em aberto — normaliza o peso do valor no lead score
+          const maiorValorPipe=Math.max(0,...ativos.map(q=>parseFloat(q.tot)||0));
           const followUps=hist.filter(q=>{const s=q.status||"lead";if(!["lead","negociacao"].includes(s))return false;const d=getCachedDays(q.id);return d>=REGUA.followUp&&d<REGUA.desconhecido});
           const overdueNC=Object.keys(crmNextContact).filter(id=>isNextContactOverdue(id)&&hist.find(q=>q.id==id&&!["concluido","perdido"].includes(q.status)));
 
@@ -2696,6 +2725,8 @@ export default function App(){
             <div style={{display:"flex",alignItems:"center",gap:"10px",flexWrap:"wrap"}}>
               <span style={{fontSize:"14px",fontWeight:"800",color:blue}}>📈 CRM — Pipeline de Vendas</span>
               <CanalStatus/>
+              {suportaNotificacao()&&notifPerm!=="granted"&&
+                <button onClick={async()=>{const p=await pedirPermissao();setNotifPerm(p)}} title="Avisa quando um cliente ficar esperando resposta (só com o painel aberto)" style={{padding:"4px 9px",borderRadius:"20px",border:`1px solid ${t.cardBorder}`,background:"transparent",color:t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>🔔 Ativar avisos</button>}
             </div>
             <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
               <button onClick={syncGoogleContacts} disabled={syncingContacts} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${t.cardBorder}`,background:"transparent",color:t.textSec,fontSize:"9px",fontWeight:"700",cursor:syncingContacts?"wait":"pointer",opacity:syncingContacts?0.6:1}}>{syncingContacts?"⏳ Sincronizando...":"🔄 Contatos Google"}</button>
@@ -2729,6 +2760,30 @@ export default function App(){
               <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Funil de Vendas</div>
               {activePipe.map(stage=>{const cnt=hist.filter(q=>(q.status||"lead")===stage.id).length;const pct=hist.length>0?Math.round((cnt/hist.length)*100):0;const val=hist.filter(q=>(q.status||"lead")===stage.id).reduce((s,q)=>s+(parseFloat(q.tot)||0),0);return <div key={stage.id} style={{marginBottom:"6px"}}><div style={{display:"flex",justifyContent:"space-between",fontSize:"9px",marginBottom:"2px"}}><span style={{fontWeight:"700",color:stage.color}}>{stage.icon} {stage.label}</span><span style={{color:t.textSec}}>{cnt} leads · {fmt(val)}</span></div><div style={{height:"10px",background:t.cardBorder,borderRadius:"5px",overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:stage.color,borderRadius:"5px",transition:"width .5s"}}/></div></div>})}
             </div>
+            {/* Tempo médio por etapa — só conta leads com stageSince gravado */}
+            {(()=>{
+              const porEtapa=activePipe.map(stage=>{
+                const comData=hist.filter(q=>(q.status||"lead")===stage.id&&diasNaEtapa(q)!==null);
+                if(comData.length===0)return null;
+                const media=Math.round(comData.reduce((s2,q)=>s2+diasNaEtapa(q),0)/comData.length);
+                return{stage,media,n:comData.length};
+              }).filter(Boolean);
+              if(porEtapa.length===0)return null;
+              const maxM=Math.max(...porEtapa.map(p=>p.media),1);
+              return <div style={{background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`,marginBottom:"14px"}}>
+                <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"3px"}}>⏱️ Tempo Médio em Cada Etapa</div>
+                <div style={{fontSize:"8px",color:t.textMuted,marginBottom:"9px"}}>Onde os negócios ficam parados. Conta só os leads movidos depois desta atualização.</div>
+                {porEtapa.map(({stage,media,n})=><div key={stage.id} style={{marginBottom:"6px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:"9px",marginBottom:"2px"}}>
+                    <span style={{fontWeight:"700",color:stage.color}}>{stage.icon} {stage.label}</span>
+                    <span style={{color:t.textSec}}>{media}d em média · {n} lead{n!==1?"s":""}</span>
+                  </div>
+                  <div style={{height:"8px",background:t.cardBorder,borderRadius:"4px",overflow:"hidden"}}>
+                    <div style={{height:"100%",width:Math.round((media/maxM)*100)+"%",background:stage.color,borderRadius:"4px"}}/>
+                  </div>
+                </div>)}
+              </div>;
+            })()}
             {/* Por tipo de serviço */}
             <div style={{background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`,marginBottom:"14px"}}>
               <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Receita por Tipo de Serviço</div>
@@ -2777,12 +2832,20 @@ export default function App(){
               </select>
               <button onClick={()=>setCrmShowLost(p=>!p)} style={{padding:"6px 10px",borderRadius:"6px",border:`1.5px solid ${crmShowLost?"#dc2626":t.cardBorder}`,background:crmShowLost?"#fef2f2":"transparent",color:crmShowLost?"#dc2626":t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>❌ Perdidos</button>
             </div>
-            {/* Tarefas de Hoje — follow-up acionável em 1 clique (wa.me) */}
-            <TodayTasks hist={hist} getDays={getCachedDays} fmt={fmt} t={t} blue={blue} crmNextContact={crmNextContact} setNextContact={setNextContact} addInteracao={addInteracao}/>
+            {/* SLA: cliente esperando resposta humana há mais de 1h */}
+            <AlertaSLA waConvs={waConvs} t={t} fmtPhone={waFmtPhone} onAbrirConversa={(ph)=>{setTab("whatsapp");setWaChat(ph)}}/>
+            {/* Tarefas de Hoje — follow-up acionável em 1 clique */}
+            <TodayTasks hist={hist} getDays={getCachedDays} fmt={fmt} t={t} blue={blue} crmNextContact={crmNextContact} setNextContact={setNextContact} addInteracao={addInteracao} onResumo={notificarResumoDiario}/>
             {/* Pipeline columns */}
             <div style={{display:"flex",gap:"8px",overflowX:"auto",paddingBottom:"8px"}}>
               {(crmShowLost?PIPE:activePipe).map(stage=>{
-                const items=filteredHist.filter(q=>(q.status||"lead")===stage.id||(stage.id==="lead"&&!PIPE.find(p=>p.id===(q.status||"lead"))));
+                // Ordena por prioridade: quem tem mais chance de fechar primeiro
+                // aparece no topo da coluna (valor x etapa x tempo parado x engajamento).
+                const items=filteredHist
+                  .filter(q=>(q.status||"lead")===stage.id||(stage.id==="lead"&&!PIPE.find(p=>p.id===(q.status||"lead"))))
+                  .map(q=>({q,_s:leadScore({q,dias:getCachedDays(q.id),conv:conversaDoLead(q,waConvs,crmVinculos),maiorValor:maiorValorPipe})}))
+                  .sort((a,b)=>b._s-a._s)
+                  .map(x=>x.q);
                 const stageVal=items.reduce((s,q)=>s+(parseFloat(q.tot)||0),0);
                 return <div key={stage.id} style={{minWidth:"175px",flex:1}}>
                   <div style={{background:stage.color+"22",borderRadius:"8px 8px 0 0",padding:"8px 10px",borderBottom:`3px solid ${stage.color}`}}>
@@ -2792,7 +2855,11 @@ export default function App(){
                     </div>
                     <div style={{fontSize:"8px",color:stage.color,opacity:.8,fontWeight:"600",marginTop:"2px"}}>{fmt(stageVal)}</div>
                   </div>
-                  <div style={{background:t.sectionBg,borderRadius:"0 0 8px 8px",padding:"6px",minHeight:"80px",border:`1px solid ${t.cardBorder}`,borderTop:"none",display:"flex",flexDirection:"column",gap:"5px"}}>
+                  <div
+                    onDragOver={e=>{e.preventDefault();if(dragOverStage!==stage.id)setDragOverStage(stage.id)}}
+                    onDragLeave={()=>setDragOverStage(null)}
+                    onDrop={e=>{e.preventDefault();if(dragLead&&(dragLead.status||"lead")!==stage.id)movePipe(dragLead.id,stage.id);setDragLead(null);setDragOverStage(null)}}
+                    style={{background:dragOverStage===stage.id?stage.color+"18":t.sectionBg,borderRadius:"0 0 8px 8px",padding:"6px",minHeight:"80px",border:`1px ${dragOverStage===stage.id?"dashed":"solid"} ${dragOverStage===stage.id?stage.color:t.cardBorder}`,borderTop:"none",display:"flex",flexDirection:"column",gap:"5px",transition:"background .15s"}}>
                     {items.length===0?<div style={{fontSize:"9px",color:t.textMuted,textAlign:"center",padding:"16px"}}>—</div>:
                     items.map(q=>{
                       const days=getCachedDays(q.id);
@@ -2800,16 +2867,24 @@ export default function App(){
                       const overdue=isNextContactOverdue(q.id);
                       const tags=crmTags[q.id]||[];
                       const isFollowUp=["lead","negociacao"].includes(q.status||"lead")&&days>=REGUA.followUp&&days<REGUA.desconhecido;
-                      return <div key={q.id} style={{background:t.card,borderRadius:"8px",padding:"8px",border:`1px solid ${overdue?"#fca5a5":t.cardBorder}`,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
+                      const score=leadScore({q,dias:days,conv:conversaDoLead(q,waConvs,crmVinculos),maiorValor:maiorValorPipe});
+                      const faixa=faixaScore(score);
+                      const naEtapa=diasNaEtapa(q);
+                      return <div key={q.id}
+                        draggable
+                        onDragStart={()=>setDragLead(q)}
+                        onDragEnd={()=>{setDragLead(null);setDragOverStage(null)}}
+                        style={{background:t.card,borderRadius:"8px",padding:"8px",border:`1px solid ${overdue?"#fca5a5":t.cardBorder}`,boxShadow:"0 1px 3px rgba(0,0,0,.04)",opacity:dragLead?.id===q.id?0.4:1,cursor:"grab"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"3px"}}>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:"11px",fontWeight:"700",color:t.text,lineHeight:"1.2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.cN||"Sem nome"}</div>
-                            <div style={{fontSize:"8px",color:t.textMuted,marginTop:"2px"}}>{[q.data?.client?.city,q.ps&&q.ps+"m",days<999&&(days+"d")].filter(Boolean).join(" · ")}</div>
+                            <div style={{fontSize:"8px",color:t.textMuted,marginTop:"2px"}}>{[q.data?.client?.city,q.ps&&q.ps+"m",days<999&&(days+"d"),naEtapa!==null&&`${naEtapa}d nesta etapa`].filter(Boolean).join(" · ")}</div>
                           </div>
                           <div style={{textAlign:"right",flexShrink:0,marginLeft:"6px"}}>
                             <div style={{fontSize:"12px",fontWeight:"800",color:stage.color}}>{fmt(parseFloat(q.tot)||0)}</div>
                             <div style={{display:"flex",gap:"2px",justifyContent:"flex-end",marginTop:"1px"}}>
                               {temp&&<span style={{fontSize:"10px"}}>{temp.icon}</span>}
+                              <span title={`Prioridade ${faixa.label} (${score}/100): valor x etapa x tempo parado x engajamento`} style={{fontSize:"6px",background:faixa.cor+"1f",color:faixa.cor,padding:"1px 3px",borderRadius:"3px",fontWeight:"800"}}>{score}</span>
                               {isFollowUp&&<span style={{fontSize:"6px",background:"#fef2f2",color:"#dc2626",padding:"1px 3px",borderRadius:"3px",fontWeight:"700"}}>UP</span>}
                               {overdue&&<span style={{fontSize:"6px",background:"#fef2f2",color:"#dc2626",padding:"1px 3px",borderRadius:"3px",fontWeight:"700"}}>⏰</span>}
                             </div>

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { REGUA } from "./regua";
 import { getRescueMsg } from "../rescue/RescueModal";
 import { sendWA } from "../../services/wa.js";
@@ -9,7 +9,7 @@ import { sendWA } from "../../services/wa.js";
 
 const toISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-export default function TodayTasks({ hist, getDays, fmt, t, blue, crmNextContact, setNextContact, addInteracao }) {
+export default function TodayTasks({ hist, getDays, fmt, t, blue, crmNextContact, setNextContact, addInteracao, onResumo }) {
   const [expanded, setExpanded] = useState(true);
   const [showAll, setShowAll] = useState(false);
 
@@ -35,6 +35,9 @@ export default function TodayTasks({ hist, getDays, fmt, t, blue, crmNextContact
     })
     .filter(Boolean)
     .sort((a, b) => b.score - a.score);
+
+  // Resumo do dia por notificação (o próprio serviço garante 1x por dia)
+  useEffect(() => { if (onResumo) onResumo(tasks.length); }, [tasks.length, onResumo]);
 
   if (tasks.length === 0) return (
     <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", padding: "8px 12px", marginBottom: "10px", fontSize: "10px", fontWeight: "700", color: "#16a34a" }}>

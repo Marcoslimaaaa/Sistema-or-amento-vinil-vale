@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node src/services/__tests__/janela.test.mjs && node src/services/__tests__/sendWA.test.mjs && node src/services/__tests__/vinculo.test.mjs && node src/services/__tests__/respostas.test.mjs"
+    "test": "node src/services/__tests__/janela.test.mjs && node src/services/__tests__/sendWA.test.mjs && node src/services/__tests__/vinculo.test.mjs && node src/services/__tests__/respostas.test.mjs && node src/services/__tests__/score.test.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^9.122.0",
