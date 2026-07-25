@@ -5,6 +5,50 @@ Continua de onde o `PLANO-CRM-UPGRADE.md` parou (fases 1, 2, 3a e 4 concluídas 
 
 ---
 
+## ✅ STATUS DA EXECUÇÃO (25/07/2026)
+
+**Todas as fases de código foram implementadas** e estão em branch, **sem push
+para produção** — o merge é decisão do Marcos.
+
+| Fase | Status | Onde |
+|---|---|---|
+| 0 — Fechar a API do bot | ✅ feito | bot `feat/api-seguranca-templates` (59ea02f) |
+| 1 — Camada única de envio | ✅ feito | painel `feat/whatsapp-crm-v5` (6a072a1) |
+| 2 — WhatsApp no CRM | ✅ feito | painel (e052cdd) |
+| 3 — Upgrade do CRM | ✅ feito | painel (39a451c) |
+| 4 — Follow-ups com template (código) | ✅ feito | bot (4d0693d) |
+| 4 — Templates aprovados na Meta | ⛔ **precisa do Marcos** | `TEMPLATES-PARA-SUBMETER.md` |
+
+**83 testes** passando no painel (`npm test`); build limpo nos dois repos.
+
+### O que falta — só o que exige acesso que eu não tenho
+
+1. **Revisar e mergear as branches** (nenhum push foi feito para `main`/`master`).
+2. **Criar as envs** — sem elas a Fase 0 não liga (o código está em modo
+   compatibilidade e não quebra nada enquanto isso):
+   - Vercel: `VITE_BOT_API_KEY` → redeploy
+   - Railway: `PANEL_API_KEY` (mesma chave) e `ALLOWED_ORIGINS`
+   - **Nesta ordem.** Invertendo, o painel fica sem chave contra um bot que já
+     exige, e toda chamada volta 401.
+   - Gerar a chave: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+3. **Submeter os templates na Meta** — textos prontos em
+   `TEMPLATES-PARA-SUBMETER.md` no repo do bot. É o item de maior prazo.
+4. **Decidir quais feriados manter** — hoje são 14 disparando de graça; na Cloud
+   API viram conversas MARKETING cobradas × tamanho da base. Sugestão no
+   documento: manter 2.
+
+### Pendências conhecidas (não bloqueiam)
+
+- **Push com o app fechado**: as notificações implementadas são locais (só com o
+  painel aberto). Push real precisa de Web Push com chaves VAPID e o servidor
+  disparando — o bot no Railway serviria.
+- **Tempo por etapa** só conta leads movidos depois desta atualização
+  (`stageSince` não existe retroativamente).
+- Dívida técnica da Fase 5 segue de pé: `App.jsx` passou de 4.001 para ~4.200
+  linhas. A lógica nova saiu toda em `src/services/`, mas o monolito continua.
+
+---
+
 ## 1. Diagnóstico — o que está de pé hoje
 
 ### O canal de WhatsApp está DESLIGADO (verificado ao vivo)

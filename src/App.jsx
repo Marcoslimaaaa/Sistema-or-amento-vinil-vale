@@ -2161,7 +2161,19 @@ export default function App(){
   };
   const salvarMotivoPerda=async(q,motivo)=>{const nh=hist.map(h=>h.id===q.id?{...h,status:"perdido",stageSince:Date.now(),...motivo}:h);setHist(nh);saveLS(nh);const item=nh.find(h=>h.id===q.id);if(item)saveFS(item);addInteracao(q.id,"perda",`Marcado como perdido: ${motivo.motivoLabel}`);setFbMsg("❌ Marcado como perdido");setTimeout(()=>setFbMsg(""),2000)};
   useRescueAutomation({hist,crmTags,getDaysSince,patchCrmMeta,ready:histLoaded&&interacoesLoaded&&crmMetaLoaded,onSugerirPerda:(q,days)=>setLostReasonModal({q,days,auto:true})});
-  const openWA=(phone,msg)=>{const num=(phone||"").replace(/\D/g,"");if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}const fullNum=num.startsWith("55")?num:`55${num}`;const conv=waConvs.find(c=>c.phone===fullNum||c.phone===num);if(conv){setTab("whatsapp");setWaChat(conv.phone);if(msg)setWaMsg(msg)}else{setTab("whatsapp");setFbMsg("📱 Conversa não encontrada no sistema. Inicie pelo WhatsApp.");setTimeout(()=>setFbMsg(""),3000)}};
+  // Abre a conversa com o texto pronto para revisar antes de mandar.
+  // Sem conversa no sistema (cliente que nunca falou com o bot), cai no wa.me
+  // em vez do antigo "conversa não encontrada", que era um beco sem saída:
+  // não dava para mandar mensagem para cliente novo por este caminho.
+  const openWA=(phone,msg)=>{
+    const num=(phone||"").replace(/\D/g,"");
+    if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}
+    const fullNum=normalizePhone(num);
+    const conv=waConvs.find(c=>c.phone===fullNum||c.phone===num);
+    if(conv){setTab("whatsapp");setWaChat(conv.phone);if(msg)setWaMsg(msg);return}
+    if(openWaMe(num,msg)){setFbMsg("📱 Abrindo no WhatsApp do aparelho");setTimeout(()=>setFbMsg(""),2500)}
+    else{setFbMsg("⚠️ Não foi possível abrir o WhatsApp");setTimeout(()=>setFbMsg(""),3000)}
+  };
   // Handler dos botões de PDF do pipeline/lista: registra a interação e move o
   // lead SÓ quando o envio confirma. Se o PDF só foi baixado (canal manual),
   // nada é registrado — senão o lead sai da régua de follow-up sem ter recebido
@@ -4199,7 +4211,7 @@ export default function App(){
         <button onClick={()=>setSidebarOpen(true)}><Menu size={19}/>Mais</button>
       </div>
 
-      {rescueModal&&<RescueModal q={rescueModal.q} t={t} daysSince={rescueModal.days} onClose={()=>setRescueModal(null)} openWA={openWA} addInteracao={addInteracao} setLeadTag={setLeadTag} crmTags={crmTags}/>}
+      {rescueModal&&<RescueModal q={rescueModal.q} t={t} daysSince={rescueModal.days} onClose={()=>setRescueModal(null)} addInteracao={addInteracao} setLeadTag={setLeadTag} crmTags={crmTags}/>}
       {lostReasonModal&&<LostReasonModal q={lostReasonModal.q} t={t} daysSince={lostReasonModal.days} sugestaoAutomatica={lostReasonModal.auto} onClose={()=>setLostReasonModal(null)} onConfirm={(motivo)=>{salvarMotivoPerda(lostReasonModal.q,motivo);setLostReasonModal(null)}}/>}
     </div>
   );

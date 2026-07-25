@@ -13,7 +13,7 @@ export const getRescueMsg = (days, name) => {
   return tmpl.msg(name || "");
 };
 
-export default function RescueModal({ q, t, daysSince, onClose, openWA, addInteracao, setLeadTag, crmTags }) {
+export default function RescueModal({ q, t, daysSince, onClose, addInteracao, setLeadTag, crmTags }) {
   const clientName = q.data?.client?.name || q.cN || "Cliente";
   const [msg, setMsg] = useState(() => getRescueMsg(daysSince, clientName));
 
