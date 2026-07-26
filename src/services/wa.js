@@ -24,21 +24,46 @@ export { dentroDaJanela, ultimaMensagemDoCliente, horasRestantesDaJanela };
 
 export const BOT_URL = "https://vinil-vale-whatsapp-bot-production.up.railway.app";
 
-// Chave da API do bot. Enquanto não estiver definida na Vercel, as chamadas
-// seguem sem header — o bot está em modo compatibilidade e aceita.
-const API_KEY = import.meta.env?.VITE_BOT_API_KEY || "";
+// Autenticação com o bot: token do usuário logado no Firebase.
+//
+// POR QUE NÃO UMA CHAVE NO FRONT
+// Uma VITE_BOT_API_KEY é substituída literalmente no bundle durante o build:
+// qualquer pessoa abre o site — sem nem logar, o JS carrega antes da tela de
+// login — e lê a chave no arquivo .js. Seria ofuscação, não segurança.
+//
+// O token do Firebase não tem esse problema: é emitido para o usuário logado,
+// expira em 1h, renova sozinho e o bot valida com firebase-admin contra uma
+// allowlist de UIDs. Nada secreto sai no bundle.
+//
+// O App.jsx registra o provedor no login (registrarTokenProvider).
+let tokenProvider = null;
 
-/** fetch para o bot, já com a chave e um timeout que não trava a interface. */
+/** Registra a função que devolve o ID token atual (ou null se deslogado). */
+export function registrarTokenProvider(fn) {
+  tokenProvider = fn;
+}
+
+async function obterToken() {
+  if (!tokenProvider) return null;
+  try {
+    return await tokenProvider();
+  } catch {
+    return null;
+  }
+}
+
+/** fetch para o bot, já autenticado e com timeout que não trava a interface. */
 export async function botFetch(path, options = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), options.timeoutMs || 15000);
+  const token = await obterToken();
   try {
     return await fetch(`${BOT_URL}${path}`, {
       ...options,
       signal: ctrl.signal,
       headers: {
         ...(options.body ? { "Content-Type": "application/json" } : {}),
-        ...(API_KEY ? { "x-api-key": API_KEY } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(options.headers || {}),
       },
     });
@@ -92,7 +117,7 @@ export async function getChannelStatus(force = false) {
     } else if (r.status === 401) {
       status = {
         canal: CANAL.MANUAL,
-        detalhe: "Painel sem autorização no bot (confira VITE_BOT_API_KEY)",
+        detalhe: "Painel sem autorização no bot (faça login de novo)",
         online: false,
       };
     }

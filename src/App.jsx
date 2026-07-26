@@ -37,7 +37,7 @@ import { conversaDoLead, leadDaConversa, leadsCandidatos } from "./services/vinc
 import { leadScore, faixaScore, conversasSemResposta } from "./services/score.js";
 import AlertaSLA from "./components/crm/AlertaSLA";
 import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
-import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, CANAL } from "./services/wa.js";
+import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, registrarTokenProvider, CANAL } from "./services/wa.js";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
 const FB_CFG = {
@@ -1377,7 +1377,13 @@ export default function App(){
       setFBR(ok);
       if(ok&&fb.auth){
         try{ await fbFns.getRedirectResult(fb.auth); }catch(e){ console.log("redirect:",e.code||e.message); }
-        fbFns.onAuthStateChanged(fb.auth,(u)=>{setUser(u);setAL(false);clearTimeout(timeout)});
+        fbFns.onAuthStateChanged(fb.auth,(u)=>{
+          setUser(u);setAL(false);clearTimeout(timeout);
+          // Passa o ID token do usuario logado para a camada de envio, que o
+          // manda ao bot no Authorization. Sem usuario, devolve null e o bot
+          // recusa — nenhuma credencial fica embutida no bundle.
+          registrarTokenProvider(u ? () => u.getIdToken() : () => null);
+        });
       } else {
         setAL(false);clearTimeout(timeout);
       }
