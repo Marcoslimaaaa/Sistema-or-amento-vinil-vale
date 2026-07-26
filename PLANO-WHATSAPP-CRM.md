@@ -78,7 +78,15 @@ variável, variável não pode abrir nem fechar o corpo).
 ### O que falta — só o que exige acesso que eu não tenho
 
 1. **Submeter os 7 templates restantes** na WABA `1740068426953762`.
-2. **Criar as envs** — sem elas a Fase 0 não liga (está em modo compatibilidade
+2. ~~Criar as envs~~ — **não é mais necessário para a proteção funcionar.**
+   A `VITE_BOT_API_KEY` foi descartada: variável `VITE_` é embutida no bundle e
+   qualquer um a lê abrindo o JavaScript da página, mesmo sem login. No lugar
+   dela, o painel manda o **ID token do Firebase** do usuário logado e o bot
+   valida contra a allowlist de e-mails da equipe (a mesma do `firestore.rules`).
+   Nada a configurar. A `PANEL_API_KEY` no Railway virou opcional, só para
+   scripts e cron.
+
+   ~~Antigo passo 2~~ — sem elas a Fase 0 não liga (está em modo compatibilidade
    e não quebra nada enquanto isso):
    - Vercel: `VITE_BOT_API_KEY` → redeploy
    - Railway: `PANEL_API_KEY` (mesma chave) e `ALLOWED_ORIGINS`
