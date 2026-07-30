@@ -37,7 +37,7 @@ import { conversaDoLead, leadDaConversa, leadsCandidatos } from "./services/vinc
 import { leadScore, faixaScore, conversasSemResposta } from "./services/score.js";
 import AlertaSLA from "./components/crm/AlertaSLA";
 import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
-import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, registrarTokenProvider, marcarOrcamentoEnviado, CANAL } from "./services/wa.js";
+import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, registrarTokenProvider, marcarOrcamentoEnviado, desfazerOrcamentoEnviado, CANAL } from "./services/wa.js";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
 const FB_CFG = {
@@ -998,14 +998,25 @@ const QP=({d,onBack,onSave,autoPositions})=>{
 
   const marcarEnviado=async()=>{
     const raw=d.client.phone||"";
-    const phone=raw.replace(/\D/g,"");
-    if(!phone){setEnviadoStatus("⚠️ Sem telefone");setTimeout(()=>setEnviadoStatus(""),3000);return}
-    const full=phone.length<=11?"55"+phone:phone;
-    try{
-      const r=await botFetch(`/api/quote-sent/${full}`,{method:"POST"});
-      if(r.ok){setEnviadoStatus("✅ Marcado!")}else{setEnviadoStatus("⚠️ Erro")}
-    }catch(e){setEnviadoStatus("⚠️ Erro de conexão")}
-    setTimeout(()=>setEnviadoStatus(""),3000);
+    if(!raw.replace(/\D/g,"")){setEnviadoStatus("⚠️ Sem telefone");setTimeout(()=>setEnviadoStatus(""),3000);return}
+    const r=await marcarOrcamentoEnviado(raw);
+    // Diz quando JÁ estava marcado em vez de fingir que marcou agora: a data
+    // original é a âncora da contagem e não é sobrescrita.
+    setEnviadoStatus(r.ok?(r.mantido?"✅ Já estava marcado":"✅ Marcado!"):"⚠️ Erro");
+    setTimeout(()=>setEnviadoStatus(""),4000);
+  };
+
+  // Desfaz a marcação. Existe porque baixar o PDF passou a ligar a régua, e
+  // baixar não é enviar: quem baixou só pra revisar precisa de um jeito de
+  // limpar antes que o cliente receba "recebeu o orçamento certinho?".
+  const desfazerEnviado=async()=>{
+    const raw=d.client.phone||"";
+    if(!raw.replace(/\D/g,"")){setEnviadoStatus("⚠️ Sem telefone");setTimeout(()=>setEnviadoStatus(""),3000);return}
+    // Confirma porque apaga também o histórico de quais follow-ups já saíram.
+    if(!window.confirm("Desfazer a marcação de orçamento enviado?\n\nO cliente sai da régua de follow-up e o histórico de quais já foram enviados é apagado."))return;
+    const r=await desfazerOrcamentoEnviado(raw);
+    setEnviadoStatus(r.ok?"↩️ Marcação desfeita":"⚠️ Erro ao desfazer");
+    setTimeout(()=>setEnviadoStatus(""),4000);
   };
 
   const getHTML=()=>{
@@ -1124,6 +1135,8 @@ const QP=({d,onBack,onSave,autoPositions})=>{
           {enviadoStatus&&<span style={{fontSize:"11px",fontWeight:"600",color:enviadoStatus.includes("⚠")?"#ef4444":"#16a34a",background:enviadoStatus.includes("⚠")?"#fef2f2":"#f0fdf4",padding:"4px 10px",borderRadius:"6px"}}>{enviadoStatus}</span>}
           <Btn onClick={gerarPDF} style={{background:`linear-gradient(135deg,#16a34a,#15803d)`,color:"#fff",border:"none",padding:"10px 24px",fontSize:"13px",fontWeight:"700",boxShadow:"0 2px 8px rgba(22,163,74,.3)",display:"flex",alignItems:"center",gap:"6px"}}><DownloadIcon size={16} color="#fff"/>Baixar PDF</Btn>
           <Btn onClick={marcarEnviado} style={{background:`linear-gradient(135deg,${blue},${navy})`,color:"#fff",border:"none",padding:"10px 24px",fontSize:"13px",fontWeight:"700",boxShadow:`0 2px 8px rgba(26,26,46,.3)`}}>📩 Orçamento Enviado</Btn>
+          {/* Secundário de propósito: desfazer é exceção, não fluxo normal. */}
+          <Btn onClick={desfazerEnviado} title="Tira o cliente da régua de follow-up" style={{background:"#fff",color:"#64748b",border:"1px solid #cbd5e1",padding:"10px 14px",fontSize:"12px",fontWeight:"600"}}>↩️ Desfazer</Btn>
         </div>
       </div>
       <div style={{textAlign:"center",fontSize:"9.5px",color:"#64748b",marginBottom:"10px",background:"#fff",padding:"8px 14px",borderRadius:"8px",border:"1px solid #e2e8f0"}}>💡 <b>Celular:</b> toca em "Baixar PDF" → compartilha ou salva diretamente o PDF</div>
