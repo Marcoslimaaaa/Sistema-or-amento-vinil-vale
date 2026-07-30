@@ -261,6 +261,47 @@ export async function sendWAFile({ phone, base64, mimetype, fileName, caption, c
   }
 }
 
+/**
+ * Marca no bot que o orçamento foi entregue — é essa data que a régua de
+ * follow-up usa para contar os dias (1, 2, 3, 7, 14, 30).
+ *
+ * POR QUE NO DOWNLOAD E NÃO SÓ NO ENVIO
+ * Quando o PDF sai pelo bot, o próprio bot marca sozinho. Mas o caminho comum
+ * é baixar o PDF e anexar na conversa na mão — e aí ninguém avisava o bot, o
+ * lead não entrava na régua e não recebia follow-up nenhum.
+ *
+ * O CUSTO DESSA ESCOLHA: baixar não é enviar. Se o PDF foi baixado só para
+ * revisar, a contagem começa igual e o cliente pode receber "recebeu o
+ * orçamento certinho?" sem ter recebido. Por isso a interface DIZ que marcou
+ * (em vez de fazer calado) e existe o desfazer abaixo.
+ *
+ * Não sobrescreve marcação anterior — quem decide isso é o bot.
+ */
+export async function marcarOrcamentoEnviado(phone) {
+  const full = normalizePhone(phone);
+  if (!full) return { ok: false, erro: "Cliente sem telefone cadastrado" };
+  try {
+    const r = await botFetch(`/api/quote-sent/${full}`, { method: "POST", timeoutMs: 10000 });
+    if (!r.ok) return { ok: false, erro: `Erro ${r.status}` };
+    const d = await r.json().catch(() => ({}));
+    return { ok: true, mantido: !!d.mantido, quoteSentAt: d.quoteSentAt };
+  } catch (e) {
+    return { ok: false, erro: e.message };
+  }
+}
+
+/** Desfaz a marcação acima e zera os follow-ups de orçamento já carimbados. */
+export async function desfazerOrcamentoEnviado(phone) {
+  const full = normalizePhone(phone);
+  if (!full) return { ok: false, erro: "Cliente sem telefone cadastrado" };
+  try {
+    const r = await botFetch(`/api/quote-sent/${full}`, { method: "DELETE", timeoutMs: 10000 });
+    return r.ok ? { ok: true } : { ok: false, erro: `Erro ${r.status}` };
+  } catch (e) {
+    return { ok: false, erro: e.message };
+  }
+}
+
 /** Converte Blob em base64 puro (sem o prefixo data:), para o /api/send-media. */
 export function blobParaBase64(blob) {
   return new Promise((resolve, reject) => {

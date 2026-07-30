@@ -37,7 +37,7 @@ import { conversaDoLead, leadDaConversa, leadsCandidatos } from "./services/vinc
 import { leadScore, faixaScore, conversasSemResposta } from "./services/score.js";
 import AlertaSLA from "./components/crm/AlertaSLA";
 import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
-import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, registrarTokenProvider, CANAL } from "./services/wa.js";
+import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, registrarTokenProvider, marcarOrcamentoEnviado, CANAL } from "./services/wa.js";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
 const FB_CFG = {
@@ -2268,7 +2268,10 @@ export default function App(){
           if(navigator.canShare({files:[file]})){
             await navigator.share({files:[file],title:"Orçamento Vinil Vale"});
             document.body.removeChild(iframe);
-            setFbMsg("✅ PDF compartilhado!");setTimeout(()=>setFbMsg(""),4000);
+            // Compartilhou = entregou: liga a régua de follow-up.
+            const mk=await marcarOrcamentoEnviado(telefone);
+            setFbMsg(mk.ok?"✅ PDF compartilhado — follow-up ligado":"✅ PDF compartilhado");
+            setTimeout(()=>setFbMsg(""),4000);
             return{ok:true,canal:"compartilhado"};
           }
         }catch{/* cancelou o compartilhamento — segue para o download */}
@@ -2282,7 +2285,16 @@ export default function App(){
       setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url)},1000);
       if(telefone){
         openWaMe(telefone,`Olá ${c.name||""}! Segue o orçamento da Vinil Vale no valor de ${fmt(tot)}.`);
-        setFbMsg("📥 PDF baixado — anexe na conversa que abriu");setTimeout(()=>setFbMsg(""),6000);
+        // Marca a entrega aqui: esse é o caminho normal (baixa e anexa na mão),
+        // e sem isso o lead nunca entra na régua de follow-up. Ver o comentário
+        // de marcarOrcamentoEnviado em services/wa.js para o porquê e o risco.
+        const mk=await marcarOrcamentoEnviado(telefone);
+        setFbMsg(mk.ok
+          ?(mk.mantido
+            ?"📥 PDF baixado — anexe na conversa (follow-up já estava ligado)"
+            :"📥 PDF baixado — anexe na conversa · follow-up ligado a partir de hoje")
+          :"📥 PDF baixado — anexe na conversa (não consegui ligar o follow-up)");
+        setTimeout(()=>setFbMsg(""),7000);
       }else{
         setFbMsg("📥 PDF baixado (cliente sem telefone cadastrado)");setTimeout(()=>setFbMsg(""),5000);
       }
