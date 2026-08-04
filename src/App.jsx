@@ -115,6 +115,19 @@ div:hover>.wa-msg-hover{opacity:1!important}
 .vv-topbar{position:sticky;top:0;z-index:30;height:54px;display:flex;align-items:center;padding:0 18px;gap:10px;border-bottom:1px solid var(--border)}
 .vv-content{flex:1;padding:18px;max-width:960px;width:100%}
 .vv-content.pad-taxi{padding-bottom:86px}
+/* Telas que sao interface de trabalho, nao leitura: o limite de 960px existe
+   pra manter os formularios do orcamento numa linha confortavel, mas sufoca um
+   chat de dois paineis num notebook. Aqui o conteudo usa a tela toda. */
+.vv-content.vv-wide{max-width:none;padding:12px}
+/* Lista de conversas do WhatsApp. No celular ocupa a tela (ou 35% com um chat
+   aberto, como era antes). No desktop fica numa faixa fixa de leitura — sem
+   isso, com o conteudo liberado pra tela toda, a lista esticaria por 1900px e
+   cada conversa viraria uma linha atravessando o monitor. */
+.wa-list{width:100%;min-width:300px}
+.wa-list.has-chat{width:35%}
+@media(min-width:900px){
+  .wa-list,.wa-list.has-chat{width:380px;flex:0 0 380px;max-width:420px}
+}
 .vv-nav-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:6px;cursor:pointer;font-size:12.5px;font-weight:500;border:none;width:100%;text-align:left;transition:background .15s;position:relative;font-family:inherit}
 .vv-nav-item:hover{opacity:.85}
 .vv-nav-item.active{font-weight:700}
@@ -936,7 +949,9 @@ const themes={
 const Tab=({a,onClick,children,icon,badge,t:th})=>{const t=th||themes.light;return <button onClick={onClick} style={{padding:"8px 12px",border:"none",borderBottom:a?"2px solid "+aguaBright:"2px solid transparent",background:a?t.tabActive:"transparent",color:a?t.accentStrong:t.textSec,fontWeight:a?"700":"500",fontSize:"12px",cursor:"pointer",display:"flex",alignItems:"center",gap:"4px",borderRadius:"6px 6px 0 0",whiteSpace:"nowrap",fontFamily:"inherit"}}><span style={{fontSize:"13px"}}>{icon}</span>{children}{badge>0&&<span style={{background:"#dc2626",color:"#fff",borderRadius:"9px",padding:"0 4px",fontSize:"9px",fontWeight:"800",lineHeight:"15px",minWidth:"15px",textAlign:"center",marginLeft:"1px"}}>{badge}</span>}</button>};
 const Inp=({label,value,onChange,placeholder,style:sx,t:th,error})=>{const t=th||themes.light;return <div style={{display:"flex",flexDirection:"column",gap:"3px",...sx}}>{label&&<label style={{fontFamily:"'Archivo',sans-serif",fontSize:"10px",fontWeight:"700",color:error?"#dc2626":t.textSec,textTransform:"uppercase",letterSpacing:".7px"}}>{label}{error&&<span style={{marginLeft:"4px",fontWeight:"700"}}>⚠</span>}</label>}<input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{padding:"9px 11px",border:`1.5px solid ${error?"#dc2626":t.inputBorder}`,borderRadius:"6px",fontSize:"13px",fontFamily:"inherit",color:t.text,background:error?"#fef2f2":t.inputBg,outline:"none",width:"100%"}} onFocus={e=>e.target.style.borderColor=error?"#dc2626":aguaBright} onBlur={e=>e.target.style.borderColor=error?"#dc2626":t.inputBorder}/>{error&&<span style={{fontSize:"9px",color:"#dc2626",fontWeight:"600"}}>{error}</span>}</div>};
 const Sel=({label,value,onChange,options,style:sx,t:th})=>{const t=th||themes.light;return <div style={{display:"flex",flexDirection:"column",gap:"3px",...sx}}>{label&&<label style={{fontFamily:"'Archivo',sans-serif",fontSize:"10px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".7px"}}>{label}</label>}<select value={value} onChange={e=>onChange(e.target.value)} style={{padding:"9px 11px",border:`1.5px solid ${t.inputBorder}`,borderRadius:"6px",fontSize:"13px",fontFamily:"inherit",color:t.text,background:t.inputBg}}>{options.map(o=><option key={typeof o==="string"?o:o.value} value={typeof o==="string"?o:o.value}>{typeof o==="string"?o:o.label}</option>)}</select></div>};
-const Card=({children,t:th})=>{const t=th||themes.light;return <div style={{background:t.card,borderRadius:"8px",padding:"20px",boxShadow:t.shadow,border:`1px solid ${t.cardBorder}`}}>{children}</div>};
+// `pad` sai do default de 20px só onde a moldura atrapalha — o chat do
+// WhatsApp, que é interface de trabalho e quer a tela inteira.
+const Card=({children,t:th,pad})=>{const t=th||themes.light;return <div style={{background:t.card,borderRadius:"8px",padding:pad||"20px",boxShadow:t.shadow,border:`1px solid ${t.cardBorder}`}}>{children}</div>};
 const CatalogoPicker=({value,onChange,t,dark})=>{
   const [open,setOpen]=React.useState(false);
   const slug=SWATCH_SLUG[value];
@@ -2427,7 +2442,7 @@ export default function App(){
         </div>
 
         {/* CONTENT */}
-        <div className={"vv-content"+(EDITOR_TABS.includes(tab)?" pad-taxi":"")}>
+        <div className={"vv-content"+(EDITOR_TABS.includes(tab)?" pad-taxi":"")+(tab==="whatsapp"?" vv-wide":"")}>
         {/* STEPPER do orçamento */}
         {EDITOR_TABS.includes(tab)&&<div className="vv-stepper">
           {NAV[0].items.map((n,i)=><button key={n.id} className={"vv-step"+(tab===n.id?" active":"")} onClick={()=>setTab(n.id)}>{i+1}. {n.label}</button>)}
@@ -3137,14 +3152,16 @@ export default function App(){
         })()}</Card>}
 
         {/* ESTOQUE */}
-        {tab==="whatsapp"&&<Card t={t}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"10px",flexWrap:"wrap",marginBottom:"4px"}}>
+        {tab==="whatsapp"&&<Card t={t} pad="10px">
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"10px",flexWrap:"wrap",marginBottom:"6px"}}>
             <ST icon="💬">WhatsApp</ST>
             <CanalStatus/>
           </div>
-          <div style={{display:"flex",height:"calc(100vh - 220px)",gap:"0",borderRadius:"4px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}} onClick={()=>{setWaCtxMenu(null);setWaConvCtx(null)}}>
+          {/* Altura: desconta topbar (54) + paddings + a linha do título. O
+              minHeight impede que a tela vire uma faixa em notebook baixo. */}
+          <div style={{display:"flex",height:"calc(100vh - 150px)",minHeight:"420px",gap:"0",borderRadius:"4px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}} onClick={()=>{setWaCtxMenu(null);setWaConvCtx(null)}}>
             {/* === PAINEL ESQUERDO - Lista de Conversas === */}
-            <div style={{width:waChat?"35%":"100%",minWidth:"300px",maxWidth:waChat?"420px":"100%",display:"flex",flexDirection:"column",borderRight:"1px solid #e2ddd1",background:"#fff"}}>
+            <div className={"wa-list"+(waChat?" has-chat":"")} style={{display:"flex",flexDirection:"column",borderRight:"1px solid #e2ddd1",background:"#fff"}}>
               {/* Header verde escuro */}
               <div style={{padding:"10px 16px",background:"#008069",display:"flex",justifyContent:"space-between",alignItems:"center",minHeight:"56px"}}>
                 <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
