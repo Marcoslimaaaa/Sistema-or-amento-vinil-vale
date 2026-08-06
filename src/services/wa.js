@@ -277,11 +277,18 @@ export async function sendWAFile({ phone, base64, mimetype, fileName, caption, c
  *
  * Não sobrescreve marcação anterior — quem decide isso é o bot.
  */
-export async function marcarOrcamentoEnviado(phone) {
+export async function marcarOrcamentoEnviado(phone, { nome, crmQuoteId } = {}) {
   const full = normalizePhone(phone);
   if (!full) return { ok: false, erro: "Cliente sem telefone cadastrado" };
   try {
-    const r = await botFetch(`/api/quote-sent/${full}`, { method: "POST", timeoutMs: 10000 });
+    // Manda o nome junto: é com ele que o follow-up trata a pessoa. Sem isso o
+    // bot só conhece o telefone e a mensagem sai como "Oi cliente" — que é
+    // justamente o que não queremos com quem ainda nem fechou.
+    const r = await botFetch(`/api/quote-sent/${full}`, {
+      method: "POST",
+      timeoutMs: 10000,
+      body: JSON.stringify({ nome: nome || undefined, crmQuoteId: crmQuoteId || undefined }),
+    });
     if (!r.ok) return { ok: false, erro: `Erro ${r.status}` };
     const d = await r.json().catch(() => ({}));
     return { ok: true, mantido: !!d.mantido, quoteSentAt: d.quoteSentAt };

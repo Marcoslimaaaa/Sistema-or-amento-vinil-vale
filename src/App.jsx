@@ -1014,7 +1014,7 @@ const QP=({d,onBack,onSave,autoPositions})=>{
   const marcarEnviado=async()=>{
     const raw=d.client.phone||"";
     if(!raw.replace(/\D/g,"")){setEnviadoStatus("⚠️ Sem telefone");setTimeout(()=>setEnviadoStatus(""),3000);return}
-    const r=await marcarOrcamentoEnviado(raw);
+    const r=await marcarOrcamentoEnviado(raw,{nome:d.client?.name});
     // Diz quando JÁ estava marcado em vez de fingir que marcou agora: a data
     // original é a âncora da contagem e não é sobrescrita.
     setEnviadoStatus(r.ok?(r.mantido?"✅ Já estava marcado":"✅ Marcado!"):"⚠️ Erro");
@@ -2297,7 +2297,7 @@ export default function App(){
             await navigator.share({files:[file],title:"Orçamento Vinil Vale"});
             document.body.removeChild(iframe);
             // Compartilhou = entregou: liga a régua de follow-up.
-            const mk=await marcarOrcamentoEnviado(telefone);
+            const mk=await marcarOrcamentoEnviado(telefone,{nome:c.name});
             setFbMsg(mk.ok?"✅ PDF compartilhado — follow-up ligado":"✅ PDF compartilhado");
             setTimeout(()=>setFbMsg(""),4000);
             return{ok:true,canal:"compartilhado"};
@@ -2316,7 +2316,7 @@ export default function App(){
         // Marca a entrega aqui: esse é o caminho normal (baixa e anexa na mão),
         // e sem isso o lead nunca entra na régua de follow-up. Ver o comentário
         // de marcarOrcamentoEnviado em services/wa.js para o porquê e o risco.
-        const mk=await marcarOrcamentoEnviado(telefone);
+        const mk=await marcarOrcamentoEnviado(telefone,{nome:c.name});
         setFbMsg(mk.ok
           ?(mk.mantido
             ?"📥 PDF baixado — anexe na conversa (follow-up já estava ligado)"
