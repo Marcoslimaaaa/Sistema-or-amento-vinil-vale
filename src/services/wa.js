@@ -309,6 +309,31 @@ export async function desfazerOrcamentoEnviado(phone) {
   }
 }
 
+/**
+ * Liga/desliga os follow-ups automáticos de um número.
+ *
+ * É o mesmo interruptor do `/pausar` que o Marcos usa no celular — grava os
+ * mesmos campos, então dá pra pausar aqui e religar por lá. Quem barra o envio
+ * é o `sendFollowup` do bot, num ponto só, por onde passam as 12 réguas:
+ * orçamento, sem-resposta, pós-venda, aniversário e fim de ano.
+ *
+ * NÃO cala o bot. Quem escrever continua sendo atendido; o que para é a gente
+ * procurar a pessoa. Para calar o bot existe o handoff, que é outra coisa.
+ */
+export async function pausarFollowup(phone, pausar = true) {
+  const full = normalizePhone(phone);
+  if (!full) return { ok: false, erro: "Cliente sem telefone cadastrado" };
+  try {
+    const r = await botFetch(`/api/followup-pause/${full}`, {
+      method: pausar ? "POST" : "DELETE",
+      timeoutMs: 10000,
+    });
+    return r.ok ? { ok: true, pausado: pausar } : { ok: false, erro: `Erro ${r.status}` };
+  } catch (e) {
+    return { ok: false, erro: e.message };
+  }
+}
+
 /** Converte Blob em base64 puro (sem o prefixo data:), para o /api/send-media. */
 export function blobParaBase64(blob) {
   return new Promise((resolve, reject) => {

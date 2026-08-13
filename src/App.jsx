@@ -37,7 +37,7 @@ import { conversaDoLead, leadDaConversa, leadsCandidatos } from "./services/vinc
 import { leadScore, faixaScore, conversasSemResposta } from "./services/score.js";
 import AlertaSLA from "./components/crm/AlertaSLA";
 import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
-import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, registrarTokenProvider, marcarOrcamentoEnviado, desfazerOrcamentoEnviado, CANAL } from "./services/wa.js";
+import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, registrarTokenProvider, marcarOrcamentoEnviado, desfazerOrcamentoEnviado, pausarFollowup, CANAL } from "./services/wa.js";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
 const FB_CFG = {
@@ -1640,6 +1640,8 @@ export default function App(){
   // ser atendido. "data" (cadastro) continua disponível no seletor.
   const [crmSort,setCrmSort]=useState("mov");
   const [crmPipeSort,setCrmPipeSort]=useState("mov");
+  // Telefone cujo botao de pausa esta em voo (trava o clique duplo).
+  const [pausandoFup,setPausandoFup]=useState(null);
   const crmNoteInputRef=useRef(null);
   // Vínculo manual lead↔conversa: { [quoteId]: phone }. Tem precedência sobre o
   // crmQuoteId do bot e sobre o telefone — é decisão humana.
@@ -3596,6 +3598,49 @@ export default function App(){
                 <div style={{fontSize:"15px",color:"#8696a0",marginTop:"4px"}}>{waFmtPhone(waChat)}</div>
                 <div style={{marginTop:"8px"}}><span style={{padding:"3px 10px",borderRadius:"12px",fontSize:"12px",fontWeight:"600",background:waChatData.status==="handed_off"?"#fef3c7":waChatData.status==="qualified"?"#d1fae5":"#e0f2fe",color:waChatData.status==="handed_off"?"#92400e":waChatData.status==="qualified"?"#065f46":"#075985"}}>{waChatData.status||"coletando"}</span></div>
               </div>
+
+              {/* PAUSA DE FOLLOW-UP — o mesmo interruptor do /pausar do celular.
+                  O estado vem do onSnapshot que já roda em whatsapp_conversations,
+                  então pausar pelo celular acende o botão aqui sozinho, sem
+                  precisar recarregar. */}
+              {(()=>{
+                const pausado=!!waChatData.followupPausado;
+                const porQuem=waChatData.followupPausadoPor;
+                const ocupado=pausandoFup===waChat;
+                return <div style={{padding:"16px 20px",borderBottom:"8px solid #f0f2f5"}}>
+                  <div style={{fontSize:"14px",color:"#008069",fontWeight:"500",marginBottom:"4px"}}>Follow-up automático</div>
+                  <div style={{fontSize:"12px",color:"#8696a0",marginBottom:"10px",lineHeight:"1.4"}}>
+                    {pausado
+                      ? (porQuem==="cliente"
+                        ? "🔕 Pausado — o próprio cliente pediu pra parar de receber."
+                        : "🔕 Pausado. Nenhuma mensagem automática sai pra esse número.")
+                      : "🔔 Ativo: orçamento, sem-resposta, pós-venda, aniversário e fim de ano."}
+                  </div>
+                  <button
+                    disabled={ocupado}
+                    onClick={async()=>{
+                      // Confirma só ao RELIGAR quem pediu pra não receber: voltar
+                      // a mandar pra quem pediu pra parar é o que faz a pessoa
+                      // marcar como spam — e spam derruba a qualidade do número
+                      // na Meta, o que para o canal pra todo mundo.
+                      if(pausado&&porQuem==="cliente"&&
+                        !window.confirm("Esse cliente PEDIU pra parar de receber mensagem.\n\nReligar o follow-up faz o sistema voltar a procurá-lo automaticamente. Se ele marcar como spam, a qualidade do número na Meta cai e isso afeta os envios pra todos os clientes.\n\nReligar mesmo assim?"))return;
+                      setPausandoFup(waChat);
+                      const r=await pausarFollowup(waChat,!pausado);
+                      setPausandoFup(null);
+                      setFbMsg(r.ok
+                        ?(pausado?"🔔 Follow-up religado":"🔕 Follow-up pausado pra esse contato")
+                        :`⚠️ ${r.erro||"Não consegui mudar"}`);
+                      setTimeout(()=>setFbMsg(""),4000);
+                    }}
+                    style={{width:"100%",padding:"9px",borderRadius:"6px",cursor:ocupado?"wait":"pointer",fontSize:"13px",fontWeight:"600",
+                      border:`1.5px solid ${pausado?"#008069":"#dc2626"}`,
+                      background:pausado?"#008069":"#fff",
+                      color:pausado?"#fff":"#dc2626",opacity:ocupado?0.6:1}}>
+                    {ocupado?"...":pausado?"🔔 Religar follow-up":"🔕 Pausar follow-up"}
+                  </button>
+                </div>;
+              })()}
 
               {/* Dados do lead */}
               {waChatData.leadData&&<div style={{padding:"16px 20px",borderBottom:"8px solid #f0f2f5"}}>
