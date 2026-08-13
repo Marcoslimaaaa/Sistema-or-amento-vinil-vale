@@ -991,7 +991,7 @@ const Btn=({children,onClick,style:sx})=><button onClick={onClick} style={{paddi
 const DarkToggle=({dark,onToggle})=><button onClick={onToggle} aria-label={dark?"Mudar para tema claro":"Mudar para tema escuro"} style={{width:"38px",height:"22px",borderRadius:"11px",border:"none",background:dark?"#2c4368":"#cbd5e1",cursor:"pointer",position:"relative",transition:"background .3s"}}><div style={{width:"18px",height:"18px",borderRadius:"50%",background:dark?"#0b1524":"#fff",position:"absolute",top:"2px",left:dark?"18px":"2px",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>{dark?<Moon size={11} color="#2dd4bf"/>:<Sun size={11} color="#e8b100"/>}</div></button>;
 
 // ═══ PDF PREVIEW ═══
-const QP=({d,onBack,onSave,autoPositions})=>{
+const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
   const inc=(d.items||[]).filter(i=>i.on);
   const pool=d.pool||{length:"0",width:"0",depth:"0"};
   const spa=d.spa||{on:false,length:"0",width:"0",depth:"0"};
@@ -1017,7 +1017,12 @@ const QP=({d,onBack,onSave,autoPositions})=>{
     const r=await marcarOrcamentoEnviado(raw,{nome:d.client?.name});
     // Diz quando JÁ estava marcado em vez de fingir que marcou agora: a data
     // original é a âncora da contagem e não é sobrescrita.
-    setEnviadoStatus(r.ok?(r.mantido?"✅ Já estava marcado":"✅ Marcado!"):"⚠️ Erro");
+    setEnviadoStatus(r.ok?(r.mantido?"✅ Já estava marcado":"✅ Marcado! Etapa → Orçamento"):"⚠️ Erro");
+    // A régua de follow-up e a etapa do funil passam a andar JUNTAS. Antes este
+    // botão só avisava o bot: o lead começava a receber "recebeu o orçamento?"
+    // e continuava na coluna Lead do pipeline, então o Marcos tinha que achar
+    // a pessoa na lista e mover na mão — e quase nunca movia.
+    if(r.ok)onEntregue?.("marcado");
     setTimeout(()=>setEnviadoStatus(""),4000);
   };
 
@@ -1631,7 +1636,10 @@ export default function App(){
   const [crmNextContact,setCrmNextContact]=useState({});
   const [crmTags,setCrmTags]=useState({});
   const [crmNoteType,setCrmNoteType]=useState("nota");
-  const [crmSort,setCrmSort]=useState("data");
+  // Padrão "mov" (última movimentação): o pedido é achar na hora quem acabou de
+  // ser atendido. "data" (cadastro) continua disponível no seletor.
+  const [crmSort,setCrmSort]=useState("mov");
+  const [crmPipeSort,setCrmPipeSort]=useState("mov");
   const crmNoteInputRef=useRef(null);
   // Vínculo manual lead↔conversa: { [quoteId]: phone }. Tem precedência sobre o
   // crmQuoteId do bot e sobre o telefone — é decisão humana.
@@ -1776,6 +1784,32 @@ export default function App(){
     if(created>1e12)refs.push(created); // id é timestamp de criação
     if(refs.length===0)return 999;
     return Math.max(0,Math.floor((Date.now()-Math.max(...refs))/(1000*60*60*24)));
+  };
+
+  // Quando esse lead se mexeu pela última vez (em ms).
+  //
+  // POR QUE EXISTE
+  // O CRM ordenava a lista por `id`, que é a data em que o orçamento foi
+  // CRIADO, e nunca muda. Quem virou lead em maio e recebeu o orçamento hoje
+  // continuava enterrado no fim de uma lista de centenas — justo a pessoa em
+  // quem se acabou de mexer. Aqui "movimentação" é o mais recente entre tudo
+  // que representa ação real: entrega do orçamento, troca de etapa, anotação
+  // ou interação registrada, mensagem na conversa do WhatsApp e, como piso, a
+  // criação. Assim o último atendido fica sempre no topo.
+  const ultimaMov=(q)=>{
+    if(!q)return 0;
+    const refs=[q.lastMoveAt,q.sentAt,q.stageSince].filter(v=>Number(v)>0).map(Number);
+    const last=getLastContact(q.id);
+    if(last?.ts)refs.push(Number(last.ts));
+    const conv=conversaDoLead(q,waConvs,crmVinculos);
+    if(conv){
+      const la=conv.lastActivity;
+      const ms=la?.toMillis?la.toMillis():(typeof la==="number"?la:(la?new Date(la).getTime():0));
+      if(ms>0)refs.push(ms);
+    }
+    const created=Number(q.id);
+    if(created>1e12)refs.push(created);
+    return refs.length?Math.max(...refs):0;
   };
 
   // WhatsApp: carrega conversas em tempo real (só depois do login — as rules exigem auth)
@@ -2185,6 +2219,43 @@ export default function App(){
     // do tempo medio por etapa no Analytics.
     const nh=hist.map(q=>q.id===id?{...q,status:stage,stageSince:Date.now(),closedDate:stage==="fechou"?new Date().toLocaleDateString("pt-BR"):q.closedDate}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)saveFS(item);addInteracao(id,"etapa",`Movido para ${PIPE.find(p=>p.id===stage)?.label}`);setFbMsg(`Movido → ${PIPE.find(p=>p.id===stage)?.label}`);setTimeout(()=>setFbMsg(""),2000)};
 
+  // ENTREGA DO ORÇAMENTO → ETAPA + CARIMBO DE DATA
+  //
+  // Uma entrega de orçamento agora mexe em três coisas de uma vez, sempre
+  // juntas: liga a régua de follow-up no bot (quem chama faz isso), grava
+  // `sentAt` (a data que ordena a lista) e move o lead para a coluna Orçamento.
+  //
+  // Antes só a régua ligava. O lead ficava na coluna Lead recebendo "recebeu o
+  // orçamento certinho?" do bot, e a etapa só mudava se o Marcos achasse a
+  // pessoa numa lista de centenas e movesse na mão.
+  //
+  // NÃO ANDA PARA TRÁS: quem já está em negociação/fechou só recebe o carimbo
+  // de data. Reenviar um PDF para um cliente que já está negociando não pode
+  // devolvê-lo para a coluna anterior.
+  // Escreve tudo numa passada só, sem reaproveitar o movePipe: os dois montam a
+  // lista a partir do `hist` do closure, então encadear os dois faria o segundo
+  // sobrescrever o carimbo do primeiro.
+  const marcarEntregueNoFunil=(id,origem="enviado")=>{
+    const q=hist.find(h=>String(h.id)===String(id));
+    if(!q)return;
+    const virou=(q.status||"lead")==="lead";
+    const agora=Date.now();
+    // Primeira entrega ancora a data; reenvio não reescreve (é a mesma regra do
+    // quoteSentAt no bot, que também não sobrescreve).
+    const nh=hist.map(h=>String(h.id)===String(id)
+      ?{...h,sentAt:h.sentAt||agora,lastMoveAt:agora,...(virou?{status:"orcamento",stageSince:agora}:{})}
+      :h);
+    setHist(nh);saveLS(nh);
+    const item=nh.find(h=>String(h.id)===String(id));if(item)saveFS(item);
+    const rotulo=origem==="marcado"?"Orçamento marcado como enviado"
+      :origem==="baixado"?"Orçamento gerado e baixado (anexar na conversa)"
+      :origem==="compartilhado"?"Orçamento compartilhado (WhatsApp)"
+      :"Orçamento enviado via WhatsApp";
+    addInteracao(id,"orcamento",rotulo);
+    setFbMsg(virou?"📄 Orçamento registrado — lead movido para Orçamento":"📄 Orçamento registrado");
+    setTimeout(()=>setFbMsg(""),3000);
+  };
+
   // Dias na etapa atual. Sem stageSince (leads anteriores a este campo) só
   // sabemos para quem está em "lead": o id é o timestamp de criação. Nos outros
   // devolve null e a interface omite, em vez de inventar um número.
@@ -2208,16 +2279,23 @@ export default function App(){
     if(openWaMe(num,msg)){setFbMsg("📱 Abrindo no WhatsApp do aparelho");setTimeout(()=>setFbMsg(""),2500)}
     else{setFbMsg("⚠️ Não foi possível abrir o WhatsApp");setTimeout(()=>setFbMsg(""),3000)}
   };
-  // Handler dos botões de PDF do pipeline/lista: registra a interação e move o
-  // lead SÓ quando o envio confirma. Se o PDF só foi baixado (canal manual),
-  // nada é registrado — senão o lead sai da régua de follow-up sem ter recebido
-  // o orçamento.
+  // Handler dos botões de PDF do pipeline/lista/histórico.
+  //
+  // MOVE TAMBÉM NO CAMINHO "BAIXADO". A regra antiga só movia com `ok: true`
+  // (envio confirmado pelo bot) para não tirar da régua quem não recebeu nada.
+  // Só que o caminho normal no desktop é `baixado: true` — e nele o sendOrcWA
+  // JÁ chama marcarOrcamentoEnviado, ou seja, a régua de follow-up liga do
+  // mesmo jeito. O resultado era o pior dos dois mundos: o cliente recebia
+  // "recebeu o orçamento certinho?" do bot e continuava na coluna Lead.
+  //
+  // Com a régua ligando, a etapa tem que acompanhar. Quem baixou só para
+  // revisar desfaz nos dois lugares: "↩️ Desfazer" na tela do orçamento (limpa
+  // a régua) e arrastar o card de volta para Lead.
   const enviarOrcamento=async(q)=>{
     const r=await sendOrcWA(q);
-    if(r?.ok){
-      addInteracao(q.id,"orcamento",r.canal==="compartilhado"?"Orçamento compartilhado (WhatsApp)":"Orçamento enviado via WhatsApp");
-      if((q.status||"lead")==="lead")movePipe(q.id,"orcamento");
-    }
+    if(r?.ok)marcarEntregueNoFunil(q.id,r.canal==="compartilhado"?"compartilhado":"enviado");
+    // Sem telefone o sendOrcWA não liga a régua — então aqui também não move.
+    else if(r?.baixado&&(q.data?.client?.phone||"").replace(/\D/g,""))marcarEntregueNoFunil(q.id,"baixado");
     return r;
   };
 
@@ -2372,7 +2450,7 @@ export default function App(){
 
 
 
-  if(view==="quote")return <QP d={gData()} autoPositions={autoPositions} onBack={()=>setView("editor")} onSave={()=>{const d=gData();if(editingId){const existing=hist.find(q=>q.id===editingId);const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);}else{const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);}}}/>;
+  if(view==="quote")return <QP d={gData()} autoPositions={autoPositions} onBack={()=>setView("editor")} onEntregue={(origem)=>{if(editingId)marcarEntregueNoFunil(editingId,origem)}} onSave={()=>{const d=gData();if(editingId){const existing=hist.find(q=>q.id===editingId);const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);}else{const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);}}}/>;
 
   const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};// use className="vv-g2" for responsive
 
@@ -2732,7 +2810,10 @@ export default function App(){
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:"5px",flexShrink:0}}>
                   <div style={{fontSize:"13px",fontWeight:"800",color:borderColor}}>{fmt(parseFloat(q.tot)||0)}</div>
-                  {!fechado&&<><Btn onClick={()=>sendOrcWA(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#128c7e",color:"#fff",border:"none",display:"flex",alignItems:"center",gap:"3px"}}><FileTextIcon size={12} color="#fff"/>PDF</Btn>
+                  {/* enviarOrcamento, não sendOrcWA cru: o botão do Histórico era o
+                      único caminho de PDF que não registrava interação nem movia a
+                      etapa, mesmo quando o envio confirmava. */}
+                  {!fechado&&<><Btn onClick={()=>enviarOrcamento(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#128c7e",color:"#fff",border:"none",display:"flex",alignItems:"center",gap:"3px"}}><FileTextIcon size={12} color="#fff"/>PDF</Btn>
                   <Btn onClick={()=>msgWA(q)} style={{fontSize:"8px",padding:"3px 7px",background:"#25d366",color:"#fff",border:"none",display:"flex",alignItems:"center",gap:"3px"}}><MessageCircleIcon size={12} color="#fff"/>Zap</Btn>
                   <Btn onClick={()=>toClient(q.id)} style={{fontSize:"8px",padding:"3px 7px",background:"#16a34a",color:"#fff",border:"none",display:"flex",alignItems:"center",gap:"3px"}}><CheckIcon size={12} color="#fff"/>Fechou</Btn></>}
                   {fechado&&<><Btn onClick={()=>{setVC(q);initCE(q);setTab("contratos")}} style={{fontSize:"8px",padding:"3px 7px",background:"#7c3aed",color:"#fff",border:"none"}}>📝 Contrato</Btn>
@@ -2753,6 +2834,10 @@ export default function App(){
           // Cache getDaysSince per lead to avoid repeated date parsing
           const daysCache={};
           const getCachedDays=(qId)=>{if(daysCache[qId]===undefined)daysCache[qId]=getDaysSince(qId);return daysCache[qId]};
+          // Mesmo motivo do cache acima: ultimaMov cruza interações e conversas,
+          // e a ordenação chama a função O(n log n) vezes.
+          const movCache={};
+          const getCachedMov=(q)=>{if(movCache[q.id]===undefined)movCache[q.id]=ultimaMov(q);return movCache[q.id]};
           const fechados=hist.filter(q=>["fechou","execucao","concluido"].includes(q.status));
           const ativos=hist.filter(q=>!["concluido","perdido"].includes(q.status));
           const perdidos=hist.filter(q=>q.status==="perdido");
@@ -2894,14 +2979,24 @@ export default function App(){
             <AlertaSLA waConvs={waConvs} t={t} fmtPhone={waFmtPhone} onAbrirConversa={(ph)=>{setTab("whatsapp");setWaChat(ph)}}/>
             {/* Tarefas de Hoje — follow-up acionável em 1 clique */}
             <TodayTasks hist={hist} getDays={getCachedDays} fmt={fmt} t={t} blue={blue} crmNextContact={crmNextContact} setNextContact={setNextContact} addInteracao={addInteracao} onResumo={notificarResumoDiario}/>
+            {/* Ordenação das colunas.
+                O padrão passou a ser "movimentação": abrir o CRM depois de
+                atender alguém e achar a pessoa no topo da coluna vale mais no
+                dia a dia do que a ordem teórica de prioridade — que continua
+                a um clique, para quando a pergunta for "quem eu ligo primeiro?". */}
+            <div style={{display:"flex",gap:"6px",alignItems:"center",marginBottom:"6px"}}>
+              <span style={{fontSize:"9px",color:t.textMuted,fontWeight:"600"}}>Ordenar colunas:</span>
+              {[["mov","🕒 Movimentação","Quem foi mexido por último aparece primeiro"],["score","🔥 Prioridade","Valor × etapa × tempo parado × engajamento"]].map(([k,lb,tt])=>
+                <button key={k} title={tt} onClick={()=>setCrmPipeSort(k)} style={{padding:"4px 9px",borderRadius:"6px",border:`1.5px solid ${crmPipeSort===k?blue:t.cardBorder}`,background:crmPipeSort===k?blue:"transparent",color:crmPipeSort===k?"#fff":t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>{lb}</button>)}
+            </div>
             {/* Pipeline columns */}
             <div style={{display:"flex",gap:"8px",overflowX:"auto",paddingBottom:"8px"}}>
               {(crmShowLost?PIPE:activePipe).map(stage=>{
-                // Ordena por prioridade: quem tem mais chance de fechar primeiro
-                // aparece no topo da coluna (valor x etapa x tempo parado x engajamento).
                 const items=filteredHist
                   .filter(q=>(q.status||"lead")===stage.id||(stage.id==="lead"&&!PIPE.find(p=>p.id===(q.status||"lead"))))
-                  .map(q=>({q,_s:leadScore({q,dias:getCachedDays(q.id),conv:conversaDoLead(q,waConvs,crmVinculos),maiorValor:maiorValorPipe})}))
+                  .map(q=>({q,_s:crmPipeSort==="score"
+                    ?leadScore({q,dias:getCachedDays(q.id),conv:conversaDoLead(q,waConvs,crmVinculos),maiorValor:maiorValorPipe})
+                    :getCachedMov(q)}))
                   .sort((a,b)=>b._s-a._s)
                   .map(x=>x.q);
                 const stageVal=items.reduce((s,q)=>s+(parseFloat(q.tot)||0),0);
@@ -3032,7 +3127,9 @@ export default function App(){
                 {SVC.map(sv=><option key={sv.id} value={sv.id}>{sv.label}</option>)}
               </select>
               <select value={crmSort} onChange={e=>setCrmSort(e.target.value)} style={{padding:"6px 8px",border:`1.5px solid ${t.cardBorder}`,borderRadius:"6px",fontSize:"9px",background:t.inputBg,color:t.text}}>
-                <option value="data">Mais recentes</option>
+                <option value="mov">Última movimentação</option>
+                <option value="envio">Data do orçamento</option>
+                <option value="data">Cadastro mais recente</option>
                 <option value="valor">Maior valor</option>
                 <option value="nome">Nome A-Z</option>
                 <option value="followup">Follow-up</option>
@@ -3044,7 +3141,11 @@ export default function App(){
                 if(crmSort==="valor")return (parseFloat(b.tot)||0)-(parseFloat(a.tot)||0);
                 if(crmSort==="nome")return (a.cN||"").localeCompare(b.cN||"");
                 if(crmSort==="followup")return getCachedDays(a.id)-getCachedDays(b.id);
-                return b.id-a.id;
+                if(crmSort==="data")return b.id-a.id;
+                // "envio": quem ainda não teve orçamento entregue vai para o fim,
+                // em vez de se misturar com quem foi atendido hoje.
+                if(crmSort==="envio")return (Number(b.sentAt)||0)-(Number(a.sentAt)||0)||b.id-a.id;
+                return getCachedMov(b)-getCachedMov(a);
               }).map(q=>{
                 const stage=PIPE.find(p=>p.id===(q.status||"lead"))||PIPE[0];
                 const days=getCachedDays(q.id);
