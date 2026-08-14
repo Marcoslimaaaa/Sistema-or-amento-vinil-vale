@@ -5,7 +5,8 @@ import { User, Waves, ShoppingCart, ShieldCheck, Wallet, Ruler, FolderOpen, Tren
 import { getEstampaByNome } from "./data/estampas.js";
 import FormaEditor, { MiniForma } from "./FormaEditor.jsx";
 import { MODELOS } from "./data/modelos.js";
-import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar } from "./motor/formas.js";
+import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho } from "./motor/formas.js";
+import { ramalSistema, totaisHidraulica, ROTULO_SIS, SEM_TUBO, BARRA_M } from "./motor/hidraulica.js";
 // jspdf/html2canvas (~200KB gz) só carregam quando alguém gera PDF/imagem
 const loadPdfLibs=async()=>{
   try{
@@ -232,8 +233,112 @@ const CAT=[
 ];
 // un: "m²" = custo por m² (usa área total), "ml" = custo por metro linear (usa perímetro), "un" = custo unitário
 
-const SYSTEMS=["dreno","aspiracao","skimmer","retorno","hidro"];
-const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,dark,poolFmt,ar,autoPositions,blue,t,tubeOffsets={},setTubeOffsets=()=>{},invertSide=false,wMode="regular",walls=[],stamp="",spaType={redondo:false,quadrado:true},extras=[],desenho=null})=>{
+const SYSTEMS=["dreno","aspiracao","skimmer","retorno","hidro","drenoQuente","retornoQuente","refletor"];
+// Aquecimento: circuito próprio, com anel de tubulação separado dos sistemas frios.
+// Por padrão os dois ficam a 30 cm acima do chão da piscina.
+const ALTURA_QUENTE=0.30;
+const DISPS_PADRAO={retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4,drenoQuente:0,retornoQuente:0};
+// ═══ ESPELHO DA PISCINA (virar de lado) ═══
+// A casa de máquinas é fixa no terreno; quem vira é a piscina. flipH espelha
+// esquerda↔direita, flipV espelha frente↔fundo. Contorno, prainha, spa,
+// dispositivos e tubulação acompanham; a casa de máquinas fica parada.
+const espelhaCanto=(c,flipH,flipV)=>{let s=String(c||"");if(flipH)s=s.replace("left","§").replace("right","left").replace("§","right");if(flipV)s=s.replace("top","§").replace("bottom","top").replace("§","bottom");return s};
+const espelhaLado=(side,flipH,flipV)=>{if(flipH&&side==="left")return"right";if(flipH&&side==="right")return"left";if(flipV&&side==="top")return"bottom";if(flipV&&side==="bottom")return"top";return side};
+// Espelha a posição (0..1) do spa externo ao longo da parede em que ele corre
+const espelhaPos=(side,pos,flipH,flipV)=>((side==="top"||side==="bottom")?(flipH?1-pos:pos):(flipV?1-pos:pos));
+
+// ═══ PRAINHA DO FORMATO "Com prainha" ═══
+// comp = quanto a prainha avança da borda rasa até cair para a parte funda (m)
+// prof = lâmina d'água sobre a prainha (m). Vazio = comportamento antigo (25% do
+// comprimento, só ilustrativo, sem entrar no cálculo de área/volume).
+const prainhaCfg=(pool,L,D)=>{
+  const pf=v=>parseFloat(String(v??"").replace(",","."))||0;
+  const comp=pf(pool?.prainhaComp),prof=pf(pool?.prainhaProf);
+  const medida=comp>0;
+  return{
+    medida,
+    comp:Math.min(medida?comp:L*0.25,Math.max(L-0.1,0.1)),
+    prof:Math.min(prof>0?prof:D*0.25,Math.max(D-0.05,0.05)),
+  };
+};
+
+// ═══ PRAINHA DO DESENHO LIVRE (formato "Personalizado") ═══
+// No desenho livre a prainha é uma FormaComposta interna: fica encostada numa
+// parede e é aparada pelo contorno — por isso funciona igual em ponta reta ou
+// arredondada (Romana, Feijão, cantos curvos). Convenção do motor com giro 0:
+// larguraM = extensão em x, comprimentoM = extensão em y.
+// O layout padrão dos bicos nasceu supondo prainha à ESQUERDA (retorno/hidro na
+// parede rasa, skimmer/nivelador na oposta, ralo de fundo na ponta funda). Quando
+// a prainha está noutra parede, gira o layout inteiro para acompanhá-la — ralo de
+// fundo do lado da praia não faz sentido. Tudo continua arrastável por cima.
+const ROT_PRAINHA={esquerda:0,cima:90,direita:180,baixo:270};
+const giraPos=(p,rot)=>{
+  if(rot===90) return{...p,x:1-p.y,y:p.x};
+  if(rot===180)return{...p,x:1-p.x,y:1-p.y};
+  if(rot===270)return{...p,x:p.y,y:1-p.x};
+  return p;
+};
+
+// Altura do bico medida do FUNDO da piscina. Uma definição só para planta,
+// isométrica e 3D não divergirem.
+const alturaBico=(type,isFloor,D,dh={})=>{
+  if(isFloor)return 0;
+  if(type==='skimmer')return D;
+  if(type==='nivelador')return D*0.88;
+  if(type==='refletor'||type==='aspiracao')return D*0.5;
+  if(type==='retorno'&&dh?.retorno)return Math.min(parseFloat(dh.retorno)||D*0.55,D);
+  if(type==='hidro'&&dh?.hidro)return Math.min(parseFloat(dh.hidro)||D*0.55,D);
+  if(type==='retornoQuente')return Math.min(parseFloat(dh?.retornoQuente)||ALTURA_QUENTE,D);
+  if(type==='drenoQuente')return Math.min(parseFloat(dh?.drenoQuente)||ALTURA_QUENTE,D);
+  return D*0.55;
+};
+
+const PRAINHA_FOLGA=0.6; // sobra que garante encostar rente na parede curva
+// Campo numérico que guarda o texto digitado: sem isso "1,5" vira "1" no meio da
+// digitação, porque o valor exibido vem do número já convertido.
+// O estado nasce do valor atual e daí em diante é do usuário; quem troca a peça
+// (remover/readicionar, carregar outro orçamento) troca a key e remonta o campo.
+const NumIn=({label,valor,onCommit,placeholder,t})=>{
+  const [txt,setTxt]=React.useState(String(valor??""));
+  return <Inp label={label} placeholder={placeholder} t={t} value={txt}
+    onChange={v=>{setTxt(v);const n=parseFloat(String(v).replace(",","."));if(Number.isFinite(n)&&n>0)onCommit(n)}}/>;
+};
+const bboxDesenho=d=>{const v=d?.vertices||[];if(v.length<3)return null;const xs=v.map(p=>p.x),ys=v.map(p=>p.y);return{minX:Math.min(...xs),maxX:Math.max(...xs),minY:Math.min(...ys),maxY:Math.max(...ys)}};
+const achaPrainha=d=>(d?.formas||[]).find(f=>f.tipo==="prainha")||null;
+// Lê de volta lado e avanço de uma prainha já existente
+const lePrainha=(d,f)=>{
+  const bb=bboxDesenho(d);
+  if(!f||!bb)return{lado:"baixo",avanco:1.5};
+  const horizontal=(f.larguraM||0)>=(f.comprimentoM||0);
+  if(horizontal)return{lado:Math.abs(f.cyM-bb.maxY)<=Math.abs(f.cyM-bb.minY)?"baixo":"cima",avanco:Math.round((f.comprimentoM/2)*100)/100};
+  return{lado:Math.abs(f.cxM-bb.maxX)<=Math.abs(f.cxM-bb.minX)?"direita":"esquerda",avanco:Math.round((f.larguraM/2)*100)/100};
+};
+// Monta a prainha encostada na parede escolhida, com o avanço pedido.
+// Metade do retângulo fica para fora e é aparada — é assim que ela acompanha
+// a curva da parede em vez de deixar um vão.
+const montaPrainha=(d,lado,avanco,prof)=>{
+  const bb=bboxDesenho(d);if(!bb)return null;
+  const lx=bb.maxX-bb.minX+2*PRAINHA_FOLGA,ly=bb.maxY-bb.minY+2*PRAINHA_FOLGA;
+  const cx=(bb.minX+bb.maxX)/2,cy=(bb.minY+bb.maxY)/2;
+  const a=Math.max(0.1,avanco)*2;
+  const base={tipo:"prainha",operacao:"uniao",rotacaoGraus:0,profundidadeM:Math.max(0.05,prof)};
+  if(lado==="cima")   return{...base,larguraM:lx,comprimentoM:a,cxM:cx,cyM:bb.minY};
+  if(lado==="baixo")  return{...base,larguraM:lx,comprimentoM:a,cxM:cx,cyM:bb.maxY};
+  if(lado==="esquerda")return{...base,larguraM:a,comprimentoM:ly,cxM:bb.minX,cyM:cy};
+  return{...base,larguraM:a,comprimentoM:ly,cxM:bb.maxX,cyM:cy}; // direita
+};
+
+// Onde está a prainha, no referencial ORIGINAL (antes do espelho) — é nesse
+// referencial que autoPositions monta os bicos.
+const ladoDaPrainha=(desenho,poolFmt,extras)=>{
+  if(desenho&&(desenho.vertices||[]).length>=3){const f=achaPrainha(desenho);return f?lePrainha(desenho,f).lado:null;}
+  if(poolFmt==="Com prainha")return"esquerda";
+  const pf=v=>parseFloat(String(v||"").replace(",","."))||0;
+  if((extras||[]).some(e=>String(e.desc||"").toLowerCase().includes("prainha")&&pf(e.l)>0&&pf(e.w)>0))return"esquerda";
+  return null;
+};
+
+export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,dark,poolFmt,ar,autoPositions,blue,t,tubeOffsets={},setTubeOffsets=()=>{},invertSide=false,wMode="regular",walls=[],stamp="",spaType={redondo:false,quadrado:true},extras=[],desenho=null,flipH=false,flipV=false,ladoPrainha=null,raloQuenteParede=false,devHeights={}})=>{
     // const SYSTEMS=["retorno","hidro","aspiracao","dreno","skimmer","nivelador"];
   const L=parseFloat(pool.length)||6,W=parseFloat(pool.width)||3,D=parseFloat(pool.depth)||1.4;
   const svgW=700,svgH=420,pad=50;
@@ -243,7 +348,7 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
     if(spaType.redondo){const isRSq=spaType.rFormato==="quadrado";const rdX=isRSq?(parseFloat(spaType.rComp)||2)/2:(parseFloat(spaType.rDiam)||2)/2;const rdY=isRSq?(parseFloat(spaType.rLarg)||2)/2:(parseFloat(spaType.rDiam)||2)/2;const c=spaType.rCanto;if(c==="top-left"){spaExL=Math.max(spaExL,rdX);spaExT=Math.max(spaExT,rdY)}else if(c==="top-right"){spaExR=Math.max(spaExR,rdX);spaExT=Math.max(spaExT,rdY)}else if(c==="bottom-left"){spaExL=Math.max(spaExL,rdX);spaExB=Math.max(spaExB,rdY)}else{spaExR=Math.max(spaExR,rdX);spaExB=Math.max(spaExB,rdY)}}
   }
   // Spa externo (toggle) — incluir na área total
-  if(spa?.on){const sw2=parseFloat(spa.width||2),sd=customPos?.spaExt?.side||spa.side||"top";if(sd==="top")spaExT=Math.max(spaExT,sw2);else if(sd==="bottom")spaExB=Math.max(spaExB,sw2);else if(sd==="left")spaExL=Math.max(spaExL,sw2);else spaExR=Math.max(spaExR,sw2)}
+  if(spa?.on){const sw2=parseFloat(spa.width||2),sd=espelhaLado(customPos?.spaExt?.side||spa.side||"top",flipH,flipV);if(sd==="top")spaExT=Math.max(spaExT,sw2);else if(sd==="bottom")spaExB=Math.max(spaExB,sw2);else if(sd==="left")spaExL=Math.max(spaExL,sw2);else spaExR=Math.max(spaExR,sw2)}
   const cmExtra=L*0.3;
   const totalW=L+spaExL+spaExR+cmExtra,totalH=W+spaExT+spaExB;
   const scale=Math.min((svgW-pad*2)/totalW,(svgH-pad*2)/totalH);
@@ -260,8 +365,17 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
   const casaP=customPos["casa"]||(invertSide?{x:-0.15,y:0.5}:{x:1.12,y:0.5});
   const cmX=ox+casaP.x*pw,cmY=oy+casaP.y*ph-cmH/2;
   const hasSpa2=spa?.on,sL=parseFloat(spa?.length||2)*scale,sW=parseFloat(spa?.width||2)*scale;
-  const positions={...autoPositions(L,W,disps,invertSide,poolFmt),...customPos};
-  const tubeColors={retorno:"#ef4444",aspiracao:"#ec4899",dreno:"#8b5cf6",skimmer:"#f59e0b",refletor:"#f97316",nivelador:"#06b6d4",hidro:"#14b8a6"};
+  // Espelho: reflete o pixel em torno do eixo central da piscina (a casa de máquinas NÃO entra)
+  const MX=x=>flipH?2*(ox+pw/2)-x:x;
+  const MY=y=>flipV?2*(oy+ph/2)-y:y;
+  const PU=(u,v)=>({x:MX(ox+u*pw),y:MY(oy+v*ph)});          // normalizado (0..1) → pixel espelhado
+  const S=(u,v)=>{const q=PU(u,v);return`${q.x},${q.y}`};    // idem, já como "x,y" de <polygon>
+  const L_NORM=[[0,0],[1,0],[1,.6],[.6,.6],[.6,1],[0,1]];    // contorno do Formato L em 0..1
+  const lPts=L_NORM.map(([u,v])=>S(u,v)).join(" ");
+  const prai=prainhaCfg(pool,L,D);
+  const alturaBicoP=(t,f)=>alturaBico(t,f,D,devHeights);
+  const positions={...autoPositions(L,W,disps,invertSide,poolFmt,{flipH,flipV,ladoPrainha,raloQuenteParede}),...customPos};
+  const tubeColors={retorno:"#ef4444",aspiracao:"#ec4899",dreno:"#8b5cf6",skimmer:"#f59e0b",refletor:"#f97316",nivelador:"#06b6d4",hidro:"#14b8a6",drenoQuente:"#7f1d1d",retornoQuente:"#e11d48"};
   const onDown=(key,e)=>{e.preventDefault();setDragging(key)};
   const onMove=(e)=>{if(!dragging)return;const svg=e.currentTarget;const r=svg.getBoundingClientRect();const scX=svgW/r.width,scY=svgH/r.height;const mx=((e.clientX||e.touches?.[0]?.clientX||0)-r.left)*scX;const my=((e.clientY||e.touches?.[0]?.clientY||0)-r.top)*scY;const rx=(mx-ox)/pw,ry=(my-oy)/ph;if(dragging==="casa"){setCustomPos(p=>({...p,casa:{x:Math.max(0.3,Math.min(1.8,rx)),y:Math.max(-0.3,Math.min(1.3,ry)),label:"CM",type:"casa",special:true}}))}else if(dragging==="spaExt"){
     const curSide=customPos?.spaExt?.side||spa.side||"top";
@@ -280,18 +394,8 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
     setCustomPos(p=>({...p,spaExt:{side,pos,special:true}}));
   }else{const isOval=poolFmt==="Oval"||poolFmt==="Feijão";let nx=Math.max(0.01,Math.min(0.99,rx)),ny=Math.max(0.01,Math.min(0.99,ry));if(isOval){const dx=(nx-0.5)/0.5,dy=(ny-0.5)/0.5;const d2=dx*dx+dy*dy;if(d2>0.9){const sc=0.9/Math.sqrt(d2);nx=0.5+dx*0.5*sc;ny=0.5+dy*0.5*sc;}}setCustomPos(p=>({...p,[dragging]:{...positions[dragging],x:nx,y:ny}}))}};
   const onUp=()=>setDragging(null);
-  const dist=L*0.1;
-  const retQ=disps.retorno||0,aspQ=disps.aspiracao||0,drQ=disps.dreno||0,skQ=disps.skimmer||0,nivQ=disps.nivelador||0,hidQ=disps.hidro||0;
-  const retT=retQ>0?retQ*(D+0.5)+dist+(retQ>1?(retQ-1)*W*(1/(retQ+1)):0):0;
-  const aspT=aspQ>0?aspQ*(L*0.5+D+0.5)+dist:0;
-  const drT=drQ>0?drQ*(D+0.3)+dist+(drQ>1?L*0.4:0):0;
-  const skT=skQ>0?skQ*(D+0.5)+dist:0;
-  const nivT=nivQ>0?nivQ*1.5+dist:0;
-  const hidT=hidQ>0?hidQ*(D+0.5)+dist+(hidQ>1?(hidQ-1)*L*(1/(hidQ+1)):0):0;
-  const totalT=Math.ceil(retT+aspT+drT+skT+nivT+hidT);
-  const barras=Math.floor(totalT/6)+1;
-  const curvas=retQ*2+aspQ*3+drQ*2+skQ*2+nivQ+hidQ*2+(retQ>1?(retQ-1)*2:0)+(drQ>1?(drQ-1)*2:0)+(hidQ>1?(hidQ-1)*2:0);
-  const joelhos=Math.ceil(curvas*0.15);
+  // (a estimativa antiga de tubo/barras/joelhos que vivia aqui foi removida:
+  //  era código morto e concorria com o motor de material real)
   const dMin=parseFloat(pool.depthMin)||D,dMax=parseFloat(pool.depthMax)||D;
   const sloped=parseFloat(pool.depthMin)>0&&parseFloat(pool.depthMax)>0&&pool.depthMin!==pool.depthMax;
   const cutH=120,cutScale=Math.min((svgW-80)/L,(cutH-30)/Math.max(D,dMax));
@@ -300,14 +404,14 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
   return <div style={{display:"flex",flexDirection:"column",alignItems:"stretch",width:"100%"}}>
     <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px",textAlign:"center"}}>Planta Baixa</div>
     <svg viewBox={`0 0 ${svgW} ${svgH}`} style={{width:"100%",height:"auto",display:"block",background:dark?"#0f172a":"#f8fafc",borderRadius:"6px",border:"1px solid "+(dark?"#334155":"#e2e8f0"),cursor:dragging?"grabbing":"default",touchAction:"none"}} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onTouchMove={e=>{onMove({currentTarget:e.currentTarget,clientX:e.touches[0].clientX,clientY:e.touches[0].clientY})}} onTouchEnd={onUp}>
-      <defs><pattern id="grd" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke={dark?"#1e293b":"#e2e8f0"} strokeWidth="0.3"/></pattern>{stamp&&SWATCH_SLUG[stamp]&&<clipPath id="poolClip2d">{efMap?<polygon points={efPoly.map(p=>{const q=efMap(p);return`${q.x},${q.y}`}).join(" ")}/>:poolFmt==="Oval"||poolFmt==="Feijão"?<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2}/>:poolFmt==="Formato L"?<polygon points={`${ox},${oy} ${ox+pw},${oy} ${ox+pw},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph} ${ox},${oy+ph}`}/>:poolFmt==="Oitavada"?(()=>{const c=(parseFloat(pool.chanfro)||1)/L*pw;const cY=(parseFloat(pool.chanfro)||1)/W*ph;return<polygon points={`${ox+c},${oy} ${ox+pw-c},${oy} ${ox+pw},${oy+cY} ${ox+pw},${oy+ph-cY} ${ox+pw-c},${oy+ph} ${ox+c},${oy+ph} ${ox},${oy+ph-cY} ${ox},${oy+cY}`}/>})():<rect x={ox} y={oy} width={pw} height={ph}/>}</clipPath>}</defs>
+      <defs><pattern id="grd" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke={dark?"#1e293b":"#e2e8f0"} strokeWidth="0.3"/></pattern>{stamp&&SWATCH_SLUG[stamp]&&<clipPath id="poolClip2d">{efMap?<polygon points={efPoly.map(p=>{const q=efMap(p);return`${q.x},${q.y}`}).join(" ")}/>:poolFmt==="Oval"||poolFmt==="Feijão"?<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2}/>:poolFmt==="Formato L"?<polygon points={lPts}/>:poolFmt==="Oitavada"?(()=>{const c=(parseFloat(pool.chanfro)||1)/L*pw;const cY=(parseFloat(pool.chanfro)||1)/W*ph;return<polygon points={`${ox+c},${oy} ${ox+pw-c},${oy} ${ox+pw},${oy+cY} ${ox+pw},${oy+ph-cY} ${ox+pw-c},${oy+ph} ${ox+c},${oy+ph} ${ox},${oy+ph-cY} ${ox},${oy+cY}`}/>})():<rect x={ox} y={oy} width={pw} height={ph}/>}</clipPath>}</defs>
       <rect width={svgW} height={svgH} fill="url(#grd)"/>
       {(()=>{const fill=dark?"#1e3a5f":"#dbeafe";const stroke="#2563eb";
         if(efMap)return<>
           <polygon points={efPoly.map(p=>{const q=efMap(p);return`${q.x},${q.y}`}).join(" ")} fill={fill} stroke={stroke} strokeWidth="2" strokeLinejoin="round"/>
           {efRegs.map((r,i)=>{const c=r.poligono.reduce((s,p)=>({x:s.x+p.x/r.poligono.length,y:s.y+p.y/r.poligono.length}),{x:0,y:0});const cq=efMap(c);return<g key={`reg${i}`}><polygon points={r.poligono.map(p=>{const q=efMap(p);return`${q.x},${q.y}`}).join(" ")} fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#3b82f6" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.85"/>{r.tipo!=="escada"&&<text x={cq.x} y={cq.y+2} textAnchor="middle" fontSize="5.5" fill={dark?"#93c5fd":"#1d4ed8"} fontWeight="700">{r.tipo==="prainha"?"PRAINHA":r.tipo==="spa"?"SPA":""} {r.profundidadeM}m</text>}</g>})}
         </>;
-        if(poolFmt==="Formato L")return<polygon points={`${ox},${oy} ${ox+pw},${oy} ${ox+pw},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph*0.6} ${ox+pw*0.6},${oy+ph} ${ox},${oy+ph}`} fill={fill} stroke={stroke} strokeWidth="2"/>;
+        if(poolFmt==="Formato L")return<polygon points={lPts} fill={fill} stroke={stroke} strokeWidth="2"/>;
         if(poolFmt==="Oval"||poolFmt==="Feijão")return<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2} fill={fill} stroke={stroke} strokeWidth="2"/>;
         if(poolFmt==="Oitavada"){const c=(parseFloat(pool.chanfro)||1)/L*pw;const cY=(parseFloat(pool.chanfro)||1)/W*ph;return<polygon points={`${ox+c},${oy} ${ox+pw-c},${oy} ${ox+pw},${oy+cY} ${ox+pw},${oy+ph-cY} ${ox+pw-c},${oy+ph} ${ox+c},${oy+ph} ${ox},${oy+ph-cY} ${ox},${oy+cY}`} fill={fill} stroke={stroke} strokeWidth="2"/>}
         if(poolFmt==="Com Spa"){const hasQ=spaType.quadrado,hasR=spaType.redondo;const spaFill=dark?"#1e3a5f":"#93c5fd";const spaStroke="#3b82f6";
@@ -324,9 +428,9 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
         return<rect x={ox} y={oy} width={pw} height={ph} rx="1" fill={fill} stroke={stroke} strokeWidth="2"/>;
       })()}
       {stamp&&SWATCH_SLUG[stamp]&&<image href={`/swatches/${SWATCH_SLUG[stamp]}.png`} x={ox} y={oy} width={pw} height={ph} preserveAspectRatio="xMidYMid slice" clipPath="url(#poolClip2d)" opacity="0.85"/>}
-      {poolFmt==="Com prainha"&&<rect x={ox} y={oy} width={pw*0.25} height={ph} rx="1" fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#2563eb" strokeWidth="0.5"/>}
-      {extras.length>0&&extras.map((e,i)=>{const pf=v=>parseFloat(String(v||"").replace(",","."))||0;const el=pf(e.l),ew=pf(e.w);if(el<=0||ew<=0)return null;const ePw=el*scale,ePh=ew*scale;const desc=(e.desc||"").toLowerCase();const isBank=desc.includes("banco");const isPrainha=desc.includes("prainha");const isDegrau=desc.includes("degrau");const eColor=isPrainha?(dark?"#1e4d7a":"#bfdbfe"):isBank?(dark?"#2d3a4a":"#c7d2fe"):(dark?"#1e3a5f":"#ddd6fe");const eX=isPrainha?ox:isBank?ox:(ox+pw-ePw);const eY=isPrainha?oy:(oy+ph-ePh);return<g key={`ext${i}`}><rect x={eX} y={eY} width={ePw} height={ePh} rx="2" fill={eColor} stroke={dark?"#475569":"#6366f1"} strokeWidth="0.8" strokeDasharray="3,2" opacity="0.7"/><text x={eX+ePw/2} y={eY+ePh/2+3} textAnchor="middle" fontSize="5.5" fill={dark?"#94a3b8":"#4f46e5"} fontWeight="600">{e.desc||"Extra"}</text></g>})}
-      {hasSpa2&&(()=>{const sp=customPos["spaExt"];const side=sp?.side||spa.side||"top";const pos=sp?.pos??1;let sx,sy,sw2,sh;if(side==="bottom"){sw2=sL;sh=sW;sx=ox+pos*(pw-sL);sy=oy+ph;}else if(side==="left"){sw2=sW;sh=sL;sx=ox-sW;sy=oy+pos*(ph-sL);}else if(side==="right"){sw2=sW;sh=sL;sx=ox+pw;sy=oy+pos*(ph-sL);}else{sw2=sL;sh=sW;sx=ox+pos*(pw-sL);sy=oy-sW;}return<g style={{cursor:"grab"}} onMouseDown={e=>{e.preventDefault();setDragging("spaExt")}} onTouchStart={e=>{e.preventDefault();setDragging("spaExt")}}><rect x={sx} y={sy} width={sw2} height={sh} rx="3" fill={dark?"#1e3a5f":"#93c5fd"} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="4,2"/><text x={sx+sw2/2} y={sy+sh/2+3} textAnchor="middle" fontSize="7" fill="#1d4ed8" fontWeight="700">SPA</text></g>;})()}
+      {poolFmt==="Com prainha"&&(()=>{const a=PU(0,0),b=PU(Math.min(prai.comp/L,1),1);const x0=Math.min(a.x,b.x),y0=Math.min(a.y,b.y),wq=Math.abs(b.x-a.x),hq=Math.abs(b.y-a.y);return<g><rect x={x0} y={y0} width={wq} height={hq} rx="1" fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#2563eb" strokeWidth="0.5"/>{prai.medida&&<text x={x0+wq/2} y={y0+hq/2+3} textAnchor="middle" fontSize="5.5" fontWeight="700" fill={dark?"#93c5fd":"#1d4ed8"}>{prai.comp}m · {prai.prof}m</text>}</g>})()}
+      {extras.length>0&&extras.map((e,i)=>{const pf=v=>parseFloat(String(v||"").replace(",","."))||0;const el=pf(e.l),ew=pf(e.w);if(el<=0||ew<=0)return null;const ePw=el*scale,ePh=ew*scale;const desc=(e.desc||"").toLowerCase();const isBank=desc.includes("banco");const isPrainha=desc.includes("prainha");const isDegrau=desc.includes("degrau");const eColor=isPrainha?(dark?"#1e4d7a":"#bfdbfe"):isBank?(dark?"#2d3a4a":"#c7d2fe"):(dark?"#1e3a5f":"#ddd6fe");const eX=isPrainha?ox:isBank?ox:(ox+pw-ePw);const eY=isPrainha?oy:(oy+ph-ePh);const m1={x:MX(eX),y:MY(eY)},m2={x:MX(eX+ePw),y:MY(eY+ePh)};const rx0=Math.min(m1.x,m2.x),ry0=Math.min(m1.y,m2.y);return<g key={`ext${i}`}><rect x={rx0} y={ry0} width={ePw} height={ePh} rx="2" fill={eColor} stroke={dark?"#475569":"#6366f1"} strokeWidth="0.8" strokeDasharray="3,2" opacity="0.7"/><text x={rx0+ePw/2} y={ry0+ePh/2+3} textAnchor="middle" fontSize="5.5" fill={dark?"#94a3b8":"#4f46e5"} fontWeight="600">{e.desc||"Extra"}</text></g>})}
+      {hasSpa2&&(()=>{const sp=customPos["spaExt"];const side0=sp?.side||spa.side||"top";const pos0=sp?.pos??1;const side=espelhaLado(side0,flipH,flipV);const pos=espelhaPos(side0,pos0,flipH,flipV);let sx,sy,sw2,sh;if(side==="bottom"){sw2=sL;sh=sW;sx=ox+pos*(pw-sL);sy=oy+ph;}else if(side==="left"){sw2=sW;sh=sL;sx=ox-sW;sy=oy+pos*(ph-sL);}else if(side==="right"){sw2=sW;sh=sL;sx=ox+pw;sy=oy+pos*(ph-sL);}else{sw2=sL;sh=sW;sx=ox+pos*(pw-sL);sy=oy-sW;}return<g style={{cursor:"grab"}} onMouseDown={e=>{e.preventDefault();setDragging("spaExt")}} onTouchStart={e=>{e.preventDefault();setDragging("spaExt")}}><rect x={sx} y={sy} width={sw2} height={sh} rx="3" fill={dark?"#1e3a5f":"#93c5fd"} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="4,2"/><text x={sx+sw2/2} y={sy+sh/2+3} textAnchor="middle" fontSize="7" fill="#1d4ed8" fontWeight="700">SPA</text></g>;})()}
       <text x={ox+pw/2} y={oy+ph/2-3} textAnchor="middle" fontSize="8" fill={dark?"#94a3b8":"#64748b"} fontWeight="600">PISCINA</text>
       <text x={ox+pw/2} y={oy+ph/2+7} textAnchor="middle" fontSize="7" fill={dark?"#94a3b8":"#64748b"}>A= {ar.total}m2</text>
       <text x={ox+pw/2} y={oy-10} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{L}m</text>
@@ -340,67 +444,46 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
         // entra pelo ponto mais próximo (caminho mais curto), um RAMAL COLETOR
         // único interliga todos os bicos + a casa pelos menores arcos, e um tronco
         // ortogonal fecha na casa de máquinas. Sem casos hardcoded → nunca trava.
-        const pipes=[];
-        const systems=SYSTEMS;
-        const sysData={};
-        let sysIdx=0;
-        const autoP=autoPositions(L,W,disps,invertSide,poolFmt);
-        const totalSys=systems.filter(s=>Object.entries(positions).some(([k,p])=>p.type===s&&!p.special&&autoP[k])).length;
-        // Contorno da piscina em PIXELS: real (desenho livre) ou derivado da forma
+        // Tudo em METROS num referencial único (px → m pela mesma conversão),
+        // para o motor medir tubo de verdade em vez de estimar.
+        const pxPerM0=efMap?efEsc:scale;
+        const p2m=q=>({x:(q.x-ox)/pxPerM0,y:(q.y-oy)/pxPerM0});
+        const m2p=q=>({x:ox+q.x*pxPerM0,y:oy+q.y*pxPerM0});
         const contornoPx=efMap?efPoly.map(efMap):(()=>{
-          if(poolFmt==="Formato L")return[{x:ox,y:oy},{x:ox+pw,y:oy},{x:ox+pw,y:oy+ph*0.6},{x:ox+pw*0.6,y:oy+ph*0.6},{x:ox+pw*0.6,y:oy+ph},{x:ox,y:oy+ph}];
+          if(poolFmt==="Formato L")return L_NORM.map(([u,v])=>PU(u,v));
           if(poolFmt==="Oval"||poolFmt==="Feijão"){const a=[];for(let i2=0;i2<32;i2++){const th=i2/32*2*Math.PI;a.push({x:ox+pw/2+pw/2*Math.cos(th),y:oy+ph/2+ph/2*Math.sin(th)})}return a;}
           if(poolFmt==="Oitavada"){const c=(parseFloat(pool.chanfro)||1)/L*pw,cY=(parseFloat(pool.chanfro)||1)/W*ph;return[{x:ox+c,y:oy},{x:ox+pw-c,y:oy},{x:ox+pw,y:oy+cY},{x:ox+pw,y:oy+ph-cY},{x:ox+pw-c,y:oy+ph},{x:ox+c,y:oy+ph},{x:ox,y:oy+ph-cY},{x:ox,y:oy+cY}];}
           return[{x:ox,y:oy},{x:ox+pw,y:oy},{x:ox+pw,y:oy+ph},{x:ox,y:oy+ph}];
         })();
-        const pxPerM=efMap?efEsc:scale;
-        // ângulos retos (padrão prancha) só em formas de lados retos; oval/feijão/oitavada e desenho livre ficam suaves
+        const contornoM=contornoPx.map(p2m);
+        const casaM=p2m({x:cmX,y:cmY+cmH/2});
+        const zCasa=Math.max(0,D-0.30); // linha de tubo na chegada da casa de máquinas
+        // ângulos retos (padrão prancha) só em lados retos; oval/feijão/desenho livre ficam suaves
         const ortho=!efMap&&["Retangular","Retangular irregular","Formato L","Com prainha","Com Spa","Personalizado"].includes(poolFmt);
-        const somaLen=arr=>{let s=0;for(let i2=1;i2<arr.length;i2++)s+=Math.hypot(arr[i2].x-arr[i2-1].x,arr[i2].y-arr[i2-1].y);return s};
-        const toPath=arr=>arr.map((q,i2)=>(i2?"L":"M")+q.x.toFixed(1)+","+q.y.toFixed(1)).join(" ");
-        systems.forEach(sysType=>{
+        const autoP=autoPositions(L,W,disps,invertSide,poolFmt,{flipH,flipV,ladoPrainha,raloQuenteParede});
+        const pipes=[];
+        const sysData={};
+        let sysIdx=0;
+        SYSTEMS.forEach(sysType=>{
           const devs=Object.entries(positions).filter(([k,p])=>p.type===sysType&&!p.special&&autoP[k]);
-          if(devs.length===0)return;
+          if(devs.length===0||SEM_TUBO.includes(sysType))return;
           const col=tubeColors[sysType]||"#999";
-          const arriveY=cmY+8+sysIdx*((cmH-16)/Math.max(totalSys-1,1));
-          sysData[sysType]={devs,col,arriveY,lane:0,curvas:0,tes:0,tuboM:0};
-          const sd=sysData[sysType];
-          // anel do sistema: afastado da parede e ESCALONADO (feixe paralelo)
-          const ring=offsetPoligono(contornoPx,5+sysIdx*4);
-          const tCasa=fracaoMaisProxima(ring,{x:cmX,y:arriveY});
-          // espeta de cada bico até o anel, no ponto mais próximo (caminho mais curto)
-          const frDevs=devs.map(([k,p2])=>{
-            const cx2=ox+p2.x*pw,cy2=oy+p2.y*ph;
-            const tDev=fracaoMaisProxima(ring,{x:cx2,y:cy2});
-            const q=pontoNaFracao(ring,tDev);
-            pipes.push(<line key={"st_"+k} x1={cx2} y1={cy2} x2={q.x} y2={q.y} stroke={col} strokeWidth="2" strokeLinecap="round" opacity="0.6"/>);
-            sd.tuboM+=Math.hypot(q.x-cx2,q.y-cy2)/pxPerM;
-            return tDev;
-          });
-          // ramal coletor: interliga todos os bicos + casa pelos MENORES arcos do anel
-          trechosColetor([...frDevs,tCasa]).forEach(([a,b],ti)=>{
-            let caminho=caminhoNoContorno(ring,a,b);
-            if(ortho)caminho=ortogonalizar(caminho,4);
-            pipes.push(<path key={"tr_"+sysType+ti} d={toPath(caminho)} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>);
-            sd.tuboM+=somaLen(caminho)/pxPerM;
-          });
-          // tronco até a casa em ângulo reto (padrão prancha)
-          const qc=pontoNaFracao(ring,tCasa);
-          const tronco=(Math.abs(qc.x-cmX)<3||Math.abs(qc.y-arriveY)<3)?[qc,{x:cmX,y:arriveY}]:[qc,{x:cmX,y:qc.y},{x:cmX,y:arriveY}];
-          pipes.push(<path key={"cm_tr_"+sysType} d={toPath(tronco)} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>);
-          sd.tuboM+=somaLen(tronco)/pxPerM;
-          sd.tes+=Math.max(0,devs.length-1);
-          sd.curvas+=2+devs.length;
-          pipes.push(<rect key={"cm_"+sysType} x={cmX-1} y={arriveY-3} width="6" height="6" rx="1" fill={col} opacity="0.9"/>);
+          const devsM=devs.map(([k,p2])=>({...p2m({x:ox+p2.x*pw,y:oy+p2.y*ph}),key:k,label:p2.label,floor:!!p2.floor,z:alturaBicoP(sysType,p2.floor),zBorda:D}));
+          const r=ramalSistema({tipo:sysType,devs:devsM,contorno:contornoM,cm:casaM,zCasa,off:0.25+sysIdx*0.09,ortho});
+          sysData[sysType]={...r,col,devs};
+          // desenho a partir do MESMO traçado que foi medido
+          r.stubs.forEach(([d,q],i2)=>{const a=m2p(d),b=m2p(q);pipes.push(<line key={"st_"+sysType+i2} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={col} strokeWidth="2" strokeLinecap="round" opacity="0.6"/>)});
+          r.tracado.forEach((trecho,ti)=>{const d=trecho.map(m2p).map((q,i2)=>(i2?"L":"M")+q.x.toFixed(1)+","+q.y.toFixed(1)).join(" ");pipes.push(<path key={"tr_"+sysType+ti} d={d} fill="none" stroke={col} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>)});
+          pipes.push(<rect key={"cm_"+sysType} x={cmX-1} y={cmY+cmH/2-3} width="6" height="6" rx="1" fill={col} opacity="0.9"/>);
           sysIdx++;
         });
         window._sysData=sysData;
         return pipes;
       })()}
-      {Object.entries(positions).filter(([k,p])=>!p.special&&autoPositions(L,W,disps,invertSide,poolFmt)[k]).map(([key,p])=>{const cx2=ox+p.x*pw,cy2=oy+p.y*ph,col=tubeColors[p.type]||"#666";return <g key={key} onMouseDown={e=>onDown(key,e)} onTouchStart={e=>{e.preventDefault();setDragging(key)}} style={{cursor:"grab"}}>{p.floor?<><circle cx={cx2} cy={cy2} r="6" fill="none" stroke={col} strokeWidth="1.5"/><line x1={cx2-3} y1={cy2-3} x2={cx2+3} y2={cy2+3} stroke={col} strokeWidth="1"/><line x1={cx2+3} y1={cy2-3} x2={cx2-3} y2={cy2+3} stroke={col} strokeWidth="1"/></>:p.type==="skimmer"?<rect x={cx2-3} y={cy2-6} width="6" height="12" rx="1" fill="none" stroke={col} strokeWidth="1.5"/>:(p.type==="retorno"||p.type==="hidro")?<rect x={cx2-3} y={cy2-5} width="6" height="10" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:p.type==="aspiracao"?<rect x={cx2-5} y={cy2-3} width="10" height="6" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:<circle cx={cx2} cy={cy2} r="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>}<text x={cx2} y={cy2+(p.floor?12:p.type==="skimmer"?10:12)} textAnchor="middle" fontSize="5" fontWeight="700" fill={col}>{p.label}</text></g>})}
+      {Object.entries(positions).filter(([k,p])=>!p.special&&autoPositions(L,W,disps,invertSide,poolFmt,{flipH,flipV,ladoPrainha,raloQuenteParede})[k]).map(([key,p])=>{const cx2=ox+p.x*pw,cy2=oy+p.y*ph,col=tubeColors[p.type]||"#666";return <g key={key} onMouseDown={e=>onDown(key,e)} onTouchStart={e=>{e.preventDefault();setDragging(key)}} style={{cursor:"grab"}}>{p.floor?<><circle cx={cx2} cy={cy2} r="6" fill="none" stroke={col} strokeWidth="1.5"/><line x1={cx2-3} y1={cy2-3} x2={cx2+3} y2={cy2+3} stroke={col} strokeWidth="1"/><line x1={cx2+3} y1={cy2-3} x2={cx2-3} y2={cy2+3} stroke={col} strokeWidth="1"/></>:p.type==="skimmer"?<rect x={cx2-3} y={cy2-6} width="6" height="12" rx="1" fill="none" stroke={col} strokeWidth="1.5"/>:(p.type==="retorno"||p.type==="hidro")?<rect x={cx2-3} y={cy2-5} width="6" height="10" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:p.type==="aspiracao"?<rect x={cx2-5} y={cy2-3} width="10" height="6" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:<circle cx={cx2} cy={cy2} r="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>}<text x={cx2} y={cy2+(p.floor?12:p.type==="skimmer"?10:12)} textAnchor="middle" fontSize="5" fontWeight="700" fill={col}>{p.label}</text></g>})}
     </svg>
     <div style={{display:"flex",gap:"6px",marginTop:"6px",flexWrap:"wrap"}}>
-      {[["R","Retorno","#ef4444"],["A","Asp.","#ec4899"],["D","Dreno","#8b5cf6"],["SK","Skim.","#f59e0b"],["L","LED","#f97316"],["N","Niv.","#06b6d4"],["H","Hidro","#14b8a6"],["CM","Casa M.","#475569"]].map(([s,lb,c])=><div key={s} style={{display:"flex",alignItems:"center",gap:"2px"}}><div style={{width:"8px",height:"3px",borderRadius:"1px",background:c}}/><span style={{fontSize:"6px",color:t.textMuted}}>{lb}</span></div>)}
+      {[["R","Retorno","#ef4444"],["A","Asp.","#ec4899"],["D","Dreno","#8b5cf6"],["SK","Skim.","#f59e0b"],["L","LED","#f97316"],["N","Niv.","#06b6d4"],["H","Hidro","#14b8a6"],["DQ","Ralo Q.","#7f1d1d"],["RQ","Ret. Q.","#e11d48"],["CM","Casa M.","#475569"]].map(([s,lb,c])=><div key={s} style={{display:"flex",alignItems:"center",gap:"2px"}}><div style={{width:"8px",height:"3px",borderRadius:"1px",background:c}}/><span style={{fontSize:"6px",color:t.textMuted}}>{lb}</span></div>)}
       <button className="no-pdf" onClick={()=>{setCustomPos({});setTubeOffsets({})}} style={{fontSize:"6px",padding:"1px 4px",borderRadius:"3px",border:"1px solid "+(dark?"#334155":"#e2e8f0"),background:"transparent",color:t.textMuted,cursor:"pointer",marginLeft:"auto"}}>Reset</button>
     </div>
     <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginTop:"10px",marginBottom:"4px",textAlign:"center"}}>Corte Lateral</div>
@@ -413,17 +496,22 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
       {sloped&&<text x={cox2+cpw2+16} y={coy2+hMax2/2+3} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{dMax}m</text>}
     </svg>
     <div style={{marginTop:"8px",background:dark?"#1e293b":"#fff",borderRadius:"6px",padding:"8px",border:"1px solid "+(dark?"#334155":"#e2e8f0")}}>
-      <div style={{fontSize:"9px",fontWeight:"700",color:blue,marginBottom:"6px"}}>MATERIAL HIDRAULICO - PVC 50mm</div>
-      {SYSTEMS.filter(s=>window._sysData?.[s]).map(sysType=>{const sd=window._sysData[sysType];const col=tubeColors[sysType];const barras=Math.ceil(sd.tuboM/6);return <div key={"mat_"+sysType} style={{marginBottom:"6px",padding:"4px 6px",background:dark?"#0f172a":"#f8fafc",borderRadius:"4px",borderLeft:"3px solid "+col}}>
-        <div style={{fontSize:"8px",fontWeight:"700",color:col,marginBottom:"2px"}}>{sysType.charAt(0).toUpperCase()+sysType.slice(1)} ({sd.devs.length}x)</div>
-        <div style={{display:"flex",gap:"8px",fontSize:"8px",color:t.text}}>
-          <span>Tubo: <b>{sd.tuboM.toFixed(1)}m</b> ({barras} barras)</span>
+      <div style={{fontSize:"9px",fontWeight:"700",color:blue,marginBottom:"6px"}}>MATERIAL HIDRAULICO</div>
+      {SYSTEMS.filter(s2=>window._sysData?.[s2]).map(sysType=>{const sd=window._sysData[sysType];const col=tubeColors[sysType];return <div key={"mat_"+sysType} style={{marginBottom:"6px",padding:"4px 6px",background:dark?"#0f172a":"#f8fafc",borderRadius:"4px",borderLeft:"3px solid "+col}}>
+        <div style={{fontSize:"8px",fontWeight:"700",color:col,marginBottom:"2px"}}>{ROTULO_SIS[sysType]||sysType} ({sd.bicos}x) · {sd.diam===34?'Ø3/4"':"Ø50mm"}</div>
+        <div style={{display:"flex",gap:"8px",fontSize:"8px",color:t.text,flexWrap:"wrap"}}>
+          <span>Tubo: <b>{sd.tuboM.toFixed(1)}m</b></span>
           <span>Curva Longa: <b>{sd.curvas}</b></span>
           {sd.tes>0&&<span>Te: <b>{sd.tes}</b></span>}
+          {sd.desnivel>0.05&&<span style={{color:t.textMuted}}>(inclui {sd.desnivel.toFixed(2)}m de subida)</span>}
         </div>
       </div>})}
       <div style={{borderTop:"1px solid "+(dark?"#334155":"#e2e8f0"),marginTop:"4px",paddingTop:"4px",fontSize:"8px",color:t.text}}>
-        {(()=>{const all=Object.values(window._sysData||{});const tT=all.reduce((s,d)=>s+d.tuboM,0);const tC=all.reduce((s,d)=>s+d.curvas,0);const tTe=all.reduce((s,d)=>s+d.tes,0);return <><b>TOTAL: </b>Tubo: <b>{tT.toFixed(1)}m</b> ({Math.ceil(tT/6)} barras) | Curva Longa: <b>{tC}</b> | Te: <b>{tTe}</b></>})()}
+        {(()=>{const tt=totaisHidraulica(window._sysData||{});return <>
+          <div><b>PVC 50mm: </b>Tubo: <b>{tt.tubo50.toFixed(1)}m</b> ({tt.barras50} barras de {BARRA_M}m) | Curva Longa: <b>{tt.curvas50}</b> | Te: <b>{tt.tes}</b></div>
+          {tt.tubo34>0&&<div style={{marginTop:"2px"}}><b>Eletroduto 3/4": </b>Tubo: <b>{tt.tubo34.toFixed(1)}m</b> ({tt.barras34} barras de {BARRA_M}m) | Curva: <b>{tt.curvas34}</b></div>}
+          {(disps.nivelador||0)>0&&<div style={{marginTop:"2px",color:t.textMuted}}>Nivelador ({disps.nivelador}x): sem canamento</div>}
+        </>})()}
       </div>
     </div>
     <div style={{display:"flex",gap:"8px",marginTop:"6px",flexWrap:"wrap",fontSize:"7px",color:t.textMuted}}>
@@ -433,7 +521,7 @@ const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,da
 };
 
 // ═══ ISOMETRIC VIEW ═══
-const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,autoPositions,customPos={},invertSide=false,devHeights={},stamp="",spaType={redondo:false,quadrado:true},extras=[],desenho=null},ref)=>{
+const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,autoPositions,customPos={},invertSide=false,devHeights={},stamp="",spaType={redondo:false,quadrado:true},extras=[],desenho=null,flipH=false,flipV=false,ladoPrainha=null,raloQuenteParede=false},ref)=>{
   let L=parseFloat(pool.length)||6,W=parseFloat(pool.width)||3;
   const D=parseFloat(pool.depth)||1.4;
   // Desenho livre: projeta o contorno efetivo real; L/W viram o bounding box do desenho
@@ -451,13 +539,16 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   const totalX=L+2.9;
   const s=Math.min((svgW-2*mX)/((totalX+W)*cos30),(svgH-mYt-mYb)/(D+(totalX+W)*sin30));
   const ox=mX+W*cos30*s,oy=mYt+D*s;
+  // Espelho da piscina em METROS (a casa de máquinas fica fora do espelho)
+  const FX=x=>flipH?L-x:x, FY=y=>flipV?W-y:y;
   const iso=(x,y,z)=>({x:ox+(x-y)*cos30*s,y:oy+(x+y)*sin30*s-z*s});
   const pt=(x,y,z)=>{const p=iso(x,y,z);return`${p.x.toFixed(1)},${p.y.toFixed(1)}`};
   const pts=arr=>arr.map(([x,y,z])=>pt(x,y,z)).join(' ');
   const pth=arr=>arr.map(([x,y,z],i)=>{const p=iso(x,y,z);return(i?'L':'M')+`${p.x.toFixed(1)} ${p.y.toFixed(1)}`}).join(' ');
   const retQ=disps.retorno||0,aspQ=disps.aspiracao||0,drQ=disps.dreno||0;
   const skQ=disps.skimmer||0,ledQ=disps.refletor||0,nivQ=disps.nivelador||0,hidQ=disps.hidro||0;
-  const C={retorno:"#3b82f6",aspiracao:"#ec4899",dreno:"#8b5cf6",skimmer:"#f97316",refletor:"#eab308",nivelador:"#06b6d4",hidro:"#10b981"};
+  const dqQ=disps.drenoQuente||0,rqQ=disps.retornoQuente||0;
+  const C={retorno:"#3b82f6",aspiracao:"#ec4899",dreno:"#8b5cf6",skimmer:"#f97316",refletor:"#eab308",nivelador:"#06b6d4",hidro:"#10b981",drenoQuente:"#7f1d1d",retornoQuente:"#e11d48"};
   const dk=dark;const els=[];
   const swSlug=stamp?SWATCH_SLUG[stamp]:null;
   const floorFill=dk?"#1e3a5f":"#bfdbfe";
@@ -542,25 +633,26 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
     if(swSlug){const ovalPts=Array.from({length:N},(_,i)=>{const a=i/N*2*Math.PI;return pt(L/2+L/2*Math.cos(a),W/2+W/2*Math.sin(a),0);}).join(' ');const p00=iso(0,0,0),pL0=iso(L,0,0),p0W=iso(0,W,0);els.push(<defs key="defsOval"><clipPath id="isoFlClip"><polygon points={ovalPts}/></clipPath></defs>);els.push(isoImg("flImg",p00,pL0,p0W,"isoFlClip","0.85"));}
   } else if(isLFmt){
     const W1=W*0.6,W2=W-W1,L2=L*0.6;
+    const X=FX,Y=FY; // espelho da piscina (casa de máquinas fica parada)
     // Chão (2 retângulos)
-    els.push(<polygon key="fl1" points={pts([[0,0,0],[L,0,0],[L,W1,0],[0,W1,0]])} fill={floorFill} opacity="0.7"/>);
-    els.push(<polygon key="fl2" points={pts([[0,W1,0],[L2,W1,0],[L2,W,0],[0,W,0]])} fill={floorFill} opacity="0.7"/>);
-    if(swSlug){const p00=iso(0,0,0),pL0=iso(L,0,0),p0W1=iso(0,W1,0),pW1=iso(0,W1,0),pL2W1=iso(L2,W1,0),p0W=iso(0,W,0);els.push(<defs key="defsLfmt"><clipPath id="isoFl1Clip"><polygon points={pts([[0,0,0],[L,0,0],[L,W1,0],[0,W1,0]])}/></clipPath><clipPath id="isoFl2Clip"><polygon points={pts([[0,W1,0],[L2,W1,0],[L2,W,0],[0,W,0]])}/></clipPath></defs>);els.push(isoImg("fl1Img",p00,pL0,p0W1,"isoFl1Clip","0.85"));els.push(isoImg("fl2Img",pW1,pL2W1,p0W,"isoFl2Clip","0.85"));}
+    els.push(<polygon key="fl1" points={pts([[X(0),Y(0),0],[X(L),Y(0),0],[X(L),Y(W1),0],[X(0),Y(W1),0]])} fill={floorFill} opacity="0.7"/>);
+    els.push(<polygon key="fl2" points={pts([[X(0),Y(W1),0],[X(L2),Y(W1),0],[X(L2),Y(W),0],[X(0),Y(W),0]])} fill={floorFill} opacity="0.7"/>);
+    if(swSlug){const p00=iso(X(0),Y(0),0),pL0=iso(X(L),Y(0),0),p0W1=iso(X(0),Y(W1),0),pW1=iso(X(0),Y(W1),0),pL2W1=iso(X(L2),Y(W1),0),p0W=iso(X(0),Y(W),0);els.push(<defs key="defsLfmt"><clipPath id="isoFl1Clip"><polygon points={pts([[X(0),Y(0),0],[X(L),Y(0),0],[X(L),Y(W1),0],[X(0),Y(W1),0]])}/></clipPath><clipPath id="isoFl2Clip"><polygon points={pts([[X(0),Y(W1),0],[X(L2),Y(W1),0],[X(L2),Y(W),0],[X(0),Y(W),0]])}/></clipPath></defs>);els.push(isoImg("fl1Img",p00,pL0,p0W1,"isoFl1Clip","0.85"));els.push(isoImg("fl2Img",pW1,pL2W1,p0W,"isoFl2Clip","0.85"));}
     // Paredes traseiras
-    els.push(<polygon key="wL" points={pts([[0,0,0],[0,W,0],[0,W,D],[0,0,D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);
-    els.push(<polygon key="wB" points={pts([[0,W,0],[L2,W,0],[L2,W,D],[0,W,D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);
+    els.push(<polygon key="wL" points={pts([[X(0),Y(0),0],[X(0),Y(W),0],[X(0),Y(W),D],[X(0),Y(0),D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);
+    els.push(<polygon key="wB" points={pts([[X(0),Y(W),0],[X(L2),Y(W),0],[X(L2),Y(W),D],[X(0),Y(W),D]])} fill={dk?"#1a3060":"#7dd3fc"} opacity="0.25"/>);
     // Água
-    els.push(<polygon key="wt1" points={pts([[0,0,wZ],[L,0,wZ],[L,W1,wZ],[0,W1,wZ]])} fill={dk?"#1d4ed8":"#3b82f6"} opacity="0.22"/>);
-    els.push(<polygon key="wt2" points={pts([[0,W1,wZ],[L2,W1,wZ],[L2,W,wZ],[0,W,wZ]])} fill={dk?"#1d4ed8":"#3b82f6"} opacity="0.22"/>);
-    [0.25,0.5,0.75].forEach((f,i)=>els.push(<line key={`sh${i}`} x1={iso(L*0.1,W1*f,wZ).x} y1={iso(L*0.1,W1*f,wZ).y} x2={iso(L*0.9,W1*f,wZ).x} y2={iso(L*0.9,W1*f,wZ).y} stroke="#93c5fd" strokeWidth="0.5" opacity="0.4" strokeDasharray="5,4"/>));
+    els.push(<polygon key="wt1" points={pts([[X(0),Y(0),wZ],[X(L),Y(0),wZ],[X(L),Y(W1),wZ],[X(0),Y(W1),wZ]])} fill={dk?"#1d4ed8":"#3b82f6"} opacity="0.22"/>);
+    els.push(<polygon key="wt2" points={pts([[X(0),Y(W1),wZ],[X(L2),Y(W1),wZ],[X(L2),Y(W),wZ],[X(0),Y(W),wZ]])} fill={dk?"#1d4ed8":"#3b82f6"} opacity="0.22"/>);
+    [0.25,0.5,0.75].forEach((f,i)=>els.push(<line key={`sh${i}`} x1={iso(X(L*0.1),Y(W1*f),wZ).x} y1={iso(X(L*0.1),Y(W1*f),wZ).y} x2={iso(X(L*0.9),Y(W1*f),wZ).x} y2={iso(X(L*0.9),Y(W1*f),wZ).y} stroke="#93c5fd" strokeWidth="0.5" opacity="0.4" strokeDasharray="5,4"/>));
     // Paredes da frente
-    els.push(<polygon key="wF" points={pts([[0,0,0],[L,0,0],[L,0,D],[0,0,D]])} fill={dk?"#1e4080":"#93c5fd"} stroke="#2563eb" strokeWidth="1"/>);
-    els.push(<polygon key="wR1" points={pts([[L,0,0],[L,W1,0],[L,W1,D],[L,0,D]])} fill={dk?"#1a3570":"#7dd3fc"} stroke="#2563eb" strokeWidth="1"/>);
-    els.push(<polygon key="wRi" points={pts([[L2,W1,0],[L,W1,0],[L,W1,D],[L2,W1,D]])} fill={dk?"#1a3570":"#7dd3fc"} stroke="#2563eb" strokeWidth="1"/>);
-    els.push(<polygon key="wR2" points={pts([[L2,W1,0],[L2,W,0],[L2,W,D],[L2,W1,D]])} fill={dk?"#1a3570":"#7dd3fc"} stroke="#2563eb" strokeWidth="1"/>);
+    els.push(<polygon key="wF" points={pts([[X(0),Y(0),0],[X(L),Y(0),0],[X(L),Y(0),D],[X(0),Y(0),D]])} fill={dk?"#1e4080":"#93c5fd"} stroke="#2563eb" strokeWidth="1"/>);
+    els.push(<polygon key="wR1" points={pts([[X(L),Y(0),0],[X(L),Y(W1),0],[X(L),Y(W1),D],[X(L),Y(0),D]])} fill={dk?"#1a3570":"#7dd3fc"} stroke="#2563eb" strokeWidth="1"/>);
+    els.push(<polygon key="wRi" points={pts([[X(L2),Y(W1),0],[X(L),Y(W1),0],[X(L),Y(W1),D],[X(L2),Y(W1),D]])} fill={dk?"#1a3570":"#7dd3fc"} stroke="#2563eb" strokeWidth="1"/>);
+    els.push(<polygon key="wR2" points={pts([[X(L2),Y(W1),0],[X(L2),Y(W),0],[X(L2),Y(W),D],[X(L2),Y(W1),D]])} fill={dk?"#1a3570":"#7dd3fc"} stroke="#2563eb" strokeWidth="1"/>);
     // Borda
-    els.push(<polygon key="rim" points={pts([[0,0,D],[L,0,D],[L,W1,D],[L2,W1,D],[L2,W,D],[0,W,D]])} fill="none" stroke="#2563eb" strokeWidth="2.5"/>);
-    [[0,0],[L,0],[L,W1],[L2,W1],[L2,W],[0,W]].forEach(([x,y],i)=>{const a=iso(x,y,0),b=iso(x,y,D);els.push(<line key={`cv${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#2563eb" strokeWidth="1" opacity="0.35"/>);});
+    els.push(<polygon key="rim" points={pts([[X(0),Y(0),D],[X(L),Y(0),D],[X(L),Y(W1),D],[X(L2),Y(W1),D],[X(L2),Y(W),D],[X(0),Y(W),D]])} fill="none" stroke="#2563eb" strokeWidth="2.5"/>);
+    [[0,0],[L,0],[L,W1],[L2,W1],[L2,W],[0,W]].forEach(([x,y],i)=>{const a=iso(X(x),Y(y),0),b=iso(X(x),Y(y),D);els.push(<line key={`cv${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#2563eb" strokeWidth="1" opacity="0.35"/>);});
   } else {
     // Retangular (padrão)
     if(swSlug)els.push(<defs key="defsRect"><clipPath id="isoFlClip"><polygon points={pts([[0,0,0],[L,0,0],[L,W,0],[0,W,0]])}/></clipPath><clipPath id="isoFwClip"><polygon points={pts([[0,0,0],[L,0,0],[L,0,D],[0,0,D]])}/></clipPath><clipPath id="isoRwClip"><polygon points={pts([[L,0,0],[L,W,0],[L,W,D],[L,0,D]])}/></clipPath></defs>);
@@ -577,13 +669,16 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
     els.push(<polygon key="rim" points={pts([[0,0,D],[L,0,D],[L,W,D],[0,W,D]])} fill="none" stroke="#2563eb" strokeWidth="2.5"/>);
     [[0,0],[L,0],[L,W],[0,W]].forEach(([x,y],i)=>{const a=iso(x,y,0),b=iso(x,y,D);els.push(<line key={`cv${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#2563eb" strokeWidth="1" opacity="0.35"/>);});
   }
-  // "Com prainha" — plataforma rasa no lado esquerdo
+  // "Com prainha" — plataforma rasa na ponta rasa (acompanha o espelho da piscina)
   if(poolFmt==="Com prainha"){
-    const pW=L*0.25,pH=D*0.4;
-    els.push(<polygon key="prainha_top" points={pts([[0,0,pH],[pW,0,pH],[pW,W,pH],[0,W,pH]])} fill={dk?"#1e4d7a":"#bfdbfe"} opacity="0.6"/>);
-    els.push(<polygon key="prainha_f" points={pts([[0,0,0],[pW,0,0],[pW,0,pH],[0,0,pH]])} fill={dk?"#2563a0":"#93c5fd"} stroke="#2563eb" strokeWidth="0.5" opacity="0.5"/>);
-    els.push(<polygon key="prainha_r" points={pts([[pW,0,0],[pW,W,0],[pW,W,pH],[pW,0,pH]])} fill={dk?"#1e4080":"#7dd3fc"} stroke="#2563eb" strokeWidth="0.5" opacity="0.5"/>);
-    const pp=iso(pW/2,W/2,pH);els.push(<text key="prainha_lbl" x={pp.x} y={pp.y-3} textAnchor="middle" fontSize="6" fontWeight="700" fill={dk?"#93c5fd":"#1d4ed8"} opacity="0.8">PRAINHA</text>);
+    const prai=prainhaCfg(pool,L,D);
+  const alturaBicoP=(t,f)=>alturaBico(t,f,D,devHeights);
+    const pW=prai.comp,pH=prai.medida?Math.max(0,D-prai.prof):D*0.4; // pH = altura do platô a partir do fundo
+    const X=FX,Y=FY;
+    els.push(<polygon key="prainha_top" points={pts([[X(0),Y(0),pH],[X(pW),Y(0),pH],[X(pW),Y(W),pH],[X(0),Y(W),pH]])} fill={dk?"#1e4d7a":"#bfdbfe"} opacity="0.6"/>);
+    els.push(<polygon key="prainha_f" points={pts([[X(0),Y(0),0],[X(pW),Y(0),0],[X(pW),Y(0),pH],[X(0),Y(0),pH]])} fill={dk?"#2563a0":"#93c5fd"} stroke="#2563eb" strokeWidth="0.5" opacity="0.5"/>);
+    els.push(<polygon key="prainha_r" points={pts([[X(pW),Y(0),0],[X(pW),Y(W),0],[X(pW),Y(W),pH],[X(pW),Y(0),pH]])} fill={dk?"#1e4080":"#7dd3fc"} stroke="#2563eb" strokeWidth="0.5" opacity="0.5"/>);
+    const pp=iso(X(pW/2),Y(W/2),pH);els.push(<text key="prainha_lbl" x={pp.x} y={pp.y-3} textAnchor="middle" fontSize="6" fontWeight="700" fill={dk?"#93c5fd":"#1d4ed8"} opacity="0.8">PRAINHA{prai.medida?` ${prai.comp}m · ${prai.prof}m`:""}</text>);
   }
   // "Com Spa" — spa(s) nos cantos da piscina
   if(poolFmt==="Com Spa"){
@@ -618,7 +713,8 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   // SPA Externo (sistema antigo via spa.on, independente do formato)
   if(spa?.on){
     const sL2=parseFloat(spa.length||2),sW2=parseFloat(spa.width||2),sD2=parseFloat(spa.depth||0.8);
-    const sp=customPos?.spaExt;const side=sp?.side||spa.side||"top";const spos=sp?.pos??1;
+    const sp=customPos?.spaExt;const side0=sp?.side||spa.side||"top";const spos0=sp?.pos??1;
+    const side=espelhaLado(side0,flipH,flipV),spos=espelhaPos(side0,spos0,flipH,flipV);
     let sx,sy;
     if(side==="bottom"){sx=spos*(L-sL2);sy=W;}
     else if(side==="left"){sx=-sW2;sy=spos*(W-sL2);}
@@ -644,10 +740,11 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
       // Posicionar: prainha no canto esquerdo, banco na parede traseira, degrau no canto direito
       const ex=isPrainha?0:isBank?0:(L-el),ey=isPrainha?0:isBank?(W-ew):0;
       const eH=eh>0?eh:D*0.4;
-      els.push(<polygon key={`ext_top${i}`} points={pts([[ex,ey,eH],[ex+el,ey,eH],[ex+el,ey+ew,eH],[ex,ey+ew,eH]])} fill={eColor} opacity="0.55" stroke="#6366f1" strokeWidth="0.5" strokeDasharray="3,2"/>);
-      els.push(<polygon key={`ext_f${i}`} points={pts([[ex,ey,0],[ex+el,ey,0],[ex+el,ey,eH],[ex,ey,eH]])} fill={eColor} opacity="0.35" stroke="#6366f1" strokeWidth="0.3"/>);
-      els.push(<polygon key={`ext_r${i}`} points={pts([[ex+el,ey,0],[ex+el,ey+ew,0],[ex+el,ey+ew,eH],[ex+el,ey,eH]])} fill={eColor} opacity="0.3" stroke="#6366f1" strokeWidth="0.3"/>);
-      const lp=iso(ex+el/2,ey+ew/2,eH);els.push(<text key={`ext_lbl${i}`} x={lp.x} y={lp.y-2} textAnchor="middle" fontSize="5.5" fontWeight="700" fill={dk?"#a5b4fc":"#4f46e5"}>{e.desc||"Extra"}</text>);
+      const X=FX,Y=FY;
+      els.push(<polygon key={`ext_top${i}`} points={pts([[X(ex),Y(ey),eH],[X(ex+el),Y(ey),eH],[X(ex+el),Y(ey+ew),eH],[X(ex),Y(ey+ew),eH]])} fill={eColor} opacity="0.55" stroke="#6366f1" strokeWidth="0.5" strokeDasharray="3,2"/>);
+      els.push(<polygon key={`ext_f${i}`} points={pts([[X(ex),Y(ey),0],[X(ex+el),Y(ey),0],[X(ex+el),Y(ey),eH],[X(ex),Y(ey),eH]])} fill={eColor} opacity="0.35" stroke="#6366f1" strokeWidth="0.3"/>);
+      els.push(<polygon key={`ext_r${i}`} points={pts([[X(ex+el),Y(ey),0],[X(ex+el),Y(ey+ew),0],[X(ex+el),Y(ey+ew),eH],[X(ex+el),Y(ey),eH]])} fill={eColor} opacity="0.3" stroke="#6366f1" strokeWidth="0.3"/>);
+      const lp=iso(X(ex+el/2),Y(ey+ew/2),eH);els.push(<text key={`ext_lbl${i}`} x={lp.x} y={lp.y-2} textAnchor="middle" fontSize="5.5" fontWeight="700" fill={dk?"#a5b4fc":"#4f46e5"}>{e.desc||"Extra"}</text>);
     });
   }
   // Pool labels
@@ -679,26 +776,18 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   // Pipe run height: always 30cm below top of wall
   const pZ=Math.max(0,D-0.30);
   // Z height per device type
-  const typeZ=(type,isFloor)=>{
-    if(isFloor)return 0;
-    if(type==='skimmer')return D;
-    if(type==='nivelador')return D*0.88;
-    if(type==='refletor')return D*0.5;
-    if(type==='aspiracao')return D*0.5;
-    if(type==='retorno'&&devHeights?.retorno)return Math.min(parseFloat(devHeights.retorno)||D*0.55,D);
-    if(type==='hidro'&&devHeights?.hidro)return Math.min(parseFloat(devHeights.hidro)||D*0.55,D);
-    return D*0.55;
-  };
+  const typeZ=(type,isFloor)=>alturaBico(type,isFloor,D,devHeights);
   // CM position (same as 2D autoPositions default)
   const casaFrac=customPos?.casa||(invertSide?{x:-0.15,y:0.5}:{x:1.12,y:0.5});
   const cmX0=casaFrac.x*L,cmBY0=W*0.1,cmWw=Math.min(1.4,W*0.5),cmWd=W*0.8,cmBoxH=0.45;
   // Lane offsets per system to avoid overlapping pipes
-  const sysOrder=['retorno','hidro','dreno','aspiracao','skimmer','nivelador','refletor'];
+  // nivelador fica de fora: dreno lateral de nível não tem canamento
+  const sysOrder=['retorno','hidro','dreno','aspiracao','skimmer','refletor','drenoQuente','retornoQuente'];
   // CM entry y per system
   const cmEntryY=(sysType,idx)=>cmBY0+cmWd*(0.1+idx*0.12);
   // Get actual device positions from autoPositions (same as 2D PlantaView)
-  const allPos=autoPositions?{...autoPositions(L,W,disps,invertSide,poolFmt),...(customPos||{})}:{};
-  const activeDevs=Object.entries(allPos).filter(([k,p])=>!p.special&&autoPositions&&autoPositions(L,W,disps,invertSide,poolFmt)[k]);
+  const allPos=autoPositions?{...autoPositions(L,W,disps,invertSide,poolFmt,{flipH,flipV,ladoPrainha,raloQuenteParede}),...(customPos||{})}:{};
+  const activeDevs=Object.entries(allPos).filter(([k,p])=>!p.special&&autoPositions&&autoPositions(L,W,disps,invertSide,poolFmt,{flipH,flipV,ladoPrainha,raloQuenteParede})[k]);
   // Group by system type
   const byType={};
   activeDevs.forEach(([key,p])=>{if(!byType[p.type])byType[p.type]=[];byType[p.type].push([key,p]);});
@@ -740,8 +829,10 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
           route=[[ix,iy,iz],[0,iy,iz],[-laneOff,iy,iz]];exitPts.push([-laneOff,iy,iz]);
         } else if(sysType==='skimmer'||sysType==='nivelador'){
           route=[[ix,iy,iz],[L,iy,iz],[L+laneOff,iy,iz]];exitPts.push([L+laneOff,iy,iz]);
-        } else if(sysType==='aspiracao'){
+        } else if(sysType==='aspiracao'||sysType==='drenoQuente'){
           route=[[ix,iy,iz],[ix,W,iz],[ix,W+laneOff,iz]];exitPts.push([ix,W+laneOff,iz]);
+        } else if(sysType==='retornoQuente'){
+          route=[[ix,iy,iz],[ix,0,iz],[ix,-laneOff,iz]];exitPts.push([ix,-laneOff,iz]);
         } else if(iy<W/2){
           route=[[ix,iy,iz],[ix,0,iz],[ix,-laneOff,iz]];exitPts.push([ix,-laneOff,iz]);
         } else {
@@ -798,7 +889,7 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   if(clientName)els.push(<text key="cli" x={svgW/2} y={37} textAnchor="middle" fontSize="9" fill={dk?"#94a3b8":"#64748b"}>Cliente: {clientName}</text>);
   els.push(<text key="co" x={svgW-10} y={svgH-5} textAnchor="end" fontSize="7" fill={dk?"#475569":"#94a3b8"}>{CO.short} · {CO.ph1}</text>);
   // Legend
-  const lgSys=[[retQ,'Retorno',C.retorno],[aspQ,'Aspiração',C.aspiracao],[drQ,'Dreno Fundo',C.dreno],[skQ,'Skimmer',C.skimmer],[ledQ,'Refletor LED',C.refletor],[nivQ,'Nivelador',C.nivelador],[hidQ,'Hidrojet',C.hidro]].filter(x=>x[0]>0);
+  const lgSys=[[retQ,'Retorno',C.retorno],[aspQ,'Aspiração',C.aspiracao],[drQ,'Dreno Fundo',C.dreno],[skQ,'Skimmer',C.skimmer],[ledQ,'Refletor LED',C.refletor],[nivQ,'Nivelador',C.nivelador],[hidQ,'Hidrojet',C.hidro],[dqQ,'Ralo Fundo Á. Quente',C.drenoQuente],[rqQ,'Retorno Á. Quente',C.retornoQuente]].filter(x=>x[0]>0);
   const lx=12,ly=svgH-mYb+4;
   els.push(<rect key="lgbg" x={lx-4} y={ly-14} width={205} height={lgSys.length*13+20} rx="4" fill={dk?"#1e293b":"#fff"} stroke={dk?"#334155":"#e2e8f0"} strokeWidth="1" opacity="0.92"/>);
   els.push(<text key="lgtit" x={lx+98} y={ly} textAnchor="middle" fontSize="8" fontWeight="800" fill={dk?"#e2e8f0":"#0a1f44"}>LEGENDA HIDRÁULICA</text>);
@@ -888,6 +979,21 @@ const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
   let perim=wMode==="irregular"&&walls.length>0
     ?walls.reduce((s,w)=>s+(parseFloat(w.l)||0),0)
     :(isOval?ovalPerim:isOitavada?oitPerim:(2*L+2*W));
+  // "Com prainha" com medida informada: platô raso na ponta + degrau de descida.
+  // Sem medida (campo vazio) a prainha segue só ilustrativa e nada muda no cálculo.
+  const praiC=parseFloat(String(pool?.prainhaComp??"").replace(",","."))||0;
+  const praiP=parseFloat(String(pool?.prainhaProf??"").replace(",","."))||0;
+  const temPrainha=poolFmt==="Com prainha"&&praiC>0&&praiC<L;
+  let praiVol=0;
+  if(temPrainha){
+    const pp=Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)); // lâmina sobre a prainha
+    const Lf=L-praiC;                                             // trecho fundo
+    chao+=W*(D-pp);                                               // degrau vertical prainha → fundo
+    // paredes: laterais em dois níveis + testeira funda cheia + testeira rasa só na prainha
+    // (parede fora de esquadro tem medida própria digitada — não sobrescreve)
+    if(!(wMode==="irregular"&&walls.length>0))par=2*(Lf*D+praiC*pp)+W*D+W*pp;
+    praiVol=Lf*W*D+praiC*W*pp;
+  }
   // Desenho livre (modelos/editor): áreas e perímetro REAIS do formato desenhado
   const dM=desenho&&desenho.vertices&&desenho.vertices.length>=3?calcDesenho(desenho,D):null;
   if(dM){chao=dM.chao;par=dM.paredes;perim=dM.perim;}
@@ -919,7 +1025,7 @@ const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
   const srPar=st.redondo?(isRndSq?(2*srC2*srP+2*srL2*srP):Math.PI*(srR*2)*srP):0;
   const fmtSpaChao=sqChao+srChao,fmtSpaPar=sqPar+srPar;
   const srVol=st.redondo?(isRndSq?srC2*srL2*srP:Math.PI*srR*srR*srP):0;
-  const vol=(dM?dM.vol:(isOval?(Math.PI*a*b):isOitavada?(L*W-4*(ch*ch/2)):L*W)*D)+(spa.on?sL*sW*sD:0)+(st.quadrado?sqC*sqL*sqP:0)+srVol;
+  const vol=(dM?dM.vol:(temPrainha?praiVol:(isOval?(Math.PI*a*b):isOitavada?(L*W-4*(ch*ch/2)):L*W)*D))+(spa.on?sL*sW*sD:0)+(st.quadrado?sqC*sqL*sqP:0)+srVol;
   const depthInfo={avg:D,min:realDMin,max:realDMax,sloped:dMin>0&&dMax>0&&dMin!==dMax};
   return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:(sChao+fmtSpaChao).toFixed(1),sPar:(sPar+fmtSpaPar).toFixed(1),tot:(chao+par+sChao+sPar+fmtSpaChao+fmtSpaPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao+fmtSpaChao).toFixed(1),depthInfo,extraChao:extraChao.toFixed(1),extraPar:extraPar.toFixed(1),sqChao:sqChao.toFixed(1),sqPar:sqPar.toFixed(1),srChao:srChao.toFixed(1),srPar:srPar.toFixed(1)};
 };
@@ -1234,14 +1340,20 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
           const inc2d=d.includePlanta!==false;
           const incIso=d.includeIso!==undefined?d.includeIso:inc2d;
           if(!autoPositions||(!inc2d&&!incIso))return null;
+          // Espelho gravado no orçamento (piscina virada de lado)
+          const dFlipH=!!d.flipH,dFlipV=!!d.flipV;
+          const dSpaType0=d.spaType||{redondo:false,quadrado:true};
+          const dSpaType=(dFlipH||dFlipV)?{...dSpaType0,qCanto:espelhaCanto(dSpaType0.qCanto,dFlipH,dFlipV),rCanto:espelhaCanto(dSpaType0.rCanto,dFlipH,dFlipV)}:dSpaType0;
+          const dDesenho=(dFlipH||dFlipV)?espelharDesenho(d.desenho||null,dFlipH,dFlipV):(d.desenho||null);
+          const dLadoPrainha=ladoDaPrainha(d.desenho||null,d.poolFmt||"Retangular",d.extras||[]);
           return <div data-pdf-section="planta" style={{padding:"14px 28px",borderTop:"2px solid #e2e8f0"}}>
           <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"4px"}}><div style={{width:"3px",height:"14px",background:gold,borderRadius:"2px"}}/><div style={{fontSize:"11px",fontWeight:"700",color:navy,textTransform:"uppercase",letterSpacing:".5px"}}>Planta Hidráulica</div></div>
           <div style={{fontSize:"8px",color:"#999",fontStyle:"italic",marginBottom:"10px",marginLeft:"9px"}}>* Planta meramente ilustrativa, podendo sofrer alterações na execução.</div>
-          {inc2d&&<PlantaView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} customPos={d.customPos||{}} setCustomPos={()=>{}} dragging={null} setDragging={()=>{}} dark={false} poolFmt={d.poolFmt||"Retangular"} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc",stampBg:"#e2e8f0"}} invertSide={d.invertSide||false} wMode={d.wMode||"regular"} walls={d.walls||[]} spaType={d.spaType||{redondo:false,quadrado:true}} extras={d.extras||[]} desenho={d.desenho||null}/>}
+          {inc2d&&<PlantaView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||DISPS_PADRAO} customPos={d.customPos||{}} setCustomPos={()=>{}} dragging={null} setDragging={()=>{}} dark={false} poolFmt={d.poolFmt||"Retangular"} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc",stampBg:"#e2e8f0"}} invertSide={d.invertSide||false} wMode={d.wMode||"regular"} walls={d.walls||[]} spaType={dSpaType} extras={d.extras||[]} desenho={dDesenho} flipH={dFlipH} flipV={dFlipV} ladoPrainha={dLadoPrainha} raloQuenteParede={!!d.raloQuenteParede} devHeights={d.devHeights||{}}/>}
           {incIso&&<>
             {inc2d&&<div style={{fontSize:"9px",fontWeight:"600",color:"#718096",marginTop:"12px",marginBottom:"4px",textAlign:"center"}}>Vista Isométrica</div>}
             <div style={{width:inc2d?"62%":"78%",margin:"0 auto"}}>
-              <IsometricView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4}} dark={false} t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc"}} poolFmt={d.poolFmt||"Retangular"} clientName={d.client?.name||""} autoPositions={autoPositions} customPos={d.customPos||{}} invertSide={d.invertSide||false} devHeights={d.devHeights||{}} spaType={d.spaType||{redondo:false,quadrado:true}} extras={d.extras||[]} desenho={d.desenho||null}/>
+              <IsometricView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||DISPS_PADRAO} dark={false} t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc"}} poolFmt={d.poolFmt||"Retangular"} clientName={d.client?.name||""} autoPositions={autoPositions} customPos={d.customPos||{}} invertSide={d.invertSide||false} devHeights={d.devHeights||{}} spaType={dSpaType} extras={d.extras||[]} desenho={dDesenho} flipH={dFlipH} flipV={dFlipV} ladoPrainha={dLadoPrainha} raloQuenteParede={!!d.raloQuenteParede} devHeights={d.devHeights||{}}/>
             </div>
           </>}
         </div>;})()}
@@ -1302,15 +1414,20 @@ export default function App(){
   const [gM,setGM]=useState(0);
   const [client,setCl]=useState({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});
   const uc=f=>v=>setCl(p=>({...p,[f]:v}));
-  const [pool,setPool]=useState({length:"10.00",width:"4.00",depth:"1.40",depthMin:"",depthMax:"",chanfro:"1.00"});
+  const [pool,setPool]=useState({length:"10.00",width:"4.00",depth:"1.40",depthMin:"",depthMax:"",chanfro:"1.00",prainhaComp:"",prainhaProf:""});
   const [fieldErrors,setFieldErrors]=useState({});
   // Vírgula vira ponto na entrada — "3,5" era lido como 3 pelo parseFloat e errava área/preço
   const up=f=>v=>{const nv=String(v).replace(",",".");setPool(p=>({...p,[f]:nv}));if(parseFloat(nv)>0)setFieldErrors(e=>({...e,[f]:false}));};
 
   // DISPOSITIVOS HIDRAULICOS
-  const [disps,setDisps]=useState({retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4});
-  const [devHeights,setDevHeights]=useState({retorno:"",hidro:""});
+  const [disps,setDisps]=useState(DISPS_PADRAO);
+  const [devHeights,setDevHeights]=useState({retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});
+  // Ralo de fundo de água quente: no chão ou embutido na parede (nos dois casos a 30 cm do fundo)
+  const [raloQuenteParede,setRaloQuenteParede]=useState(false);
   const [invertSide,setInvertSide]=useState(false);
+  // Virar a piscina de lado: a casa de máquinas é fixa no terreno, quem gira é a piscina
+  const [flipH,setFlipH]=useState(false); // esquerda ↔ direita
+  const [flipV,setFlipV]=useState(false); // frente ↔ fundo
   const [includePlanta,setIncludePlanta]=useState(true);
   const [includeIso,setIncludeIso]=useState(true);
   const [isoView,setIsoView]=useState(false);
@@ -1337,9 +1454,15 @@ export default function App(){
   const [customPos,setCustomPos]=useState({});
   const [tubeOffsets,setTubeOffsets]=useState({});
 
-  const autoPositions=(L,W,d,inv,fmt)=>{
+  const autoPositions=(L,W,d,inv,fmt,opts={})=>{
+    const {flipH=false,flipV=false,ladoPrainha=null,raloQuenteParede=false}=opts;
     const pos={};const r=d.retorno||0;const refs=d.refletor||0;
     const isOval=fmt==="Oval"||fmt==="Feijão";
+    // Giro do layout para a parede da prainha (ver ROT_PRAINHA). Sem prainha = 0 → layout de hoje.
+    const rotP=ROT_PRAINHA[ladoPrainha]??0;
+    const deitado=rotP===90||rotP===270;
+    const eixoDr=deitado?W:L;   // dimensão real ao longo do eixo do ralo depois do giro
+    const eixoSep=deitado?L:W;  // dimensão real ao longo da separação entre ralos
     // Para oval/feijão: calcula x na borda da elipse para um dado y
     const eX=(y,side)=>{const t=Math.max(-0.98,Math.min(0.98,(y-0.5)/0.5));const ins=Math.sqrt(1-t*t)*0.47;return side==="left"?0.5-ins:0.5+ins;};
     // Para oval/feijão: calcula y na borda da elipse para um dado x
@@ -1350,7 +1473,7 @@ export default function App(){
     for(let i=0;i<(d.aspiracao||0);i++){const x=0.5;pos["asp_"+i]={x,y:isOval?eY(x,"bottom"):0.95,label:"A"+(i+1),type:"aspiracao"}}
     // Drenos de fundo: dentro da piscina, centrados
     const drQty=d.dreno||0;
-    if(drQty>0){const drX=inv?(0.5/(L||10)):L>0?(L-0.5)/L:0.9;const sepDr=1.5;const totalSep=(drQty-1)*sepDr;const startY=W>0?(W/2-totalSep/2)/W:0.5;for(let i=0;i<drQty;i++){const yPos=drQty===1?0.5:startY+(i*sepDr)/W;pos["drn_"+i]={x:isOval?Math.max(0.25,Math.min(0.75,drX)):drX,y:Math.max(0.15,Math.min(0.85,yPos)),label:"DF"+(i+1),type:"dreno",floor:true}}}
+    if(drQty>0){const drX=inv?(0.5/(eixoDr||10)):eixoDr>0?(eixoDr-0.5)/eixoDr:0.9;const sepDr=1.5;const totalSep=(drQty-1)*sepDr;const startY=eixoSep>0?(eixoSep/2-totalSep/2)/eixoSep:0.5;for(let i=0;i<drQty;i++){const yPos=drQty===1?0.5:startY+(i*sepDr)/eixoSep;pos["drn_"+i]={x:isOval?Math.max(0.25,Math.min(0.75,drX)):drX,y:Math.max(0.15,Math.min(0.85,yPos)),label:"DF"+(i+1),type:"dreno",floor:true}}}
     // Skimmer: parede direita
     for(let i=0;i<(d.skimmer||0);i++){const y=(i+1)/((d.skimmer||1)+1);const side=inv?"left":"right";pos["skm_"+i]={x:isOval?eX(y,side):(inv?0.05:0.95),y,label:"SK"+(i+1),type:"skimmer"}}
     // Refletores: paredes superior e inferior
@@ -1360,6 +1483,46 @@ export default function App(){
     // Hidro: mesma parede dos retornos
     const hQty=d.hidro||0;
     for(let i=0;i<hQty;i++){const y=(i+1)/(hQty+1);const side=inv?"right":"left";pos["hid_"+i]={x:isOval?eX(y,side):(inv?0.95:0.05),y,label:"H"+(i+1),type:"hidro"}}
+    // ── AQUECIMENTO ──────────────────────────────────────────────────────────
+    // Ficam deliberadamente longe dos bicos frios: os frios ocupam a parede rasa
+    // (retorno/hidro), a funda (skimmer/nivelador) e o meio de baixo (aspiração).
+    // Sobra a parede de cima para o retorno quente e o terço fundo/baixo do chão
+    // para o ralo quente — assim os dois circuitos não se cruzam no desenho.
+    // Em vez de coordenada fixa, cada bico quente cai no ponto de MAIOR FOLGA da
+    // parede — assim nunca encosta num LED, skimmer ou retorno, qualquer que seja
+    // a quantidade dos sistemas frios.
+    const ocupadosEm=faixa=>{const o=[0.02,0.98];Object.values(pos).forEach(q=>{if(!q.special&&faixa(q))o.push(q.x)});return o};
+    const maiorFolga=(ocupados,dimX)=>{
+      let melhor=0.5,melhorD=-1;
+      for(let c=0.10;c<=0.901;c+=0.01){
+        let dmin=Infinity;
+        for(const o of ocupados)dmin=Math.min(dmin,Math.abs(c-o)*dimX);
+        if(dmin>melhorD){melhorD=dmin;melhor=c}
+      }
+      return Math.round(melhor*100)/100;
+    };
+    const dimX=deitado?W:L; // dimensão real do eixo x antes do giro
+    // Retorno de água quente: parede longa de cima, na maior folga entre os bicos frios
+    const rqQ=d.retornoQuente||0;
+    const ocupCima=ocupadosEm(q=>q.y<0.2);
+    for(let i=0;i<rqQ;i++){
+      const x=maiorFolga(ocupCima,dimX);ocupCima.push(x);
+      pos["rtq_"+i]={x,y:isOval?eY(x,"top"):0.03,label:"RQ"+(i+1),type:"retornoQuente"};
+    }
+    // Ralo de fundo de água quente: na parede longa de baixo, ou no chão recuado dela
+    const dqQ=d.drenoQuente||0;
+    const ocupBaixo=ocupadosEm(q=>q.y>0.8);
+    for(let i=0;i<dqQ;i++){
+      const x=maiorFolga(ocupBaixo,dimX);ocupBaixo.push(x);
+      pos["drq_"+i]=raloQuenteParede
+        ?{x,y:isOval?eY(x,"bottom"):0.97,label:"DQ"+(i+1),type:"drenoQuente"}
+        :{x:isOval?Math.max(0.25,Math.min(0.75,x)):x,y:0.78,label:"DQ"+(i+1),type:"drenoQuente",floor:true};
+    }
+
+    // Giro do layout para a parede da prainha (retorno/hidro na praia, ralo de fundo na ponta funda)
+    if(rotP)Object.keys(pos).forEach(k=>{pos[k]=giraPos(pos[k],rotP)});
+    // Espelho da piscina: os bicos viram junto com ela (a casa de máquinas NÃO — ela é fixa no terreno)
+    if(flipH||flipV)Object.keys(pos).forEach(k=>{pos[k]={...pos[k],x:flipH?1-pos[k].x:pos[k].x,y:flipV?1-pos[k].y:pos[k].y}});
     // Casa de maquinas: fora da piscina
     pos["casa"]={x:1.12,y:0.5,label:"CM",type:"casa",special:true};
     return pos;
@@ -2161,6 +2324,12 @@ export default function App(){
   const inc=items.filter(i=>i.on);
   // Calculate effective quantity based on unit type
   const ar=calcA(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho);
+  // Versões espelhadas passadas às vistas (planta/isométrica/3D). O desenho salvo,
+  // o editor de forma e o cálculo de área continuam no referencial original —
+  // espelho é isometria, não muda área, perímetro nem volume.
+  const ladoPrainha=ladoDaPrainha(desenho,poolFmt,extras);
+  const desenhoV=flipH||flipV?espelharDesenho(desenho,flipH,flipV):desenho;
+  const spaTypeV=flipH||flipV?{...spaType,qCanto:espelhaCanto(spaType.qCanto,flipH,flipV),rCanto:espelhaCanto(spaType.rCanto,flipH,flipV)}:spaType;
   const lowStockCount=Object.entries(stk).filter(([,s])=>s.qty>0&&s.qty<=(s.minQty||2)).length;
 
   const effQ=(i)=>{
@@ -2181,7 +2350,7 @@ export default function App(){
   const addM=()=>setItems(p=>[...p,{id:Date.now(),n:"Novo item",q:1,c:0,m:gM,nt:"",on:true,un:"un"}]);
   const apM=()=>{setItems(p=>p.map(i=>({...i,m:gM})));setFbMsg("Margem aplicada!");setTimeout(()=>setFbMsg(""),1500)};
 
-  const gData=()=>({client,pool,items,guar,ci,pay,totOv:totOv,vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,includeIso,disps,customPos,isoView,invertSide,devHeights,desenho});
+  const gData=()=>({client,pool,items,guar,ci,pay,totOv:totOv,vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,includeIso,disps,customPos,isoView,invertSide,flipH,flipV,devHeights,raloQuenteParede,desenho});
   const save=()=>{
     const errs={};
     if(!client.name||client.name.trim()==="")errs.clientName="Nome obrigatório";
@@ -2212,8 +2381,8 @@ export default function App(){
   };
   const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){autoStockOut(item);syncFinancas(item);}setFbMsg("✅ Cliente fechado!");setTimeout(()=>setFbMsg(""),3000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)syncFinancas(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
-  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
-  const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||{retorno:2,aspiracao:1,dreno:2,skimmer:1,refletor:6,nivelador:1,hidro:4});setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setDevHeights(d.devHeights||{retorno:"",hidro:""});setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
+  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
+  const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
   const movePipe=(id,stage)=>{
     if(stage==="perdido"){const q=hist.find(h=>h.id===id);if(q){setLostReasonModal({q,days:getDaysSince(q.id),auto:false});return;}}
@@ -2555,6 +2724,51 @@ export default function App(){
             :<div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Comp. (m) *" value={pool.length} onChange={up("length")} t={t} error={fieldErrors.length}/><Inp label="Larg. (m) *" value={pool.width} onChange={up("width")} t={t} error={fieldErrors.width}/><Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
           }
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Formato" value={poolFmt} onChange={setPF} options={PFMT} t={t}/></div>
+          {poolFmt==="Com prainha"&&<div style={{marginTop:"10px",background:t.sectionBg,borderRadius:"8px",padding:"10px",border:`1px solid ${t.cardBorder}`}}>
+            <div style={{fontSize:"10px",fontWeight:"700",color:blue,marginBottom:"8px"}}>Prainha</div>
+            <div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}>
+              <Inp label="Comp. da prainha (m)" value={pool.prainhaComp||""} onChange={up("prainhaComp")} t={t} placeholder="1,50"/>
+              <Inp label="Prof. da prainha (m)" value={pool.prainhaProf||""} onChange={up("prainhaProf")} t={t} placeholder="0,30"/>
+            </div>
+            <div style={{fontSize:"8.5px",color:t.textMuted,marginTop:"6px",lineHeight:1.45}}>
+              Comprimento = quanto a prainha avança da borda rasa antes de cair para a parte funda ({(parseFloat(String(pool.prainhaComp||"").replace(",","."))||0)>0?`sobram ${Math.max(0,(parseFloat(String(pool.length||"").replace(",","."))||0)-(parseFloat(String(pool.prainhaComp||"").replace(",","."))||0)).toFixed(2)}m de parte funda`:"deixe vazio para a prainha ficar só ilustrativa, sem entrar no cálculo"}).
+              Preenchido, entra no chão, nas paredes e no volume: a lâmina sobre a prainha usa a profundidade informada e ganha o degrau de descida.
+            </div>
+          </div>}
+          {/* Prainha do desenho livre (Personalizado) — vale para ponta reta ou arredondada */}
+          {desenho&&(desenho.vertices||[]).length>=3&&(()=>{
+            const fP=achaPrainha(desenho);
+            const cur=lePrainha(desenho,fP);
+            const profAtual=fP?(fP.profundidadeM??0.3):0.3;
+            const aplica=(lado,avanco,prof)=>{
+              const nova=montaPrainha(desenho,lado,avanco,prof);
+              if(!nova)return;
+              setDesenho(d=>{
+                const fs=d.formas||[];
+                const i=fs.findIndex(f=>f.tipo==="prainha");
+                if(i<0)return{...d,formas:[...fs,{...nova,id:`p${Date.now().toString(36)}`}]};
+                return{...d,formas:fs.map((f,j)=>j===i?{...f,...nova}:f)};
+              });
+            };
+            return <div style={{marginTop:"10px",background:t.sectionBg,borderRadius:"8px",padding:"10px",border:`1px solid ${t.cardBorder}`}}>
+              <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
+                <span style={{fontSize:"10px",fontWeight:"700",color:blue}}>Prainha do desenho</span>
+                {fP
+                  ?<button onClick={()=>setDesenho(d=>({...d,formas:(d.formas||[]).filter(f=>f.tipo!=="prainha")}))} style={{marginLeft:"auto",padding:"3px 9px",fontSize:"9px",fontWeight:"700",borderRadius:"5px",border:"1.5px solid #ef4444",background:"transparent",color:"#ef4444",cursor:"pointer"}}>✕ Remover prainha</button>
+                  :<button onClick={()=>aplica("baixo",1.5,0.3)} style={{marginLeft:"auto",padding:"3px 9px",fontSize:"9px",fontWeight:"700",borderRadius:"5px",border:"1.5px solid #16a34a",background:"transparent",color:"#16a34a",cursor:"pointer"}}>+ Adicionar prainha</button>}
+              </div>
+              {fP&&<>
+                <div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}>
+                  <NumIn key={`av${fP.id}`} label="Avanço (m)" valor={cur.avanco} onCommit={n=>aplica(cur.lado,n,profAtual)} t={t} placeholder="1,50"/>
+                  <NumIn key={`pr${fP.id}`} label="Prof. da prainha (m)" valor={profAtual} onCommit={n=>aplica(cur.lado,cur.avanco,n)} t={t} placeholder="0,30"/>
+                  <Sel label="Parede" value={{esquerda:"Esquerda",direita:"Direita",cima:"Cima",baixo:"Baixo"}[cur.lado]} onChange={lb=>aplica({Esquerda:"esquerda",Direita:"direita",Cima:"cima",Baixo:"baixo"}[lb],cur.avanco,profAtual)} options={["Esquerda","Direita","Cima","Baixo"]} t={t}/>
+                </div>
+                <div style={{fontSize:"8.5px",color:t.textMuted,marginTop:"6px",lineHeight:1.45}}>
+                  Avanço = quanto a prainha entra na piscina antes de cair para a parte funda. Ela é aparada pelo contorno, então acompanha parede reta ou arredondada (Romana, Feijão, cantos curvos) sem deixar vão. Chão, paredes e volume já saem calculados do desenho real. Para posicionar livre, use o editor de desenho abaixo.
+                </div>
+              </>}
+            </div>;
+          })()}
 
           {/* MODELOS DE PISCINA — galeria + editor de desenho livre */}
           <div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`}}>
@@ -2694,7 +2908,7 @@ export default function App(){
           <div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"8px",padding:"12px",border:"1px solid "+t.cardBorder}}>
             <div style={{fontSize:"11px",fontWeight:"700",color:blue,marginBottom:"10px"}}>PLANTA HIDRAULICA</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"6px",marginBottom:"12px"}}>
-              {[["retorno","Retorno","#ef4444"],["aspiracao","Aspiracao","#ec4899"],["dreno","Dreno Fundo","#8b5cf6"],["skimmer","Skimmer","#f59e0b"],["refletor","LED","#f97316"],["nivelador","Nivelador","#06b6d4"],["hidro","Hidro","#14b8a6"]].map(([k,lb,cor])=><div key={k} style={{display:"flex",alignItems:"center",gap:"4px",background:t.card,padding:"5px 8px",borderRadius:"6px",border:"1px solid "+t.cardBorder}}>
+              {[["retorno","Retorno","#ef4444"],["aspiracao","Aspiracao","#ec4899"],["dreno","Dreno Fundo","#8b5cf6"],["skimmer","Skimmer","#f59e0b"],["refletor","LED","#f97316"],["nivelador","Nivelador","#06b6d4"],["hidro","Hidro","#14b8a6"],["drenoQuente","Ralo Fundo Á. Quente","#7f1d1d"],["retornoQuente","Retorno Á. Quente","#e11d48"]].map(([k,lb,cor])=><div key={k} style={{display:"flex",alignItems:"center",gap:"4px",background:t.card,padding:"5px 8px",borderRadius:"6px",border:"1px solid "+t.cardBorder}}>
                 <div style={{width:"8px",height:"4px",borderRadius:"1px",background:cor}}/>
                 <span style={{fontSize:"8px",fontWeight:"600",color:t.text,flex:1}}>{lb}</span>
                 <button onClick={()=>{setDisps(p=>({...p,[k]:Math.max(0,p[k]-1)}));setCustomPos(p=>{const n={...p};Object.keys(n).forEach(key=>{if(key.startsWith(k.substring(0,3)))delete n[key]});return n})}} style={{width:"16px",height:"16px",borderRadius:"3px",border:"none",background:"#fee2e2",color:"#dc2626",fontSize:"10px",cursor:"pointer",fontWeight:"700"}}>-</button>
@@ -2702,7 +2916,7 @@ export default function App(){
                 <button onClick={()=>{setDisps(p=>({...p,[k]:p[k]+1}));setCustomPos(p=>{const n={...p};Object.keys(n).forEach(key=>{if(key.startsWith(k.substring(0,3)))delete n[key]});return n})}} style={{width:"16px",height:"16px",borderRadius:"3px",border:"none",background:"#dcfce7",color:"#16a34a",fontSize:"10px",cursor:"pointer",fontWeight:"700"}}>+</button>
               </div>)}
             </div>
-            <PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} spaType={spaType} desenho={desenho}/>
+            <PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} spaType={spaTypeV} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/>
           </div>
         </Card>}
 
@@ -3822,8 +4036,13 @@ export default function App(){
           <div style={{display:"flex",gap:"8px",marginBottom:"10px",alignItems:"center",flexWrap:"wrap"}}>
             {!show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={includePlanta} onChange={e=>setIncludePlanta(e.target.checked)}/> 2D no PDF</label>}
             {!show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={includeIso} onChange={e=>setIncludeIso(e.target.checked)}/> Isométrica no PDF</label>}
-            {!isoView&&!show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={invertSide} onChange={e=>{setInvertSide(e.target.checked);setCustomPos({})}}/> Inverter lado</label>}
-            {show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={invertSide} onChange={e=>{setInvertSide(e.target.checked);setCustomPos({})}}/> Inverter lado</label>}
+            {!isoView&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={invertSide} onChange={e=>{setInvertSide(e.target.checked);setCustomPos({})}}/> Inverter lado</label>}
+            {/* Virar a piscina: a casa de máquinas é fixa no terreno, quem gira é a piscina */}
+            <div style={{display:"flex",alignItems:"center",gap:"6px",background:t.sectionBg,padding:"3px 8px",borderRadius:"6px",border:"1px solid "+t.cardBorder}}>
+              <span style={{fontSize:"9px",fontWeight:"700",color:t.textSec}} title="Espelha a piscina inteira (contorno, prainha, spa, bicos e tubulação). A casa de máquinas não sai do lugar.">Virar piscina:</span>
+              <button onClick={()=>{setFlipH(v=>!v);setCustomPos({})}} title="Espelhar esquerda ↔ direita" style={{padding:"3px 9px",fontSize:"10px",fontWeight:"700",borderRadius:"5px",cursor:"pointer",border:"1.5px solid "+(flipH?blue:t.cardBorder),background:flipH?blue:"transparent",color:flipH?"#fff":t.textSec}}>↔ Lado</button>
+              <button onClick={()=>{setFlipV(v=>!v);setCustomPos({})}} title="Espelhar frente ↔ fundo" style={{padding:"3px 9px",fontSize:"10px",fontWeight:"700",borderRadius:"5px",cursor:"pointer",border:"1.5px solid "+(flipV?blue:t.cardBorder),background:flipV?blue:"transparent",color:flipV?"#fff":t.textSec}}>↕ Fundo</button>
+            </div>
             <div style={{marginLeft:"auto",display:"flex",gap:"6px",alignItems:"center"}}>
               <div style={{display:"flex",borderRadius:"6px",overflow:"hidden",border:"1.5px solid "+t.cardBorder}}>
                 <button onClick={()=>{setIsoView(false);setShow3D(false)}} title="Planta baixa 2D" style={{padding:"4px 10px",fontSize:"10px",fontWeight:"700",border:"none",cursor:"pointer",background:!isoView&&!show3D?blue:"transparent",color:!isoView&&!show3D?"#fff":t.textSec}}>2D</button>
@@ -3837,7 +4056,7 @@ export default function App(){
             </div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"5px",marginBottom:"10px"}}>
-            {[["retorno","Retorno","#3b82f6"],["aspiracao","Asp.","#ec4899"],["dreno","Dreno","#8b5cf6"],["skimmer","Skim.","#f97316"],["refletor","LED","#eab308"],["nivelador","Niv.","#06b6d4"],["hidro","Hidro","#10b981"]].map(([k,lb,cor])=><div key={k} style={{display:"flex",alignItems:"center",gap:"3px",background:t.card,padding:"4px 6px",borderRadius:"5px",border:"1px solid "+t.cardBorder}}>
+            {[["retorno","Retorno","#3b82f6"],["aspiracao","Asp.","#ec4899"],["dreno","Dreno","#8b5cf6"],["skimmer","Skim.","#f97316"],["refletor","LED","#eab308"],["nivelador","Niv.","#06b6d4"],["hidro","Hidro","#10b981"],["drenoQuente","Ralo Quente","#7f1d1d"],["retornoQuente","Ret. Quente","#e11d48"]].map(([k,lb,cor])=><div key={k} style={{display:"flex",alignItems:"center",gap:"3px",background:t.card,padding:"4px 6px",borderRadius:"5px",border:"1px solid "+t.cardBorder}}>
               <div style={{width:"6px",height:"3px",background:cor,borderRadius:"2px"}}/>
               <span style={{fontSize:"7px",fontWeight:"600",color:t.text,flex:1}}>{lb}</span>
               <button onClick={()=>{setDisps(p=>({...p,[k]:Math.max(0,p[k]-1)}));setCustomPos(p=>{const n={...p};Object.keys(n).forEach(key=>{if(key.startsWith(k.substring(0,3)))delete n[key]});return n})}} style={{width:"14px",height:"14px",borderRadius:"3px",border:"none",background:"#fee2e2",color:"#dc2626",fontSize:"9px",cursor:"pointer",fontWeight:"700"}}>-</button>
@@ -3868,11 +4087,40 @@ export default function App(){
             </label>}
             <span style={{fontSize:"8px",color:t.textMuted}}>(vazio = padrão {((parseFloat(pool?.depth)||1.4)*0.55).toFixed(2)}m)</span>
           </div>}
+          {/* Aquecimento: circuito separado, 30 cm acima do chão por padrão */}
+          {(disps.drenoQuente>0||disps.retornoQuente>0)&&<div style={{display:"flex",gap:"8px",marginBottom:"10px",flexWrap:"wrap",alignItems:"center",background:t.sectionBg,padding:"6px 8px",borderRadius:"6px",border:"1px solid "+t.cardBorder}}>
+            <span style={{fontSize:"9px",fontWeight:"700",color:t.textSec}}>Água quente:</span>
+            {disps.retornoQuente>0&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"9px",color:t.text}}>
+              <div style={{width:"6px",height:"6px",borderRadius:"50%",background:"#e11d48",flexShrink:0}}/>
+              Retorno (m):
+              <input type="number" min="0.05" max="3" step="0.05" placeholder={ALTURA_QUENTE.toFixed(2)}
+                value={devHeights.retornoQuente||""}
+                onChange={e=>setDevHeights(p=>({...p,retornoQuente:e.target.value}))}
+                style={{width:"52px",padding:"1px 4px",fontSize:"9px",border:"1px solid "+t.cardBorder,borderRadius:"3px",background:t.card,color:t.text}}/>
+            </label>}
+            {disps.drenoQuente>0&&<>
+              {/* Altura só existe com o ralo na parede: no chão ele fica no nível do piso */}
+              {raloQuenteParede&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"9px",color:t.text}}>
+                <div style={{width:"6px",height:"6px",borderRadius:"50%",background:"#7f1d1d",flexShrink:0}}/>
+                Ralo (m):
+                <input type="number" min="0.05" max="3" step="0.05" placeholder={ALTURA_QUENTE.toFixed(2)}
+                  value={devHeights.drenoQuente||""}
+                  onChange={e=>setDevHeights(p=>({...p,drenoQuente:e.target.value}))}
+                  style={{width:"52px",padding:"1px 4px",fontSize:"9px",border:"1px solid "+t.cardBorder,borderRadius:"3px",background:t.card,color:t.text}}/>
+              </label>}
+              {!raloQuenteParede&&<span style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"9px",color:t.textMuted}}><div style={{width:"6px",height:"6px",borderRadius:"50%",background:"#7f1d1d",flexShrink:0}}/>Ralo: no nível do piso</span>}
+              <div style={{display:"flex",borderRadius:"5px",overflow:"hidden",border:"1.5px solid "+t.cardBorder}}>
+                <button onClick={()=>{setRaloQuenteParede(false);setCustomPos(p=>{const n={...p};Object.keys(n).forEach(k=>{if(k.startsWith("drq"))delete n[k]});return n})}} title="Ralo de fundo assentado no chão da piscina" style={{padding:"2px 8px",fontSize:"9px",fontWeight:"700",border:"none",cursor:"pointer",background:!raloQuenteParede?"#7f1d1d":"transparent",color:!raloQuenteParede?"#fff":t.textSec}}>Chão</button>
+                <button onClick={()=>{setRaloQuenteParede(true);setCustomPos(p=>{const n={...p};Object.keys(n).forEach(k=>{if(k.startsWith("drq"))delete n[k]});return n})}} title="Ralo de fundo embutido na parede" style={{padding:"2px 8px",fontSize:"9px",fontWeight:"700",border:"none",cursor:"pointer",background:raloQuenteParede?"#7f1d1d":"transparent",color:raloQuenteParede?"#fff":t.textSec}}>Parede</button>
+              </div>
+            </>}
+            <span style={{fontSize:"8px",color:t.textMuted}}>(vazio = padrão {ALTURA_QUENTE.toFixed(2)}m acima do chão; ralo no chão fica rente ao piso)</span>
+          </div>}
           {show3D
-            ?<Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights} stamp={stamp} spaType={spaType} extras={extras} desenho={desenho}/></Suspense>
+            ?<Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/></Suspense>
             :isoView
-              ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide} devHeights={devHeights} stamp={stamp} spaType={spaType} extras={extras} desenho={desenho}/>
-              :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} stamp={stamp} spaType={spaType} extras={extras} desenho={desenho}/>}
+              ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide} devHeights={devHeights} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/>
+              :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/>}
         </Card>}
 
         {/* CONTRATOS */}

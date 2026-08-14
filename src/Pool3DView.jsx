@@ -16,7 +16,10 @@ const C = {
   refletor:  '#eab308',
   nivelador: '#06b6d4',
   hidro:     '#10b981',
+  drenoQuente:   '#7f1d1d',
+  retornoQuente: '#e11d48',
 };
+const ALTURA_QUENTE = 0.30; // aquecimento: 30 cm acima do chão da piscina
 
 function devZ(type, isFloor, D, devHeights) {
   if (isFloor) return 0;
@@ -26,6 +29,8 @@ function devZ(type, isFloor, D, devHeights) {
   if (type === 'aspiracao') return D * 0.5;
   if (type === 'retorno' && devHeights?.retorno) return Math.min(parseFloat(devHeights.retorno) || D*0.55, D);
   if (type === 'hidro'   && devHeights?.hidro)   return Math.min(parseFloat(devHeights.hidro)   || D*0.55, D);
+  if (type === 'retornoQuente') return Math.min(parseFloat(devHeights?.retornoQuente) || ALTURA_QUENTE, D);
+  if (type === 'drenoQuente')   return Math.min(parseFloat(devHeights?.drenoQuente)   || ALTURA_QUENTE, D);
   return D * 0.55;
 }
 
@@ -38,7 +43,7 @@ function buildScene(allPos, L, W, D, invertSide, customPos, devHeights) {
   const lo = 0.32;
   const pZ = Math.max(0, D - 0.30); // height for floor-drain runs
 
-  const sysOrder = ['retorno', 'hidro', 'dreno', 'aspiracao', 'skimmer', 'nivelador', 'refletor'];
+  const sysOrder = ['retorno', 'hidro', 'dreno', 'aspiracao', 'skimmer', 'nivelador', 'refletor', 'drenoQuente', 'retornoQuente'];
 
   const casaFrac = customPos?.casa || (invertSide ? { x: -0.15, y: 0.5 } : { x: 1.12, y: 0.5 });
   const cmX0   = casaFrac.x * L;
@@ -94,8 +99,10 @@ function buildScene(allPos, L, W, D, invertSide, customPos, devHeights) {
           route = [[ix,iy,iz],[0,iy,iz],[-laneOff,iy,iz]]; exitPts.push([-laneOff,iy,iz]);
         } else if (sysType==='skimmer'||sysType==='nivelador') {
           route = [[ix,iy,iz],[L,iy,iz],[L+laneOff,iy,iz]]; exitPts.push([L+laneOff,iy,iz]);
-        } else if (sysType==='aspiracao') {
+        } else if (sysType==='aspiracao'||sysType==='drenoQuente') {
           route = [[ix,iy,iz],[ix,W,iz],[ix,W+laneOff,iz]]; exitPts.push([ix,W+laneOff,iz]);
+        } else if (sysType==='retornoQuente') {
+          route = [[ix,iy,iz],[ix,0,iz],[ix,-laneOff,iz]]; exitPts.push([ix,-laneOff,iz]);
         } else if (iy < W/2) {
           route = [[ix,iy,iz],[ix,0,iz],[ix,-laneOff,iz]]; exitPts.push([ix,-laneOff,iz]);
         } else {
@@ -150,8 +157,9 @@ function buildScene(allPos, L, W, D, invertSide, customPos, devHeights) {
 }
 
 // ── Pool walls ───────────────────────────────────────────────────────────────
-function PoolWalls({ L, W, D, poolFmt }) {
+function PoolWalls({ L, W, D, poolFmt, flipH=false, flipV=false }) {
   const wt = 0.14;
+  const fx = flipH ? -1 : 1, fz = flipV ? -1 : 1; // espelho: caixas são simétricas, basta negar a posição
   const isOval = poolFmt === 'Oval' || poolFmt === 'Feijão';
   const isL    = poolFmt === 'Formato L';
 
@@ -179,36 +187,36 @@ function PoolWalls({ L, W, D, poolFmt }) {
     const W1 = W * 0.6, W2 = W - W1, L2 = L * 0.6;
     const offX = (L - L2) / 2;
     return (
-      <group>
-        <mesh position={[0, -wt/2, -(W2)/2]}>
+      <group scale={[1,1,1]}>
+        <mesh position={[0, -wt/2, fz*(-(W2)/2)]}>
           <boxGeometry args={[L+wt*2, wt, W1+wt]} />
           <meshStandardMaterial color="#64748b" roughness={0.95} />
         </mesh>
-        <mesh position={[-offX, -wt/2, W1/2]}>
+        <mesh position={[fx*(-offX), -wt/2, fz*(W1/2)]}>
           <boxGeometry args={[L2, wt, W2+wt]} />
           <meshStandardMaterial color="#64748b" roughness={0.95} />
         </mesh>
-        <mesh position={[0, D/2, -W/2-wt/2]}>
+        <mesh position={[0, D/2, fz*(-W/2-wt/2)]}>
           <boxGeometry args={[L+wt*2, D, wt]} />
           <meshStandardMaterial color="#94a3b8" roughness={0.85} />
         </mesh>
-        <mesh position={[-offX, D/2, W/2+wt/2]}>
+        <mesh position={[fx*(-offX), D/2, fz*(W/2+wt/2)]}>
           <boxGeometry args={[L2, D, wt]} />
           <meshStandardMaterial color="#94a3b8" roughness={0.85} />
         </mesh>
-        <mesh position={[-L/2-wt/2, D/2, 0]}>
+        <mesh position={[fx*(-L/2-wt/2), D/2, 0]}>
           <boxGeometry args={[wt, D, W+wt*2]} />
           <meshStandardMaterial color="#8ca5b8" roughness={0.85} />
         </mesh>
-        <mesh position={[L/2+wt/2, D/2, -(W2)/2]}>
+        <mesh position={[fx*(L/2+wt/2), D/2, fz*(-(W2)/2)]}>
           <boxGeometry args={[wt, D, W1+wt]} />
           <meshStandardMaterial color="#8ca5b8" roughness={0.85} />
         </mesh>
-        <mesh position={[-offX+L2/2+wt/2, D/2, W1/2]}>
+        <mesh position={[fx*(-offX+L2/2+wt/2), D/2, fz*(W1/2)]}>
           <boxGeometry args={[wt, D, W2+wt]} />
           <meshStandardMaterial color="#8ca5b8" roughness={0.85} />
         </mesh>
-        <mesh position={[-offX, D/2, W1/2-wt/2]}>
+        <mesh position={[fx*(-offX), D/2, fz*(W1/2-wt/2)]}>
           <boxGeometry args={[L-L2+wt, D, wt]} />
           <meshStandardMaterial color="#8ca5b8" roughness={0.85} />
         </mesh>
@@ -495,7 +503,7 @@ function FreeformWater({ efetivo, L, W, D, color = '#38bdf8' }) {
 /** Dispositivos + tubulação abraçando o contorno real (mesma lógica da planta 2D). */
 function buildSceneLivre(allPos, efetivo, L, W, D, customPos, devHeights) {
   const lo = 0.32;
-  const sysOrder = ['retorno', 'hidro', 'dreno', 'aspiracao', 'skimmer', 'nivelador', 'refletor'];
+  const sysOrder = ['retorno', 'hidro', 'dreno', 'aspiracao', 'skimmer', 'nivelador', 'refletor', 'drenoQuente', 'retornoQuente'];
   const casaFrac = customPos?.casa || { x: 1.12, y: 0.5 };
   const cmX0 = casaFrac.x * L;
   const cmMidY = W * 0.5;
@@ -551,7 +559,7 @@ function buildSceneLivre(allPos, efetivo, L, W, D, customPos, devHeights) {
 }
 
 // ── Main scene ───────────────────────────────────────────────────────────────
-function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide, devHeights, stamp="", spaType={}, extras=[], desenho=null }) {
+function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide, devHeights, stamp="", spaType={}, extras=[], desenho=null, flipH=false, flipV=false, ladoPrainha=null, raloQuenteParede=false }) {
   const D = parseFloat(pool?.depth)  || 1.4;
   // Desenho livre: contorno efetivo + regiões normalizados na origem; L/W = bounding box
   const dn = useMemo(() => {
@@ -572,7 +580,7 @@ function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide
   const W = dn ? dn.W : (parseFloat(pool?.width)  || 3);
 
   const allPos = autoPositions
-    ? { ...autoPositions(L, W, disps, invertSide, poolFmt), ...(customPos || {}) }
+    ? { ...autoPositions(L, W, disps, invertSide, poolFmt, { flipH, flipV, ladoPrainha, raloQuenteParede }), ...(customPos || {}) }
     : {};
 
   const active = {};
@@ -597,16 +605,23 @@ function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide
         <FreeformInterior efetivo={dn.efetivo} regioes={dn.regioes} L={L} W={W} D={D} texUrl={SWATCH_SLUG[stamp]?`/swatches/${SWATCH_SLUG[stamp]}.png`:null} swatchM={SWATCH_SLUG[stamp]?swatchSizeMeters(getEstampaByNome(stamp)):0.5} />
         <FreeformWater efetivo={dn.efetivo} L={L} W={W} D={D} color={STAMP_COLOR[stamp]||"#38bdf8"} />
       </>:<>
-        <PoolWalls L={L} W={W} D={D} poolFmt={poolFmt} />
+        <PoolWalls L={L} W={W} D={D} poolFmt={poolFmt} flipH={flipH} flipV={flipV} />
         {SWATCH_SLUG[stamp] && <VinylInterior L={L} W={W} D={D} texUrl={`/swatches/${SWATCH_SLUG[stamp]}.png`} poolFmt={poolFmt} swatchM={swatchSizeMeters(getEstampaByNome(stamp))} />}
         <Water L={L} W={W} D={D} poolFmt={poolFmt} color={STAMP_COLOR[stamp]||"#38bdf8"} />
       </>}
 
-      {/* Prainha — plataforma rasa */}
-      {!dn&&poolFmt==="Com prainha"&&<mesh position={[-L/2+L*0.125, D*0.2, 0]}>
-        <boxGeometry args={[L*0.25, D*0.4, W-0.1]} />
-        <meshStandardMaterial color="#7dd3fc" roughness={0.8} transparent opacity={0.6} />
-      </mesh>}
+      {/* Prainha — plataforma rasa (comprimento/profundidade do formulário) */}
+      {!dn&&poolFmt==="Com prainha"&&(()=>{
+        const pfv=v=>parseFloat(String(v??"").replace(",","."))||0;
+        const cm=pfv(pool?.prainhaComp), pm=pfv(pool?.prainhaProf);
+        const comp=Math.min(cm>0?cm:L*0.25, Math.max(L-0.1,0.1));
+        const alt=cm>0?Math.max(0.05,D-Math.min(pm>0?pm:D*0.25,Math.max(D-0.05,0.05))):D*0.4;
+        const px=(flipH?1:-1)*(L/2-comp/2);
+        return <mesh position={[px, alt/2, 0]}>
+          <boxGeometry args={[comp, alt, W-0.1]} />
+          <meshStandardMaterial color="#7dd3fc" roughness={0.8} transparent opacity={0.6} />
+        </mesh>;
+      })()}
 
       {/* Spa do formato "Com Spa" */}
       {!dn&&poolFmt==="Com Spa"&&spaType.quadrado&&(()=>{
@@ -645,8 +660,8 @@ function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide
         const desc=(e.desc||"").toLowerCase();
         const isPrainha=desc.includes("prainha"),isBank=desc.includes("banco");
         const eH=eh>0?eh:D*0.4;
-        const ex=isPrainha?(-L/2+el/2):isBank?(-L/2+el/2):(L/2-el/2);
-        const ez=isPrainha?0:isBank?(W/2-ew/2):(-W/2+ew/2);
+        const ex=(flipH?-1:1)*(isPrainha?(-L/2+el/2):isBank?(-L/2+el/2):(L/2-el/2));
+        const ez=(flipV?-1:1)*(isPrainha?0:isBank?(W/2-ew/2):(-W/2+ew/2));
         const color=isPrainha?"#7dd3fc":isBank?"#a5b4fc":"#c4b5fd";
         return<mesh key={`ext3d${i}`} position={[ex,eH/2,ez]}>
           <boxGeometry args={[el,eH,ew]}/>
@@ -680,6 +695,7 @@ function Legend({ disps }) {
     ['dreno','Dreno','#8b5cf6'],['skimmer','Skimmer','#f97316'],
     ['refletor','Refletor','#eab308'],['nivelador','Nivelador','#06b6d4'],
     ['hidro','Hidro','#10b981'],
+    ['drenoQuente','Ralo Fundo Á. Quente','#7f1d1d'],['retornoQuente','Retorno Á. Quente','#e11d48'],
   ].filter(([k]) => (disps?.[k] || 0) > 0);
 
   return (
@@ -695,7 +711,7 @@ function Legend({ disps }) {
 }
 
 // ── Export ───────────────────────────────────────────────────────────────────
-export default function Pool3DView({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide, dark, devHeights, stamp="", spaType={}, extras=[], desenho=null }) {
+export default function Pool3DView({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide, dark, devHeights, stamp="", spaType={}, extras=[], desenho=null, flipH=false, flipV=false, ladoPrainha=null, raloQuenteParede=false }) {
   const L  = parseFloat(pool?.length) || 6;
   const D  = parseFloat(pool?.depth)  || 1.4;
   const bg = dark ? '#0f172a' : '#bfdbfe';
@@ -718,6 +734,10 @@ export default function Pool3DView({ pool, spa, disps, customPos, poolFmt, autoP
             spaType={spaType}
             extras={extras}
             desenho={desenho}
+            flipH={flipH}
+            flipV={flipV}
+            ladoPrainha={ladoPrainha}
+            raloQuenteParede={raloQuenteParede}
           />
         </Suspense>
       </Canvas>

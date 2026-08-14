@@ -365,3 +365,32 @@ export function calcDesenho(desenho, profCorpo) {
   }
   return { chao, perim, paredes, vol, efetivo, regioes };
 }
+
+/**
+ * Espelha o desenho inteiro (contorno + prainha/escada/spa/recorte) dentro do
+ * próprio bounding box. Usado quando o orçamento "vira a piscina de lado" —
+ * a casa de máquinas fica parada e a piscina é que gira para o lado oposto.
+ * Área, perímetro e volume não mudam (espelho é isometria), só a orientação.
+ */
+export function espelharDesenho(desenho, flipH = false, flipV = false) {
+  if (!desenho || (!flipH && !flipV)) return desenho;
+  const base = desenho.vertices || [];
+  if (base.length < 3) return desenho;
+  const xs = base.map(p => p.x), ys = base.map(p => p.y);
+  const sx = Math.min(...xs) + Math.max(...xs);
+  const sy = Math.min(...ys) + Math.max(...ys);
+  const esp = p => ({ ...p, x: flipH ? sx - p.x : p.x, y: flipV ? sy - p.y : p.y });
+  const verts = base.map(esp);
+  // um único espelho inverte o sentido do polígono — devolve a orientação original
+  if (flipH !== flipV) verts.reverse();
+  return {
+    ...desenho,
+    vertices: verts,
+    formas: (desenho.formas || []).map(f => ({
+      ...f,
+      cxM: flipH ? sx - f.cxM : f.cxM,
+      cyM: flipV ? sy - f.cyM : f.cyM,
+      rotacaoGraus: flipH !== flipV ? -(f.rotacaoGraus ?? 0) : (f.rotacaoGraus ?? 0),
+    })),
+  };
+}
