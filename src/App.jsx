@@ -28,15 +28,20 @@ import LostReasonModal from "./components/rescue/LostReasonModal";
 import RescueButton, { getRescuePriority } from "./components/rescue/RescueButton";
 import { useRescueAutomation } from "./components/rescue/useRescueAutomation";
 import LossAnalysis from "./components/dashboard/LossAnalysis";
+import OrigemReport from "./components/dashboard/OrigemReport";
 import { REGUA, normalizePhone, openWaMe } from "./components/crm/regua";
 import TodayTasks from "./components/crm/TodayTasks";
 import CanalStatus from "./components/crm/CanalStatus";
 import RespostasRapidas from "./components/crm/RespostasRapidas";
 import LeadNoChat from "./components/crm/LeadNoChat";
 import Timeline from "./components/crm/Timeline";
+import FichaLead from "./components/crm/FichaLead";
+import AnaliseConversa from "./components/crm/AnaliseConversa";
 import { conversaDoLead, leadDaConversa, leadsCandidatos } from "./services/vinculo.js";
 import { leadScore, faixaScore, conversasSemResposta } from "./services/score.js";
 import AlertaSLA from "./components/crm/AlertaSLA";
+import RevisaoEtapas from "./components/crm/RevisaoEtapas";
+import { classificarBase } from "./services/etapaAuto.js";
 import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
 import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, registrarTokenProvider, marcarOrcamentoEnviado, desfazerOrcamentoEnviado, pausarFollowup, CANAL } from "./services/wa.js";
 
@@ -1390,6 +1395,10 @@ const NotePanel=({q,t,crmNoteType,setCrmNoteType,noteInputRef,newNote,setNewNote
     <div style={{display:"flex",gap:"3px",flexWrap:"wrap",marginBottom:"8px"}}>
       {TAGS_OPTS.map(tag=>{const active=(crmTags[q.id]||[]).includes(tag);return <button key={tag} title={active?"Remover tag":"Adicionar tag"} onClick={()=>setLeadTag(q.id,tag)} style={{fontSize:"8px",padding:"2px 8px",borderRadius:"10px",border:`1px solid ${active?blue:t.cardBorder}`,background:active?blue+"22":"transparent",color:active?blue:t.textMuted,cursor:"pointer",fontWeight:active?"700":"400"}}>{active?"✓ ":""}{tag}</button>})}
     </div>
+    {/* Leitura da conversa por IA — sob demanda, cada clique custa */}
+    <AnaliseConversa q={q} temConversa={Boolean(conv)} t={t}/>
+    {/* Ficha do bot: os 18 campos que a conversa coletou e o CRM ignorava */}
+    {conv?.leadData&&<div style={{borderTop:`1px solid ${t.cardBorder}`,paddingTop:"7px",marginBottom:"8px"}}><FichaLead leadData={conv.leadData} t={t} compacto/></div>}
     {/* Timeline unificada: interacoes do CRM + mensagens reais do WhatsApp */}
     <div style={{maxHeight:"260px",overflow:"auto"}}>
       <Timeline interacoes={interacoes[q.id]} conv={conv} t={t}/>
@@ -1809,6 +1818,13 @@ export default function App(){
   // Vínculo manual lead↔conversa: { [quoteId]: phone }. Tem precedência sobre o
   // crmQuoteId do bot e sobre o telefone — é decisão humana.
   const [crmVinculos,setCrmVinculos]=useState({});
+  // Classificação automática de etapa (services/etapaAuto.js).
+  // `crmEtapaAuto` começa DESLIGADO de propósito: a primeira passada mexe na
+  // base inteira de uma vez, e isso precisa ser visto acontecer antes de virar
+  // rotina. `crmEtapaIgnorar` guarda { [qId]: etapa } — o lead que o Marcos
+  // mandou não mexer, para a sugestão não voltar toda vez que a tela abre.
+  const [crmEtapaAuto,setCrmEtapaAuto]=useState(false);
+  const [crmEtapaIgnorar,setCrmEtapaIgnorar]=useState({});
   // Kanban: lead sendo arrastado e coluna sob o cursor
   const [dragLead,setDragLead]=useState(null);
   const [dragOverStage,setDragOverStage]=useState(null);
@@ -1870,7 +1886,7 @@ export default function App(){
     try{
       const ref=fbFns.doc(fb.db,"users",user.uid,"config","crmMeta");
       const unsub=fbFns.onSnapshot(ref,(snap)=>{
-        if(snap.exists()){const d=snap.data();if(d.nextContact)setCrmNextContact(d.nextContact);if(d.tags)setCrmTags(d.tags);if(d.vinculos)setCrmVinculos(d.vinculos);}
+        if(snap.exists()){const d=snap.data();if(d.nextContact)setCrmNextContact(d.nextContact);if(d.tags)setCrmTags(d.tags);if(d.vinculos)setCrmVinculos(d.vinculos);if(typeof d.etapaAuto==="boolean")setCrmEtapaAuto(d.etapaAuto);if(d.etapaIgnorar)setCrmEtapaIgnorar(d.etapaIgnorar);}
         setCrmMetaLoaded(true);
       });
       return ()=>unsub();
@@ -1890,6 +1906,8 @@ export default function App(){
     if(patch.nextContact)setCrmNextContact(prev=>({...prev,...patch.nextContact}));
     if(patch.tags)setCrmTags(prev=>({...prev,...patch.tags}));
     if(patch.vinculos)setCrmVinculos(prev=>({...prev,...patch.vinculos}));
+    if(typeof patch.etapaAuto==="boolean")setCrmEtapaAuto(patch.etapaAuto);
+    if(patch.etapaIgnorar)setCrmEtapaIgnorar(prev=>({...prev,...patch.etapaIgnorar}));
     if(fbReady&&fb.db&&user&&user.uid!=="local"){
       try{fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"config","crmMeta"),patch,{merge:true})}catch{}
     }
@@ -2435,6 +2453,74 @@ export default function App(){
     if(!base)return null;
     return Math.max(0,Math.floor((Date.now()-base)/86400000));
   };
+  // ── CLASSIFICAÇÃO AUTOMÁTICA DE ETAPA ────────────────────────────────
+  //
+  // O motor (services/etapaAuto.js) deduz a etapa de cada lead do que o sistema
+  // já sabe: orçamento entregue, cliente respondeu depois disso, pediu para
+  // parar, sumiu há 45 dias. Aqui isso é aplicado.
+  //
+  // ⚠️ NÃO REGISTRA INTERAÇÃO. Parece mesquinho e não é: `addInteracao` é a
+  // fonte do `getLastContact`, que alimenta o `getDaysSince`. Registrar a
+  // reclassificação como interação zeraria o "dias sem contato" de toda a base
+  // de uma vez — esvaziando as Tarefas de Hoje e escondendo justamente quem
+  // está esperando contato. O rastro fica no `stageLog` do orçamento, que
+  // ninguém confunde com "falei com o cliente".
+  //
+  // O `stageSince` recebe a data do EVENTO (item.quando), não a de agora, para
+  // "Xd nesta etapa" e o tempo médio por etapa do Analytics nascerem certos.
+  const aplicarEtapas=(itens)=>{
+    if(!itens?.length)return;
+    const agora=Date.now();
+    const porId=new Map(itens.map(i=>[String(i.q.id),i]));
+    const nh=hist.map(h=>{
+      const item=porId.get(String(h.id));
+      if(!item)return h;
+      const log=[...(h.stageLog||[]),{de:item.de,para:item.etapa,quando:item.quando||agora,por:"auto",motivo:item.motivo}];
+      return {...h,status:item.etapa,stageSince:item.quando||agora,stageLog:log,
+        ...(item.etapa==="fechou"?{closedDate:new Date(item.quando||agora).toLocaleDateString("pt-BR")}:{})};
+    });
+    setHist(nh);saveLS(nh);
+    // Uma escrita por lead. São documentos separados no Firestore, não há
+    // como agrupar — mas cada uma dispara o listener do bot, então o que
+    // protege é o motor não ter deixado passar nada que envie mensagem.
+    for(const item of itens){
+      const doc=nh.find(h=>String(h.id)===String(item.q.id));
+      if(doc)saveFS(doc);
+    }
+    setFbMsg(itens.length===1?`Movido → ${PIPE.find(p=>p.id===itens[0].etapa)?.label}`:`${itens.length} leads reposicionados no funil`);
+    setTimeout(()=>setFbMsg(""),3000);
+  };
+
+  // "Não mexer neste lead": guarda a etapa recusada para a sugestão não voltar
+  // a cada abertura da tela. Sugestão diferente para o mesmo lead volta a
+  // aparecer — a recusa é daquela leitura, não do lead para sempre.
+  const ignorarEtapa=(item)=>{
+    patchCrmMeta({etapaIgnorar:{[String(item.q.id)]:item.etapa}});
+  };
+
+  // Leitura do motor sobre a base inteira. Recalcula quando os orçamentos, as
+  // conversas ou as recusas mudam — nunca a cada render.
+  const etapasSugeridas=React.useMemo(()=>{
+    if(!histLoaded)return {automaticas:[],revisar:[]};
+    const r=classificarBase(hist,(q)=>conversaDoLead(q,waConvs,crmVinculos));
+    const naoIgnorado=(i)=>crmEtapaIgnorar[String(i.q.id)]!==i.etapa;
+    return {automaticas:r.automaticas.filter(naoIgnorado),revisar:r.revisar.filter(naoIgnorado)};
+  },[hist,waConvs,crmVinculos,crmEtapaIgnorar,histLoaded]);
+
+  // Trava contra reaplicação. As regras convergem sozinhas (aplicar a etapa faz
+  // o motor parar de sugeri-la), mas um erro futuro numa regra viraria um laço
+  // de escrita no Firestore rodando sem ninguém olhando. Aqui o mesmo lead não
+  // é aplicado duas vezes para a mesma etapa na mesma sessão, aconteça o que
+  // acontecer.
+  const etapasAplicadasRef=useRef(new Set());
+  useEffect(()=>{
+    if(!crmEtapaAuto||!histLoaded||!crmMetaLoaded)return;
+    const novas=etapasSugeridas.automaticas.filter(i=>!etapasAplicadasRef.current.has(`${i.q.id}:${i.etapa}`));
+    if(novas.length===0)return;
+    novas.forEach(i=>etapasAplicadasRef.current.add(`${i.q.id}:${i.etapa}`));
+    aplicarEtapas(novas);
+  },[crmEtapaAuto,histLoaded,crmMetaLoaded,etapasSugeridas]);
+
   const salvarMotivoPerda=async(q,motivo)=>{const nh=hist.map(h=>h.id===q.id?{...h,status:"perdido",stageSince:Date.now(),...motivo}:h);setHist(nh);saveLS(nh);const item=nh.find(h=>h.id===q.id);if(item)saveFS(item);addInteracao(q.id,"perda",`Marcado como perdido: ${motivo.motivoLabel}`);setFbMsg("❌ Marcado como perdido");setTimeout(()=>setFbMsg(""),2000)};
   useRescueAutomation({hist,crmTags,getDaysSince,patchCrmMeta,ready:histLoaded&&interacoesLoaded&&crmMetaLoaded,onSugerirPerda:(q,days)=>setLostReasonModal({q,days,auto:true})});
   // Abre a conversa com o texto pronto para revisar antes de mandar.
@@ -3090,7 +3176,7 @@ export default function App(){
             <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
               <button onClick={syncGoogleContacts} disabled={syncingContacts} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${t.cardBorder}`,background:"transparent",color:t.textSec,fontSize:"9px",fontWeight:"700",cursor:syncingContacts?"wait":"pointer",opacity:syncingContacts?0.6:1}}>{syncingContacts?"⏳ Sincronizando...":"🔄 Contatos Google"}</button>
               {syncMsg&&<span style={{fontSize:"9px",color:syncMsg.includes("Erro")?"#e74c3c":"#27ae60"}}>{syncMsg}</span>}
-              {[["pipeline","🗂️","Pipeline"],["funil","🔻","Funil"],["lista","☰","Lista"],["dashboard","📊","Analytics"],["perdas","🔍","Perdas"]].map(([k,ic,lb])=><button key={k} onClick={()=>setCrmView(k)} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${crmView===k?(k==="perdas"?"#dc2626":blue):t.cardBorder}`,background:crmView===k?(k==="perdas"?"#fef2f2":blue):"transparent",color:crmView===k?(k==="perdas"?"#dc2626":"#fff"):t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>{ic} {lb}</button>)}
+              {[["pipeline","🗂️","Pipeline"],["funil","🔻","Funil"],["lista","☰","Lista"],["dashboard","📊","Analytics"],["origem","📣","Origem"],["perdas","🔍","Perdas"]].map(([k,ic,lb])=><button key={k} onClick={()=>setCrmView(k)} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${crmView===k?(k==="perdas"?"#dc2626":blue):t.cardBorder}`,background:crmView===k?(k==="perdas"?"#fef2f2":blue):"transparent",color:crmView===k?(k==="perdas"?"#dc2626":"#fff"):t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>{ic} {lb}</button>)}
             </div>
           </div>
 
@@ -3191,10 +3277,15 @@ export default function App(){
               </select>
               <button onClick={()=>setCrmShowLost(p=>!p)} style={{padding:"6px 10px",borderRadius:"6px",border:`1.5px solid ${crmShowLost?"#dc2626":t.cardBorder}`,background:crmShowLost?"#fef2f2":"transparent",color:crmShowLost?"#dc2626":t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>❌ Perdidos</button>
             </div>
+            {/* Funil desalinhado: leads que o motor diz estar na coluna errada */}
+            <RevisaoEtapas automaticas={etapasSugeridas.automaticas} revisar={etapasSugeridas.revisar}
+              t={t} fmt={fmt} auto={crmEtapaAuto} setAuto={(v)=>patchCrmMeta({etapaAuto:v})}
+              onAplicar={(item)=>aplicarEtapas([item])} onAplicarTodas={()=>aplicarEtapas(etapasSugeridas.automaticas)}
+              onIgnorar={ignorarEtapa}/>
             {/* SLA: cliente esperando resposta humana há mais de 1h */}
             <AlertaSLA waConvs={waConvs} t={t} fmtPhone={waFmtPhone} onAbrirConversa={(ph)=>{setTab("whatsapp");setWaChat(ph)}}/>
             {/* Tarefas de Hoje — follow-up acionável em 1 clique */}
-            <TodayTasks hist={hist} getDays={getCachedDays} fmt={fmt} t={t} blue={blue} crmNextContact={crmNextContact} setNextContact={setNextContact} addInteracao={addInteracao} onResumo={notificarResumoDiario}/>
+            <TodayTasks hist={hist} getDays={getCachedDays} fmt={fmt} t={t} blue={blue} crmNextContact={crmNextContact} setNextContact={setNextContact} addInteracao={addInteracao} onResumo={notificarResumoDiario} achaConversa={(q)=>conversaDoLead(q,waConvs,crmVinculos)}/>
             {/* Ordenação das colunas.
                 O padrão passou a ser "movimentação": abrir o CRM depois de
                 atender alguém e achar a pessoa no topo da coluna vale mais no
@@ -3400,6 +3491,7 @@ export default function App(){
           </>}
 
           {/* ── ANÁLISE DE PERDAS ── */}
+          {crmView==="origem"&&<OrigemReport hist={hist} achaConversa={(q)=>conversaDoLead(q,waConvs,crmVinculos)} t={t} fmt={fmt} blue={blue}/>}
           {crmView==="perdas"&&<LossAnalysis hist={hist} interacoes={interacoes} t={t} blue={blue}/>}
 
           </>}
@@ -3857,22 +3949,12 @@ export default function App(){
               })()}
 
               {/* Dados do lead */}
+              {/* A lista fixa de 9 campos virou a ficha inteira (services/fichaLead.js):
+                  CEP, padrao, acesso pra maquina, prazo, aquecimento e como conheceu
+                  eram coletados pelo bot e nao apareciam em lugar nenhum. */}
               {waChatData.leadData&&<div style={{padding:"16px 20px",borderBottom:"8px solid #f0f2f5"}}>
                 <div style={{fontSize:"14px",color:"#008069",fontWeight:"500",marginBottom:"12px"}}>Informações do lead</div>
-                {[
-                  ["Nome",waChatData.leadData.nome],
-                  ["Cidade",waChatData.leadData.cidade],
-                  ["Tipo de Serviço",waChatData.leadData.tipo_servico],
-                  ["Formato Piscina",waChatData.leadData.formato_piscina],
-                  ["Medidas",waChatData.leadData.medidas],
-                  ["Extras",waChatData.leadData.extras],
-                  ["Estado Piscina",waChatData.leadData.estado_piscina],
-                  ["Nascimento",waChatData.leadData.nascimento],
-                  ["E-mail",waChatData.leadData.email],
-                ].filter(([,v])=>v).map(([k,v],i)=><div key={i} style={{marginBottom:"10px"}}>
-                  <div style={{fontSize:"12px",color:"#8696a0"}}>{k}</div>
-                  <div style={{fontSize:"14px",color:"#111b21",marginTop:"2px"}}>{v}</div>
-                </div>)}
+                <FichaLead leadData={waChatData.leadData} t={{...t,text:"#111b21",textMuted:"#8696a0",cardBorder:"#e9edef"}}/>
               </div>}
 
               {/* Mensagens com estrela */}

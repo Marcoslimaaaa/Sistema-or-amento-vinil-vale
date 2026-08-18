@@ -12,6 +12,11 @@ import RespostasRapidas from "./components/crm/RespostasRapidas";
 import Timeline from "./components/crm/Timeline";
 import CanalStatus from "./components/crm/CanalStatus";
 import TodayTasks from "./components/crm/TodayTasks";
+import RevisaoEtapas from "./components/crm/RevisaoEtapas";
+import OrigemReport from "./components/dashboard/OrigemReport";
+import FichaLead from "./components/crm/FichaLead";
+import AnaliseConversa from "./components/crm/AnaliseConversa";
+import { classificarBase } from "./services/etapaAuto.js";
 import { leadScore, faixaScore } from "./services/score.js";
 
 const t = {
@@ -195,11 +200,108 @@ function App() {
         <KanbanTeste registrar={registrar} />
       </Bloco>
 
+      <Bloco titulo="RevisaoEtapas — com sugestões" nota="As duas listas: 'sem risco' aplica em lote; 'confira antes' avisa o efeito colateral. Abra no ▼.">
+        <RevisaoEtapasTeste registrar={registrar} />
+      </Bloco>
+
+      <Bloco titulo="RevisaoEtapas — funil em dia" nota="Sem nada a ajustar, vira uma linha só com o interruptor.">
+        <RevisaoEtapas automaticas={[]} revisar={[]} t={t} fmt={fmt} auto={false}
+          setAuto={(v) => registrar(`interruptor → ${v}`)} onAplicar={() => {}} onAplicarTodas={() => {}} onIgnorar={() => {}} />
+      </Bloco>
+
+      <Bloco titulo="OrigemReport" nota="Canal que fatura no topo; conversão em verde acima de 20%; rodapé avisa a cobertura do dado.">
+        <OrigemReport hist={histOrigem} achaConversa={(q) => convsOrigem[q.id] || null} t={t} fmt={fmt} blue={blue} />
+      </Bloco>
+
+      <Bloco titulo="OrigemReport — base sem origem nenhuma" nota="Deve explicar o que o bot coleta, não mostrar tabela vazia.">
+        <OrigemReport hist={[{ id: 1, tot: "1000", status: "lead" }]} achaConversa={() => null} t={t} fmt={fmt} blue={blue} />
+      </Bloco>
+
+      <Bloco titulo="FichaLead — completa" nota="Os campos que o bot coleta e o CRM ignorava: CEP, padrão, acesso pra máquina, prazo, como conheceu.">
+        <FichaLead t={t} leadData={{
+          nome: "Maria Silva", cidade: "Registro", cep: "11900-000", email: "maria@exemplo.com",
+          tipo_servico: "revestimento em vinil", formato_piscina: "retangular", medidas: "8x4x1,40",
+          estado_piscina: "azulejo soltando", extras: "prainha e escada", quantidade_flanges: "4",
+          padrao_construcao: "completo", acesso_bobcat: "sim, pela lateral", prazo: "antes do verão",
+          como_conheceu: "Instagram Ads", foto_recebida: true,
+        }} />
+      </Bloco>
+
+      <Bloco titulo="FichaLead — incompleta" nota="Barra vermelha e a linha 'falta perguntar' com os campos obrigatórios que faltam.">
+        <FichaLead t={t} leadData={{ nome: "João", cidade: "Cajati", como_conheceu: "indicação do vizinho" }} />
+      </Bloco>
+
+      <Bloco titulo="FichaLead — sem dados" nota="Deve explicar por que está vazia, não sumir.">
+        <FichaLead t={t} leadData={null} />
+      </Bloco>
+
+      <Bloco titulo="AnaliseConversa — botão (estado inicial)" nota="Clicar chama o bot de verdade; sem login o retorno é erro, e o erro tem que aparecer ao lado do botão.">
+        <AnaliseConversa q={lead} temConversa t={t} />
+      </Bloco>
+
+      <Bloco titulo="AnaliseConversa — sem conversa vinculada" nota="Não deve renderizar nada (não há o que analisar).">
+        <div style={{ fontSize: "10px", color: t.textMuted }}>
+          [abaixo deve ficar vazio]
+          <AnaliseConversa q={lead} temConversa={false} t={t} />
+        </div>
+      </Bloco>
+
       <Bloco titulo="Ações registradas" nota="Confirma que os callbacks disparam.">
         {log.length === 0 ? <span style={{ fontSize: "10px", color: t.textMuted }}>nada ainda — interaja acima</span>
           : log.map((l, i) => <div key={i} style={{ fontSize: "10px", color: t.text, padding: "2px 0" }}>• {l}</div>)}
       </Bloco>
     </div>
+  );
+}
+
+// Base de exemplo do relatorio de origem: canais mistos, um deles detectado
+// pelo bot (Instagram Ads) e outro digitado pelo cliente ("meu vizinho fez").
+const histOrigem = [
+  { id: 801, tot: "32000", status: "fechou" },
+  { id: 802, tot: "18000", status: "lead" },
+  { id: 803, tot: "25000", status: "perdido" },
+  { id: 804, tot: "9000", status: "lead" },
+  { id: 805, tot: "61000", status: "concluido" },
+  { id: 806, tot: "14000", status: "lead" },
+  { id: 807, tot: "22000", status: "fechou" },
+  { id: 808, tot: "7000", status: "lead" },
+];
+const convsOrigem = {
+  801: { leadData: { como_conheceu: "Instagram Ads" } },
+  802: { leadData: { como_conheceu: "Instagram Ads" } },
+  803: { leadData: { como_conheceu: "anuncio do instagram" } },
+  804: { leadData: { como_conheceu: "Google Ads" } },
+  805: { leadData: { como_conheceu: "meu vizinho fez com voces" } },
+  806: { leadData: { como_conheceu: "vi a placa no carro de voces" } },
+  807: { leadData: { como_conheceu: "me indicaram" } },
+};
+
+// Exercita o motor de verdade (services/etapaAuto.js), não uma lista fabricada:
+// é a checagem de que 'fechou' e 'perdido' nunca caem no lote automático.
+function RevisaoEtapasTeste({ registrar }) {
+  const [auto, setAuto] = useState(false);
+  const D = (d) => Date.now() - d * 86400000;
+  const base = [
+    { id: 901, cN: "Ana Ribeiro", tot: "42000", status: "lead", sentAt: D(6) },
+    { id: 902, cN: "Carlos Menezes", tot: "18500", status: "orcamento" },
+    { id: 903, cN: "Dona Lourdes", tot: "9800", status: "orcamento", sentAt: D(52) },
+    { id: 904, cN: "Sérgio Pinto", tot: "27000", status: "orcamento" },
+    { id: 905, cN: "Bruna Tavares", tot: "15300", status: "lead", sentAt: D(4) },
+  ];
+  const convs = {
+    901: { quoteSentAt: D(6) },                                   // auto → orcamento
+    902: { quoteSentAt: D(9), lastUserMessageAt: D(4) },           // auto → negociacao
+    903: { quoteSentAt: D(52), lastUserMessageAt: D(52) },         // revisar → perdido
+    904: { quoteSentAt: D(30), dealClosedAt: D(2) },               // revisar → fechou
+    905: { phone: "5513999999999", lastUserMessageAt: D(20) },     // revisar → orcamento (liga a régua)
+  };
+  const r = classificarBase(base, (q) => convs[q.id] || null);
+  return (
+    <RevisaoEtapas automaticas={r.automaticas} revisar={r.revisar} t={t} fmt={fmt}
+      auto={auto} setAuto={(v) => { setAuto(v); registrar(`arrumar sozinho → ${v}`); }}
+      onAplicar={(i) => registrar(`mover ${i.q.cN}: ${i.de} → ${i.etapa}`)}
+      onAplicarTodas={() => registrar(`aplicar as ${r.automaticas.length} automáticas`)}
+      onIgnorar={(i) => registrar(`ignorar ${i.q.cN}`)} />
   );
 }
 

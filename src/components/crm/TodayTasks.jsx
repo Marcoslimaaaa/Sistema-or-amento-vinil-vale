@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { REGUA } from "./regua";
 import { getRescueMsg } from "../rescue/RescueModal";
 import { sendWA } from "../../services/wa.js";
+import { escondeDaLista, resumoDaRegua } from "../../services/reguaBot.js";
 
 // "Tarefas de Hoje" — transforma o badge de follow-up em lista acionável:
 // quem contatar hoje, por quê, e envio em 1 clique. O envio passa pela camada
@@ -9,7 +10,7 @@ import { sendWA } from "../../services/wa.js";
 
 const toISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-export default function TodayTasks({ hist, getDays, fmt, t, blue, crmNextContact, setNextContact, addInteracao, onResumo }) {
+export default function TodayTasks({ hist, getDays, fmt, t, blue, crmNextContact, setNextContact, addInteracao, onResumo, achaConversa }) {
   const [expanded, setExpanded] = useState(true);
   const [showAll, setShowAll] = useState(false);
 
@@ -28,10 +29,21 @@ export default function TodayTasks({ hist, getDays, fmt, t, blue, crmNextContact
       }
       const needsUp = days >= REGUA.followUp && days < REGUA.desconhecido;
       if (!scheduled && !needsUp) return null;
+
+      // O QUE O BOT JÁ FEZ CONTA.
+      // Esta lista pede contato MANUAL. O bot tem a régua dele (1, 2, 3, 7, 14
+      // e 30 dias depois do orçamento) e o painel não a enxergava: pedia uma
+      // mensagem à mão, com outro texto, por cima da que já tinha saído.
+      // Quem o bot cutucou nas últimas 48h sai daqui; quem pediu para parar
+      // sai sempre. Compromisso agendado à mão continua valendo — foi o Marcos
+      // que marcou, e a régua automática não sabe disso.
+      const conv = achaConversa ? achaConversa(q) : null;
+      if (!scheduled && escondeDaLista(conv)) return null;
+
       const valor = parseFloat(q.tot) || 0;
       // prioridade: agendado atrasado > agendado hoje > follow-up; dentro do grupo, valor × tempo parado
       const groupW = scheduled === "atrasado" ? 2e9 : scheduled === "hoje" ? 1e9 : 0;
-      return { q, days, valor, scheduled, score: groupW + valor * (1 + Math.min(days, 60) / 10) };
+      return { q, days, valor, scheduled, conv, score: groupW + valor * (1 + Math.min(days, 60) / 10) };
     })
     .filter(Boolean)
     .sort((a, b) => b.score - a.score);
@@ -87,7 +99,8 @@ export default function TodayTasks({ hist, getDays, fmt, t, blue, crmNextContact
       {expanded && (
         <div style={{ padding: "0 8px 8px", display: "flex", flexDirection: "column", gap: "4px" }}>
           {visible.map((task) => {
-            const { q, days, valor, scheduled } = task;
+            const { q, days, valor, scheduled, conv } = task;
+            const daRegua = resumoDaRegua(conv);
             const reason = scheduled === "atrasado" ? { txt: "⏰ Contato atrasado", color: "#dc2626" }
               : scheduled === "hoje" ? { txt: "📅 Agendado p/ hoje", color: "#f59e0b" }
               : { txt: `🔔 ${days}d sem contato`, color: days >= REGUA.resgate.urgente ? "#dc2626" : "#f97316" };
@@ -97,6 +110,10 @@ export default function TodayTasks({ hist, getDays, fmt, t, blue, crmNextContact
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: "11px", fontWeight: "700", color: t.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.cN || "Sem nome"} <span style={{ fontWeight: "600", color: t.textMuted, fontSize: "9px" }}>· {fmt(valor)}</span></div>
                   <div style={{ fontSize: "8.5px", fontWeight: "700", color: reason.color }}>{reason.txt}{q.data?.client?.city ? ` · ${q.data.client.city}` : ""}</div>
+                  {/* O que a régua automática já fez. Só aparece em quem ficou
+                      na lista mesmo assim (compromisso agendado à mão), para o
+                      contato não repetir o que o cliente acabou de receber. */}
+                  {daRegua && <div style={{ fontSize: "8px", color: t.textMuted, marginTop: "1px" }}>{daRegua}</div>}
                 </div>
                 <button title={hasPhone ? "Enviar follow-up via WhatsApp" : "Sem telefone cadastrado"} onClick={() => sendWa(task)} disabled={!hasPhone} style={{ fontSize: "9px", fontWeight: "700", padding: "5px 9px", borderRadius: "6px", border: "none", background: hasPhone ? "#25d366" : t.cardBorder, color: "#fff", cursor: hasPhone ? "pointer" : "not-allowed", whiteSpace: "nowrap" }}>💬 Enviar</button>
                 <button title="Já falei com o cliente por outro meio" onClick={() => markDone(task)} style={{ fontSize: "9px", fontWeight: "700", padding: "5px 8px", borderRadius: "6px", border: `1px solid ${t.cardBorder}`, background: "transparent", color: "#16a34a", cursor: "pointer" }}>✓ Feito</button>

@@ -334,6 +334,34 @@ export async function pausarFollowup(phone, pausar = true) {
   }
 }
 
+/**
+ * Pede ao bot a leitura da conversa: resumo, proxima acao e motivo de perda.
+ *
+ * CADA CHAMADA CUSTA. Por isso e sempre disparada por um clique, nunca por
+ * efeito de render, e o timeout e generoso (a analise leva alguns segundos, e
+ * desistir cedo gastaria o mesmo dinheiro sem mostrar o resultado).
+ */
+export async function analisarConversa(phone, { valor } = {}) {
+  const full = normalizePhone(phone);
+  if (!full) return { ok: false, erro: "Cliente sem telefone cadastrado" };
+  try {
+    const r = await botFetch(`/api/analisar/${full}`, {
+      method: "POST",
+      body: JSON.stringify({ valor: valor || null }),
+      timeoutMs: 50000,
+    });
+    if (!r.ok) {
+      if (r.status === 429) return { ok: false, erro: "Muitas análises seguidas — espere um minuto." };
+      if (r.status === 404) return { ok: false, erro: "Esse cliente não tem conversa no WhatsApp." };
+      return { ok: false, erro: `Erro ${r.status}` };
+    }
+    const dados = await r.json();
+    return { ok: true, analise: dados.analise };
+  } catch (e) {
+    return { ok: false, erro: e.message };
+  }
+}
+
 /** Converte Blob em base64 puro (sem o prefixo data:), para o /api/send-media. */
 export function blobParaBase64(blob) {
   return new Promise((resolve, reject) => {
