@@ -1,17 +1,32 @@
 rules_version = '2';
+
+// ============================================================================
+// ARQUIVO COMPLETO E PRONTO PARA PUBLICAR.
+//
+// É a cópia fiel das regras que já estão no repo do orçamento
+// (orcamentos-vinil-vale/firestore.rules) MAIS os blocos cc_* da Central de
+// Conteúdo. Publicar este arquivo NÃO derruba nada do que já funciona.
+//
+// Como publicar (o firebase.json fica no repo do orçamento):
+//   1. copie este arquivo por cima de orcamentos-vinil-vale/firestore.rules
+//   2. cd orcamentos-vinil-vale
+//   3. npx firebase-tools deploy --only firestore:rules
+// ============================================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // Só a equipe da Vinil Vale acessa dados compartilhados de clientes.
     // Qualquer conta Google consegue LOGAR no app, mas não passa daqui.
-    // Para dar acesso a alguém novo, adicione o e-mail à lista e rode:
-    //   firebase deploy --only firestore:rules
+    // Para dar acesso a alguém novo (ex.: a social media), adicione o e-mail
+    // à lista abaixo e publique as regras de novo.
     function isEquipe() {
       return request.auth != null
         && request.auth.token.email in [
           'vinilvale@hotmail.com',
           'vinilvale.ads@gmail.com',
-          'marcoslimablockchain@gmail.com'
+          'marcoslimablockchain@gmail.com',
+          'thamires.andrade171@gmail.com'
         ];
     }
 
@@ -55,6 +70,34 @@ service cloud.firestore {
     // Leads WhatsApp - somente equipe
     match /whatsapp_leads/{phone} {
       allow read: if isEquipe();
+    }
+
+    // ---------- Central de Conteúdo (prefixo cc_) ----------
+    // Mesmo critério de equipe usado no resto do sistema.
+
+    match /cc_linhas/{id} {
+      allow read, write: if isEquipe();
+    }
+
+    match /cc_config/{id} {
+      allow read, write: if isEquipe();
+    }
+
+    match /cc_pautas/{id} {
+      allow read, write: if isEquipe();
+    }
+
+    match /cc_conteudos/{id} {
+      allow read, write: if isEquipe();
+    }
+
+    // Alertas do Guardião de Fila (escritos pelo cron via service account)
+    match /cc_alertas/{id} {
+      allow read, write: if isEquipe();
+    }
+
+    match /cc_agendamentos/{id} {
+      allow read, write: if isEquipe();
     }
 
     // Bloqueia tudo mais por padrão
