@@ -5,6 +5,7 @@ import { User, Waves, ShoppingCart, ShieldCheck, Wallet, Ruler, FolderOpen, Tren
 import { getEstampaByNome } from "./data/estampas.js";
 import FormaEditor, { MiniForma } from "./FormaEditor.jsx";
 import { MODELOS } from "./data/modelos.js";
+import { calcA } from "./motor/areas.js";
 import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho } from "./motor/formas.js";
 import { ramalSistema, totaisHidraulica, ROTULO_SIS, SEM_TUBO, BARRA_M } from "./motor/hidraulica.js";
 // jspdf/html2canvas (~200KB gz) só carregam quando alguém gera PDF/imagem
@@ -959,81 +960,7 @@ const fmt=v=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).fo
 // Dinheiro digitado no padrão BR: ponto = milhar, vírgula = decimal ("12.500,50" → 12500.5)
 const parseMoney=v=>parseFloat(String(v??"").replace(/\./g,"").replace(",","."))||0;
 
-// ═══ AREA CALCULATION ═══
-const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
-  const L=parseFloat(pool.length)||0,W=parseFloat(pool.width)||0;
-  const dMin=parseFloat(pool.depthMin)||0,dMax=parseFloat(pool.depthMax)||0;
-  const D=(dMin>0&&dMax>0)?(dMin+dMax)/2:parseFloat(pool.depth)||0;
-  const realDMin=(dMin>0)?dMin:D,realDMax=(dMax>0)?dMax:D;
-  const isOval=poolFmt==="Oval";
-  const isOitavada=poolFmt==="Oitavada";
-  const a=L/2,b=W/2;
-  const ch=isOitavada?(parseFloat(pool.chanfro)||1):0;
-  // Se raso+fundo preenchidos e diferentes, usa comprimento inclinado real da rampa (√(L² + (dMax−dMin)²))
-  const sloped=dMin>0&&dMax>0&&dMin!==dMax;
-  const Linc=sloped?Math.sqrt(L*L+(dMax-dMin)*(dMax-dMin)):L;
-  // Oitavada: retângulo - 4 triângulos dos cantos + 4 chanfros diagonais
-  const chanfroDiag=Math.sqrt(ch*ch+ch*ch); // diagonal do chanfro (hipotenusa)
-  const oitChao=isOitavada?(Linc*W-4*(ch*ch/2)):0; // retângulo - 4 triângulos
-  const oitPerim=isOitavada?(2*(L-2*ch)+2*(W-2*ch)+4*chanfroDiag):0;
-  let chao=isOval?(Math.PI*a*b):isOitavada?oitChao:Linc*W;
-  const ovalPerim=isOval?(Math.PI*(3*(a+b)-Math.sqrt((3*a+b)*(a+3*b)))):0;
-  let par=wMode==="irregular"&&walls.length>0
-    ?walls.reduce((s,w)=>s+(parseFloat(w.l)||0)*(parseFloat(w.h)||D),0)
-    :(isOval?(ovalPerim*D):isOitavada?(oitPerim*D):(L*realDMin+L*realDMax+2*W*D));
-  let perim=wMode==="irregular"&&walls.length>0
-    ?walls.reduce((s,w)=>s+(parseFloat(w.l)||0),0)
-    :(isOval?ovalPerim:isOitavada?oitPerim:(2*L+2*W));
-  // "Com prainha" com medida informada: platô raso na ponta + degrau de descida.
-  // Sem medida (campo vazio) a prainha segue só ilustrativa e nada muda no cálculo.
-  const praiC=parseFloat(String(pool?.prainhaComp??"").replace(",","."))||0;
-  const praiP=parseFloat(String(pool?.prainhaProf??"").replace(",","."))||0;
-  const temPrainha=poolFmt==="Com prainha"&&praiC>0&&praiC<L;
-  let praiVol=0;
-  if(temPrainha){
-    const pp=Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)); // lâmina sobre a prainha
-    const Lf=L-praiC;                                             // trecho fundo
-    chao+=W*(D-pp);                                               // degrau vertical prainha → fundo
-    // paredes: laterais em dois níveis + testeira funda cheia + testeira rasa só na prainha
-    // (parede fora de esquadro tem medida própria digitada — não sobrescreve)
-    if(!(wMode==="irregular"&&walls.length>0))par=2*(Lf*D+praiC*pp)+W*D+W*pp;
-    praiVol=Lf*W*D+praiC*W*pp;
-  }
-  // Desenho livre (modelos/editor): áreas e perímetro REAIS do formato desenhado
-  const dM=desenho&&desenho.vertices&&desenho.vertices.length>=3?calcDesenho(desenho,D):null;
-  if(dM){chao=dM.chao;par=dM.paredes;perim=dM.perim;}
-  // Extras (prainha, degrau, banco — cada peça: topo=L×W, face=L×H)
-  const pf=v=>parseFloat(String(v||"").replace(",","."))||0;
-  let extraChao=0,extraPar=0;
-  if(Array.isArray(extras)){
-    extras.forEach(e=>{
-      const l=pf(e.l),w=pf(e.w),h=pf(e.h);
-      if(e.mode==="peca"){extraChao+=l*w;extraPar+=l*h;}
-      else if(e.mode==="topo_add")extraChao+=l*w;
-      else if(e.mode==="chao_sub")extraChao-=l*w;
-      else if(e.mode==="face_add")extraPar+=l*h;
-      else if(e.mode==="parede_sub")extraPar-=l*h;
-    });
-  }
-  chao+=extraChao;par+=extraPar;
-  const sL=parseFloat(spa.length)||0,sW=parseFloat(spa.width)||0,sD=parseFloat(spa.depth)||0;
-  const sChao=spa.on?sL*sW:0,sPar=spa.on?(2*sL*sD+2*sW*sD):0;
-  const sPerim=spa.on?(2*sL+2*sW):0;
-  // Spa do formato "Com Spa"
-  const st=spaType||{};
-  const sqC=parseFloat(st.qComp)||0,sqL=parseFloat(st.qLarg)||0,sqP=parseFloat(st.qProf)||0;
-  const sqChao=st.quadrado?sqC*sqL:0,sqPar=st.quadrado?(2*sqC*sqP+2*sqL*sqP):0;
-  const srR=(parseFloat(st.rDiam)||0)/2,srP=parseFloat(st.rProf)||0;
-  const srC2=parseFloat(st.rComp)||0,srL2=parseFloat(st.rLarg)||0;
-  const isRndSq=st.rFormato==="quadrado";
-  const srChao=st.redondo?(isRndSq?srC2*srL2:Math.PI*srR*srR):0;
-  const srPar=st.redondo?(isRndSq?(2*srC2*srP+2*srL2*srP):Math.PI*(srR*2)*srP):0;
-  const fmtSpaChao=sqChao+srChao,fmtSpaPar=sqPar+srPar;
-  const srVol=st.redondo?(isRndSq?srC2*srL2*srP:Math.PI*srR*srR*srP):0;
-  const vol=(dM?dM.vol:(temPrainha?praiVol:(isOval?(Math.PI*a*b):isOitavada?(L*W-4*(ch*ch/2)):L*W)*D))+(spa.on?sL*sW*sD:0)+(st.quadrado?sqC*sqL*sqP:0)+srVol;
-  const depthInfo={avg:D,min:realDMin,max:realDMax,sloped:dMin>0&&dMax>0&&dMin!==dMax};
-  return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:(sChao+fmtSpaChao).toFixed(1),sPar:(sPar+fmtSpaPar).toFixed(1),tot:(chao+par+sChao+sPar+fmtSpaChao+fmtSpaPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao+fmtSpaChao).toFixed(1),depthInfo,extraChao:extraChao.toFixed(1),extraPar:extraPar.toFixed(1),sqChao:sqChao.toFixed(1),sqPar:sqPar.toFixed(1),srChao:srChao.toFixed(1),srPar:srPar.toFixed(1)};
-};
+// ═══ AREA CALCULATION ═══ (motor em src/motor/areas.js — testado em areas.test.mjs)
 
 // ═══ CRM CONSTANTS ═══
 const TAGS_OPTS=["Interessado","Aguardando","Sem resposta","Retornar","Urgente","Visita agendada"];
@@ -2342,6 +2269,18 @@ export default function App(){
   const inc=items.filter(i=>i.on);
   // Calculate effective quantity based on unit type
   const ar=calcA(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho);
+  // Prainha do resumo: só existe quando o formato é "Com prainha" E o comprimento cabe
+  // dentro da piscina — mesma condição do calcA. Sem isso a prainha entrava na conta
+  // sem aparecer em lugar nenhum, e um orçamento clonado carregava a medida escondida.
+  const praiInfo=(()=>{
+    const n=v=>parseFloat(String(v??"").replace(",","."))||0;
+    const c=n(pool.prainhaComp),p=n(pool.prainhaProf),L=n(pool.length);
+    const dMin=n(pool.depthMin),dMax=n(pool.depthMax);
+    const D=(dMin>0&&dMax>0)?(dMin+dMax)/2:n(pool.depth);
+    if(poolFmt!=="Com prainha"||!(c>0&&c<L))return null;
+    const m2=v=>v.toFixed(2).replace(".",",");
+    return{txt:`${m2(c)}×${m2(Math.min(p>0?p:D*0.25,Math.max(D-0.05,0.05)))}m`};
+  })();
   // Versões espelhadas passadas às vistas (planta/isométrica/3D). O desenho salvo,
   // o editor de forma e o cálculo de área continuam no referencial original —
   // espelho é isometria, não muda área, perímetro nem volume.
@@ -2399,7 +2338,7 @@ export default function App(){
   };
   const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){autoStockOut(item);syncFinancas(item);}setFbMsg("✅ Cliente fechado!");setTimeout(()=>setFbMsg(""),3000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)syncFinancas(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
-  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
+  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
   const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
   const movePipe=(id,stage)=>{
@@ -2977,6 +2916,7 @@ export default function App(){
           <div style={{marginTop:"14px",background:t.areaBg,borderRadius:"10px",padding:"14px"}}>
             <div style={{display:"flex",justifyContent:"center",gap:"12px",flexWrap:"wrap",alignItems:"center"}}>
               <div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{pool.length}×{pool.width}×{pool.depth}m</div><div style={{fontSize:"8px",color:t.textSec}}>Piscina</div></div>
+              {praiInfo&&<><div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/><div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:"#b45309"}}>{praiInfo.txt}</div><div style={{fontSize:"8px",color:t.textSec}}>Prainha</div></div></>}
               <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
               <div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{ar.chao} m²</div><div style={{fontSize:"8px",color:t.textSec}}>Chão</div></div>
               <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
