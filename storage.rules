@@ -1,41 +1,10 @@
 rules_version = '2';
-
-// ============================================================================
-// ARQUIVO COMPLETO E PRONTO PARA PUBLICAR.
-// Cópia das regras que já estão no repo do orçamento MAIS o bloco da Central
-// de Conteúdo. Publicar este arquivo não derruba nada do que já funciona.
-//
-//   1. copie por cima de orcamentos-vinil-vale/storage.rules
-//   2. cd orcamentos-vinil-vale
-//   3. npx firebase-tools deploy --only storage
-// ============================================================================
-
 service firebase.storage {
   match /b/{bucket}/o {
     // Apenas o próprio usuário autenticado acessa seus arquivos
     match /users/{userId}/{allPaths=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-
-    // ---------- Central de Conteúdo ----------
-    // Vídeos dos posts. A LEITURA É PÚBLICA de propósito: para publicar no
-    // Instagram, a Meta baixa o arquivo pela URL — se exigir autenticação,
-    // a publicação falha. Só a equipe consegue enviar ou apagar.
-    match /central-conteudo/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null
-        && request.auth.token.email in [
-          'vinilvale@hotmail.com',
-          'vinilvale.ads@gmail.com',
-          'marcoslimablockchain@gmail.com',
-          'thamires.andrade171@gmail.com'
-        ]
-        // Teto de 300 MB e só vídeo ou imagem.
-        && request.resource.size < 300 * 1024 * 1024
-        && (request.resource.contentType.matches('video/.*')
-            || request.resource.contentType.matches('image/.*'));
-    }
-
     // Bloqueia todo acesso não autorizado
     match /{allPaths=**} {
       allow read, write: if false;
