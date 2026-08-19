@@ -10,7 +10,7 @@
 // Vale SÓ para a manta armada 1,5 mm: o vinil 0,7/0,8 (bolsão) segue por área.
 import { faixasPara, coberturaDe, cortarChao, cortarPeca, cortarParedes,
          facesRetangulo, facesComPrainha, regioesChao, cortarChaoRegioes,
-         cortarCorrida, cortarChaoContorno, facesDoContorno,
+         cortarCorrida, ninharComplementos, cortarChaoContorno, facesDoContorno,
          encaixarBobinas, analisarSobra, planoManta, MANTA } from "../manta.js";
 
 let falhas=0,total=0;
@@ -52,7 +52,7 @@ console.log("\ncortarPeca — cada face é uma peça, com 5 cm em cada ponta");
   const a=cortarPeca({nome:"lateral funda",comp:5.00,prof:1.40});
   ok("face de 5,00 vira peça de 5,10",  perto(a.comp,5.10),   a.comp,   5.10);
   ok("parede de 1,40 sai com 1,50",     perto(a.altura,1.50), a.altura, 1.50);
-  ok("cabe numa faixa de 1,55",         a.faixasAltura===1,   a.faixasAltura, 1);
+  ok("cabe na largura da bobina",       a.complemento===null, a.complemento,  null);
   const b=cortarPeca({nome:"testeira",comp:3.50,prof:1.40});
   ok("face de 3,50 vira peça de 3,60",  perto(b.comp,3.60),   b.comp,   3.60);
   const c=cortarPeca({nome:"prainha",comp:1.00,prof:0.50});
@@ -116,12 +116,35 @@ console.log("\nretangular grande — NUNCA vira corrida, sempre solda no canto")
   ok("nenhuma corrida",              p.pecas.every(x=>!x.corrida), p.pecas.filter(x=>x.corrida).length, 0);
 }
 
-console.log("\ncortarPeca — parede funda demais empilha faixas");
+console.log("\ncortarPeca — parede mais alta que a bobina leva FAIXINHA no pé");
 {
-  const p=cortarPeca({comp:6.00,prof:1.60});
-  ok("altura de corte = 1,70", perto(p.altura,1.70), p.altura,       1.70);
-  ok("1,70 > 1,55: 2 faixas",  p.faixasAltura===2,   p.faixasAltura, 2);
-  ok("dobra a bobina da peça", perto(p.metrosLineares,12.20), p.metrosLineares, 12.20);
+  // regra da obra: bobina de 1,40 com parede de 1,60 → solda-se uma tira no pé
+  // para completar a altura, e NÃO outra passada inteira da bobina
+  const cfg={...MANTA,larguraBobina:1.40};
+  const p=cortarPeca({comp:6.00,prof:1.60},cfg);
+  ok("altura de corte = 1,70",              perto(p.altura,1.70),              p.altura,           1.70);
+  ok("peça principal cobre a bobina cheia", perto(p.alturaPrincipal,1.40),     p.alturaPrincipal,  1.40);
+  ok("falta 0,30 → faixinha de 0,35",       perto(p.complemento.largura,0.35), p.complemento.largura, 0.35);
+  ok("a faixinha corre o mesmo comprimento",perto(p.complemento.comp,6.10),    p.complemento.comp, 6.10);
+  ok("principal gasta UMA passada",         perto(p.metrosLineares,6.10),      p.metrosLineares,   6.10);
+  ok("a costura da faixinha entra na solda",perto(p.soldaLinear,9.50),         p.soldaLinear,      9.50);
+  const r=cortarPeca({comp:6.00,prof:1.40});
+  ok("parede de 1,50 na bobina de 1,55 não pede faixinha", r.complemento===null, r.complemento, null);
+}
+
+console.log("\nninharComplementos — as faixinhas saem lado a lado da mesma passada");
+{
+  const cfg={...MANTA,larguraBobina:1.40};
+  const w=cortarParedes(facesRetangulo(10.00,4.00,1.60),cfg);
+  ok("4 faixinhas, uma por parede",       w.complementos.qtd===4,             w.complementos.qtd,             4);
+  ok("cabem todas numa passada só",       w.complementos.passadas.length===1, w.complementos.passadas.length, 1);
+  ok("4 × 0,35 fecha a bobina de 1,40",   perto(w.complementos.passadas[0].largura,1.40),
+     w.complementos.passadas[0].largura, 1.40);
+  ok("a passada custa a faixinha mais longa", perto(w.complementos.metrosLineares,10.10),
+     w.complementos.metrosLineares, 10.10);
+  // antes da regra da faixinha isto dobrava tudo: 2 × 28,40 = 56,80
+  ok("total = 28,40 + 10,10 = 38,50",     perto(w.metrosLineares,38.50),      w.metrosLineares,   38.50);
+  ok("bem menos que duas passadas inteiras", w.metrosLineares<56.80,          w.metrosLineares,   "< 56,80");
 }
 
 console.log("\nplanoManta — 6,00 × 4,00 × 1,40 completo");

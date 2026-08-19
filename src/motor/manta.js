@@ -228,21 +228,58 @@ export function cortarChaoRegioes(regioes, cfg = MANTA) {
  *                 dentro no pé (uma parede de 1,40 sai com 1,50)
  */
 export function cortarPeca(face, cfg = MANTA) {
-  const { dobraPe, dobraTopo, solda: S } = cfg;
+  const { dobraPe, dobraTopo, solda: S, larguraBobina: B } = cfg;
   const comp = (face.comp || 0) + 2 * S;
   const altura = (face.prof || 0) + dobraPe + dobraTopo;
-  const faixasAltura = faixasPara(altura, cfg);
+  // Parede mais alta que a largura da bobina NÃO vira duas passadas inteiras.
+  // A peça principal sai com a bobina cheia e o que falta é uma FAIXINHA
+  // soldada no pé: numa bobina de 1,40 com parede de 1,60, uma tira de 0,20
+  // (mais os 5 cm que montam sobre a peça de cima) resolve.
+  const falta = arred(Math.max(0, altura - B));
+  const complemento = falta > 0
+    ? { largura: arred(falta + S), comp: arred(comp), coberto: falta }
+    : null;
   return {
     nome: face.nome || "face",
     faceComp: arred(face.comp || 0),
     faceProf: arred(face.prof || 0),
     comp: arred(comp),
     altura: arred(altura),
-    faixasAltura,
-    // largura de bobina que sobra depois de tirar esta peça
-    aparo: arred(coberturaDe(faixasAltura, cfg) - altura),
-    metrosLineares: arred(comp * faixasAltura),
-    soldaLinear: arred(2 * altura + Math.max(0, faixasAltura - 1) * comp),
+    alturaPrincipal: arred(Math.min(altura, B)),
+    complemento,
+    // largura de bobina que sobra ao lado desta peça
+    aparo: complemento ? 0 : arred(B - altura),
+    // a peça principal consome UMA passada; a faixinha é contada à parte,
+    // porque várias faixinhas saem lado a lado da mesma passada
+    metrosLineares: arred(comp),
+    // 2 cantos verticais + a costura horizontal da faixinha, quando existe
+    soldaLinear: arred(2 * altura + (complemento ? comp : 0)),
+  };
+}
+
+/**
+ * As faixinhas de complemento saem NINHADAS: numa passada da bobina cabem
+ * várias lado a lado, porque cada uma tem poucos centímetros de largura.
+ * Prateleira simples — maior largura primeiro, fecha a passada quando a
+ * largura acumulada não couber mais, e a passada custa o comprimento da
+ * faixinha mais longa que ela carrega.
+ */
+export function ninharComplementos(complementos, cfg = MANTA) {
+  const B = cfg.larguraBobina;
+  const fila = (complementos || []).filter(Boolean).slice()
+    .sort((a, b) => b.largura - a.largura || b.comp - a.comp);
+  const passadas = [];
+  for (const c of fila) {
+    let p = passadas.find(x => x.largura + c.largura <= B + 1e-9);
+    if (!p) { p = { largura: 0, comp: 0, itens: [] }; passadas.push(p); }
+    p.itens.push(c);
+    p.largura = arred(p.largura + c.largura);
+    p.comp = arred(Math.max(p.comp, c.comp));
+  }
+  return {
+    passadas,
+    qtd: fila.length,
+    metrosLineares: arred(passadas.reduce((s, p) => s + p.comp, 0)),
   };
 }
 
@@ -260,7 +297,10 @@ export function cortarCorrida(faces, cfg = MANTA, nome) {
   const prof = Math.max(...faces.map(f => f.prof || 0));
   const comp = somaFaces + 2 * S;
   const altura = prof + dobraPe + dobraTopo;
-  const faixasAltura = faixasPara(altura, cfg);
+  const falta = arred(Math.max(0, altura - cfg.larguraBobina));
+  const complemento = falta > 0
+    ? { largura: arred(falta + S), comp: arred(comp), coberto: falta }
+    : null;
   return {
     nome: nome || faces.map(f => f.nome).join(" + "),
     corrida: true,
@@ -269,12 +309,13 @@ export function cortarCorrida(faces, cfg = MANTA, nome) {
     faceProf: arred(prof),
     comp: arred(comp),
     altura: arred(altura),
-    faixasAltura,
+    alturaPrincipal: arred(Math.min(altura, cfg.larguraBobina)),
+    complemento,
     vincos: faces.length - 1, // cantos dobrados: sem material extra, sem solda
-    aparo: arred(coberturaDe(faixasAltura, cfg) - altura),
-    metrosLineares: arred(comp * faixasAltura),
-    // só as duas pontas soldam
-    soldaLinear: arred(2 * altura + Math.max(0, faixasAltura - 1) * comp),
+    aparo: complemento ? 0 : arred(cfg.larguraBobina - altura),
+    metrosLineares: arred(comp),
+    // só as duas pontas soldam, mais a costura da faixinha quando existe
+    soldaLinear: arred(2 * altura + (complemento ? comp : 0)),
   };
 }
 
@@ -295,10 +336,13 @@ export function cortarParedes(faces, cfg = MANTA) {
     ...soltas.map(f => cortarPeca(f, cfg)),
     ...[...grupos.entries()].map(([nome, fs]) => cortarCorrida(fs, cfg, nome)),
   ];
+  const complementos = ninharComplementos(
+    lista.filter(p => p.complemento).map(p => ({ ...p.complemento, de: p.nome })), cfg);
   return {
     pecas: lista,
     qtdPecas: lista.length,
-    metrosLineares: arred(lista.reduce((s, p) => s + p.metrosLineares, 0)),
+    complementos,
+    metrosLineares: arred(lista.reduce((s, p) => s + p.metrosLineares, 0) + complementos.metrosLineares),
     soldaLinear: arred(lista.reduce((s, p) => s + p.soldaLinear, 0)),
     alturaMax: arred(Math.max(0, ...lista.map(p => p.altura))),
   };
@@ -445,6 +489,10 @@ export function planoManta({ comp, larg, prof, perimetro, areaReal, faces, praiC
         comp: p.compFaixa,
       }))),
     ...paredes.pecas.map(p => ({ nome: p.nome, comp: p.comp })),
+    // cada passada de faixinha também sai da bobina
+    ...paredes.complementos.passadas.map((p, i) => ({
+      nome: `Faixinhas de complemento ${i + 1}`, comp: p.comp,
+    })),
   ];
   const pedido = encaixarBobinas(lista, cfg);
   const solda = {
