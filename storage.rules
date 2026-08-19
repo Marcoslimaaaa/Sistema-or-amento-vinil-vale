@@ -5,6 +5,26 @@ service firebase.storage {
     match /users/{userId}/{allPaths=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+    // ---------- Central de Conteúdo ----------
+    // Vídeos dos posts. A LEITURA É PÚBLICA de propósito: para publicar no
+    // Instagram, a Meta baixa o arquivo pela URL — se exigir autenticação,
+    // a publicação falha. Só quem publica consegue enviar ou apagar, e essa
+    // lista é separada da equipe que enxerga dado de cliente.
+    match /central-conteudo/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+        && request.auth.token.email in [
+          'vinilvale@hotmail.com',
+          'vinilvale.ads@gmail.com',
+          'marcoslimablockchain@gmail.com',
+          'thamires.andrade171@gmail.com'
+        ]
+        // Teto de 300 MB e só vídeo ou imagem.
+        && request.resource.size < 300 * 1024 * 1024
+        && (request.resource.contentType.matches('video/.*')
+            || request.resource.contentType.matches('image/.*'));
+    }
+
     // Bloqueia todo acesso não autorizado
     match /{allPaths=**} {
       allow read, write: if false;

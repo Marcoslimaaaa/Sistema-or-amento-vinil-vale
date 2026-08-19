@@ -15,6 +15,19 @@ service cloud.firestore {
         ];
     }
 
+    // Central de Conteúdo: quem publica post NÃO precisa ver dado de cliente.
+    // Lista separada de propósito — a isEquipe() acima continua sendo a única
+    // porta para orçamento, contato, lead e conversa de WhatsApp.
+    function isConteudo() {
+      return request.auth != null
+        && request.auth.token.email in [
+          'vinilvale@hotmail.com',
+          'vinilvale.ads@gmail.com',
+          'marcoslimablockchain@gmail.com',
+          'thamires.andrade171@gmail.com'
+        ];
+    }
+
     // Apenas o próprio usuário autenticado acessa seus dados
     match /users/{userId}/{document=**} {
       allow read: if request.auth != null && request.auth.uid == userId;
@@ -56,6 +69,18 @@ service cloud.firestore {
     match /whatsapp_leads/{phone} {
       allow read: if isEquipe();
     }
+
+    // ---------- Central de Conteúdo (prefixo cc_) ----------
+    // Escopo de postagem: pauta, conteúdo, agendamento e alerta de fila.
+    // Nenhuma dessas coleções guarda dado de cliente.
+
+    match /cc_linhas/{id}        { allow read, write: if isConteudo(); }
+    match /cc_config/{id}        { allow read, write: if isConteudo(); }
+    match /cc_pautas/{id}        { allow read, write: if isConteudo(); }
+    match /cc_conteudos/{id}     { allow read, write: if isConteudo(); }
+    match /cc_agendamentos/{id}  { allow read, write: if isConteudo(); }
+    // Alertas do Guardião de Fila (escritos pelo cron via service account)
+    match /cc_alertas/{id}       { allow read, write: if isConteudo(); }
 
     // Bloqueia tudo mais por padrão
     match /{document=**} {
