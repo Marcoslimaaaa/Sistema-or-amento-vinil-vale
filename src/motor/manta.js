@@ -235,10 +235,7 @@ export function cortarPeca(face, cfg = MANTA) {
   // A peça principal sai com a bobina cheia e o que falta é uma FAIXINHA
   // soldada no pé: numa bobina de 1,40 com parede de 1,60, uma tira de 0,20
   // (mais os 5 cm que montam sobre a peça de cima) resolve.
-  const falta = arred(Math.max(0, altura - B));
-  const complemento = falta > 0
-    ? { largura: arred(falta + S), comp: arred(comp), coberto: falta }
-    : null;
+  const complementos = faixinhasPara(altura, comp, cfg);
   return {
     nome: face.nome || "face",
     faceComp: arred(face.comp || 0),
@@ -246,15 +243,36 @@ export function cortarPeca(face, cfg = MANTA) {
     comp: arred(comp),
     altura: arred(altura),
     alturaPrincipal: arred(Math.min(altura, B)),
-    complemento,
+    complementos,
+    complemento: complementos[0] || null, // compatibilidade
     // largura de bobina que sobra ao lado desta peça
-    aparo: complemento ? 0 : arred(B - altura),
-    // a peça principal consome UMA passada; a faixinha é contada à parte,
-    // porque várias faixinhas saem lado a lado da mesma passada
+    aparo: complementos.length ? 0 : arred(B - altura),
+    // a peça principal consome UMA passada; as faixinhas são contadas à parte,
+    // porque várias saem lado a lado da mesma passada
     metrosLineares: arred(comp),
-    // 2 cantos verticais + a costura horizontal da faixinha, quando existe
-    soldaLinear: arred(2 * altura + (complemento ? comp : 0)),
+    // 2 cantos verticais + uma costura horizontal por faixinha
+    soldaLinear: arred(2 * altura + complementos.length * comp),
   };
+}
+
+/**
+ * Faixinhas que completam a altura de uma peça.
+ *
+ * NENHUMA faixinha pode ser mais larga que a bobina — quando falta mais do que
+ * uma tira dá conta, entram várias, cada uma cobrindo no máximo (bobina − solda)
+ * porque monta 5 cm sobre a de cima. A última leva só o que sobrou.
+ */
+export function faixinhasPara(altura, comp, cfg = MANTA) {
+  const { larguraBobina: B, solda: S } = cfg;
+  const lista = [];
+  let restante = arred(altura - B);
+  let guarda = 0;
+  while (restante > 1e-9 && guarda++ < 200) {
+    const cobre = arred(Math.min(B - S, restante));
+    lista.push({ largura: arred(cobre + S), comp: arred(comp), coberto: cobre });
+    restante = arred(restante - cobre);
+  }
+  return lista;
 }
 
 /**
@@ -297,10 +315,8 @@ export function cortarCorrida(faces, cfg = MANTA, nome) {
   const prof = Math.max(...faces.map(f => f.prof || 0));
   const comp = somaFaces + 2 * S;
   const altura = prof + dobraPe + dobraTopo;
-  const falta = arred(Math.max(0, altura - cfg.larguraBobina));
-  const complemento = falta > 0
-    ? { largura: arred(falta + S), comp: arred(comp), coberto: falta }
-    : null;
+  const complementos = faixinhasPara(altura, comp, cfg);
+  const complemento = complementos[0] || null;
   return {
     nome: nome || faces.map(f => f.nome).join(" + "),
     corrida: true,
@@ -310,12 +326,13 @@ export function cortarCorrida(faces, cfg = MANTA, nome) {
     comp: arred(comp),
     altura: arred(altura),
     alturaPrincipal: arred(Math.min(altura, cfg.larguraBobina)),
+    complementos,
     complemento,
     vincos: faces.length - 1, // cantos dobrados: sem material extra, sem solda
-    aparo: complemento ? 0 : arred(cfg.larguraBobina - altura),
+    aparo: complementos.length ? 0 : arred(cfg.larguraBobina - altura),
     metrosLineares: arred(comp),
-    // só as duas pontas soldam, mais a costura da faixinha quando existe
-    soldaLinear: arred(2 * altura + (complemento ? comp : 0)),
+    // só as duas pontas soldam, mais uma costura por faixinha
+    soldaLinear: arred(2 * altura + complementos.length * comp),
   };
 }
 
@@ -337,7 +354,7 @@ export function cortarParedes(faces, cfg = MANTA) {
     ...[...grupos.entries()].map(([nome, fs]) => cortarCorrida(fs, cfg, nome)),
   ];
   const complementos = ninharComplementos(
-    lista.filter(p => p.complemento).map(p => ({ ...p.complemento, de: p.nome })), cfg);
+    lista.flatMap(p => (p.complementos || []).map(c => ({ ...c, de: p.nome }))), cfg);
   return {
     pecas: lista,
     qtdPecas: lista.length,
@@ -421,9 +438,23 @@ export function analisarSobra(parte, candidatas = [], cfg = MANTA) {
  * `pecas` = [{nome, comp}] em metros lineares de bobina.
  */
 export function encaixarBobinas(pecas, cfg = MANTA) {
-  const L = cfg.comprimentoBobina;
+  const L = cfg.comprimentoBobina, S = cfg.solda;
+  // Peça mais comprida que o rolo NÃO some da conta: ela é fatiada em trechos
+  // que cabem, cada emenda montando 5 cm sobre a anterior. Descartar em silêncio
+  // fazia a ferramenta pedir MENOS bobina quanto maior a piscina.
   const grandes = pecas.filter(p => p.comp > L);
-  const fila = pecas.filter(p => p.comp <= L).slice().sort((a, b) => b.comp - a.comp);
+  const fatiadas = [];
+  for (const p of pecas) {
+    if (p.comp <= L) { fatiadas.push(p); continue; }
+    const n = Math.max(2, Math.ceil((p.comp - S) / (L - S)));
+    let resta = p.comp;
+    for (let i = 0; i < n && resta > 1e-9; i++) {
+      const trecho = arred(Math.min(L, resta + (i > 0 ? S : 0)));
+      fatiadas.push({ ...p, nome: `${p.nome} · trecho ${i + 1}/${n}`, comp: trecho, fatiado: true });
+      resta = arred(resta - (trecho - (i > 0 ? S : 0)));
+    }
+  }
+  const fila = fatiadas.slice().sort((a, b) => b.comp - a.comp);
   const bobinas = [];
   for (const p of fila) {
     let b = bobinas.find(x => x.sobra >= p.comp - 1e-9);
@@ -434,6 +465,9 @@ export function encaixarBobinas(pecas, cfg = MANTA) {
   }
   const usado = arred(fila.reduce((s, p) => s + p.comp, 0));
   const comprado = bobinas.length * L;
+  // cada peça fatiada ganha (n−1) emendas transversais
+  const emendasFatia = grandes.length
+    ? arred(fatiadas.filter(p => p.fatiado).length - grandes.length) : 0;
   return {
     bobinas: bobinas.map((b, i) => ({ n: i + 1, ...b })),
     qtd: bobinas.length,
@@ -442,8 +476,9 @@ export function encaixarBobinas(pecas, cfg = MANTA) {
     // ponta de bobina que ninguém aproveita — entra no orçamento do cliente
     sobraLinear: arred(comprado - usado),
     aproveitamento: comprado ? arred((usado / comprado) * 100, 1) : 0,
-    // peça que não cabe numa bobina inteira: precisa emendar, avisa em vez de mentir
+    // peças que passaram do rolo e tiveram de ser fatiadas (a conta já as inclui)
     naoCabem: grandes,
+    emendasFatia,
   };
 }
 
@@ -451,8 +486,165 @@ export function encaixarBobinas(pecas, cfg = MANTA) {
  * Plano de corte completo. `areaReal` é a área da piscina (chão + paredes) vinda
  * do calcA — serve para medir quanto de sobra o método impõe.
  */
+/**
+ * ANEXO EXTERNO RETANGULAR — prainha externa, banco, plataforma.
+ *
+ * Fica FORA do corpo da piscina, encostado nele, então SOMA: traz piso próprio
+ * e as paredes que ficam expostas. A face que encosta na piscina não é parede —
+ * mas é linha de solda, e por isso entra na conta de mão de obra.
+ *
+ *   encaixe "lado"  → encostado por um lado só: sobram 3 paredes
+ *   encaixe "canto" → encostado por dois lados:  sobram 2 paredes
+ *
+ * `comp` é sempre o lado que encosta na piscina.
+ */
+export function anexoExterno(a, cfg = MANTA) {
+  const nome = a.nome || "Anexo";
+  const comp = a.comp || 0, larg = a.larg || 0, prof = a.prof || 0;
+  const canto = a.encaixe === "canto";
+  if (!(comp > 0 && larg > 0 && prof > 0)) return null;
+
+  const piso = cortarChao(comp, larg, cfg, `${nome} · piso`);
+  const faces = canto
+    ? [{ nome: `${nome} · parede oposta`, comp, prof },
+       { nome: `${nome} · lateral`, comp: larg, prof }]
+    : [{ nome: `${nome} · parede oposta`, comp, prof },
+       { nome: `${nome} · lateral 1`, comp: larg, prof },
+       { nome: `${nome} · lateral 2`, comp: larg, prof }];
+  const paredes = cortarParedes(faces, cfg);
+  // onde ele encosta na piscina: não vira parede, vira solda
+  const contato = arred(canto ? comp + larg : comp);
+
+  return {
+    nome, encaixe: canto ? "canto" : "lado",
+    medidas: { comp: arred(comp), larg: arred(larg), prof: arred(prof) },
+    piso, paredes, contato,
+    // peças para entrar na ninhagem junto com as faixinhas
+    itens: [
+      ...Array.from({ length: piso.faixas }, (_, i) => ({
+        nome: piso.faixas > 1 ? `${piso.nome} · faixa ${i + 1}` : piso.nome,
+        largura: cfg.larguraBobina, comp: piso.compFaixa, tipo: "chao",
+      })),
+      ...paredes.pecas.map(p => ({ nome: p.nome, largura: p.altura, comp: p.comp, tipo: "parede" })),
+    ],
+    areaUtil: arred(comp * larg + (canto ? (comp + larg) : (comp + 2 * larg)) * prof),
+    solda: {
+      // volta do piso + cantos verticais entre as paredes + encontro com a piscina
+      total: arred(2 * (comp + larg) + paredes.pecas.reduce((s, p) => s + p.altura, 0) + contato),
+      contato,
+    },
+  };
+}
+
+/* ═══ ANEXOS DE CANTO ═══
+ * Regra da obra: no CANTO, com a piscina integrada, o bico da parte funda
+ * entra ate a metade do anexo. O anexo e dividido em quatro: UM QUARTO e
+ * piscina, TRES QUARTOS sao o anexo.
+ *   retangular -> L de seis lados: 4 paredes retas expostas, depois vira
+ *                 duas vezes e volta para a piscina
+ *   redondo    -> tres quartos de circulo; os dois raios do corte fazem a juncao
+ */
+/**
+ * Contorno em L de um anexo de canto retangular.
+ * O bico da piscina ocupa o quadrante da origem (comp/2 × larg/2).
+ * Devolve o polígono e quais lados são parede exposta e quais são contato.
+ */
+export function contornoCantoRetangular(comp, larg) {
+  const cm = comp / 2, lm = larg / 2;
+  return {
+    poligono: [
+      { x: cm, y: 0 }, { x: comp, y: 0 }, { x: comp, y: larg },
+      { x: 0, y: larg }, { x: 0, y: lm }, { x: cm, y: lm },
+    ],
+    // quatro paredes retas que ficam de fora
+    expostas: [
+      { nome: "frente curta", comp: arred(cm) },
+      { nome: "lateral longa", comp: arred(larg) },
+      { nome: "fundo", comp: arred(comp) },
+      { nome: "lateral curta", comp: arred(lm) },
+    ],
+    // os dois lados que voltam para a piscina — solda, não parede
+    contato: arred(cm + lm),
+  };
+}
+
+/** Polígono de três quartos de círculo, com o quadrante da piscina removido. */
+export function contornoCantoRedondo(diametro, passos = 36) {
+  const R = diametro / 2, p = [{ x: R, y: R }];
+  // varre de 0 a 270°, deixando o quadrante do bico da piscina de fora
+  for (let i = 0; i <= passos; i++) {
+    const t = (Math.PI / 2) + (i / passos) * (3 * Math.PI / 2);
+    p.push({ x: R + R * Math.cos(t), y: R + R * Math.sin(t) });
+  }
+  return p;
+}
+
+/**
+ * Anexo de canto — prainha, spa ou banco encaixado no bico da piscina.
+ * `forma`: "retangular" (padrão) ou "redondo".
+ */
+export function anexoCanto(a, cfg = MANTA) {
+  const nome = a.nome || "Anexo de canto";
+  const prof = a.prof || 0;
+  if (!(prof > 0)) return null;
+
+  if (a.forma === "redondo") {
+    const D = a.diametro || 0;
+    if (!(D > 0)) return null;
+    const poligono = contornoCantoRedondo(D);
+    const piso = cortarChaoContorno(poligono, cfg, `${nome} · piso`);
+    // A cinta é um cilindro: superfície desenvolvível, a manta CURVA sem vincar.
+    // Sai numa peça só de 3/4 da circunferência.
+    const arco = arred((3 / 4) * Math.PI * D);
+    const cinta = cortarCorrida([{ nome: "cinta", comp: arco, prof }], cfg, `${nome} · cinta curva`);
+    const contato = arred(D); // os dois raios do corte
+    return {
+      nome, forma: "redondo", encaixe: "canto",
+      medidas: { diametro: arred(D), prof: arred(prof) },
+      piso, paredes: { pecas: [cinta], qtdPecas: 1, metrosLineares: cinta.metrosLineares },
+      contato, poligono,
+      itens: [
+        ...piso.pecas.map((f, i) => ({
+          nome: `${nome} · piso · faixa ${i + 1}`,
+          largura: cfg.larguraBobina, comp: f.comp, tipo: "chao",
+        })),
+        { nome: cinta.nome, largura: cinta.altura, comp: cinta.comp, tipo: "parede" },
+      ],
+      areaUtil: arred((3 / 4) * Math.PI * (D / 2) ** 2 + arco * prof),
+      solda: {
+        total: arred(piso.soldaLinear + 2 * cinta.altura + contato),
+        contato,
+      },
+    };
+  }
+
+  const comp = a.comp || 0, larg = a.larg || 0;
+  if (!(comp > 0 && larg > 0)) return null;
+  const c = contornoCantoRetangular(comp, larg);
+  const piso = cortarChaoContorno(c.poligono, cfg, `${nome} · piso`);
+  const paredes = cortarParedes(c.expostas.map(f => ({ nome: `${nome} · ${f.nome}`, comp: f.comp, prof })), cfg);
+  return {
+    nome, forma: "retangular", encaixe: "canto",
+    medidas: { comp: arred(comp), larg: arred(larg), prof: arred(prof) },
+    piso, paredes, contato: c.contato, poligono: c.poligono,
+    itens: [
+      ...piso.pecas.map((f, i) => ({
+        nome: `${nome} · piso · faixa ${i + 1}`,
+        largura: cfg.larguraBobina, comp: f.comp, tipo: "chao",
+      })),
+      ...paredes.pecas.map(p => ({ nome: p.nome, largura: p.altura, comp: p.comp, tipo: "parede" })),
+    ],
+    // três quartos do retângulo, mais as quatro paredes expostas
+    areaUtil: arred((3 / 4) * comp * larg + c.expostas.reduce((s, f) => s + f.comp, 0) * prof),
+    solda: {
+      total: arred(piso.soldaLinear + paredes.pecas.reduce((s, p) => s + p.altura, 0) + c.contato),
+      contato: c.contato,
+    },
+  };
+}
+
 export function planoManta({ comp, larg, prof, perimetro, areaReal, faces, praiComp = 0,
-                             aproveitarSobra = false }, cfg = MANTA) {
+                             aproveitarSobra = false, anexos = [] }, cfg = MANTA) {
   const chao = cortarChaoRegioes(regioesChao(comp, larg, praiComp, cfg), cfg);
   const paredes = cortarParedes(faces || facesRetangulo(comp, larg, prof), cfg);
 
@@ -475,7 +667,18 @@ export function planoManta({ comp, larg, prof, perimetro, areaReal, faces, praiC
   const economia = arred(chao.partes
     .filter(p => reaproveitadas.has(p.nome))
     .reduce((s, p) => s + p.metrosLineares, 0));
-  const metrosLineares = arred(chao.metrosLineares + paredes.metrosLineares - economia);
+  // ── anexos externos (prainha externa, banco): peça própria, ninhada junto ──
+  // canto usa o modelo de tres quartos (bico da piscina entra ate a metade);
+  // lado usa o retangulo encostado
+  const anexosCalc = (anexos || [])
+    .map(a => (a.encaixe === "canto" ? anexoCanto(a, cfg) : anexoExterno(a, cfg)))
+    .filter(Boolean);
+  const itensAnexo = anexosCalc.flatMap(a => a.itens);
+  const anexoNinho = ninharComplementos(itensAnexo, cfg);
+  const soldaAnexos = arred(anexosCalc.reduce((s, a) => s + a.solda.total, 0));
+
+  const metrosLineares = arred(
+    chao.metrosLineares + paredes.metrosLineares - economia + anexoNinho.metrosLineares);
   // O que se COBRA do cliente: a manta cortada para esta piscina, largura cheia
   // da bobina, porque o retalho ao lado de peça baixa não se aproveita. A ponta
   // que sobra da bobina NÃO entra — ela volta para a prateleira.
@@ -493,6 +696,9 @@ export function planoManta({ comp, larg, prof, perimetro, areaReal, faces, praiC
     ...paredes.complementos.passadas.map((p, i) => ({
       nome: `Faixinhas de complemento ${i + 1}`, comp: p.comp,
     })),
+    ...anexoNinho.passadas.map((p, i) => ({
+      nome: `Anexos · passada ${i + 1}`, comp: p.comp,
+    })),
   ];
   const pedido = encaixarBobinas(lista, cfg);
   const solda = {
@@ -500,10 +706,13 @@ export function planoManta({ comp, larg, prof, perimetro, areaReal, faces, praiC
     chaoNaParede: arred(chao.partes.reduce((s, p) => s + p.soldaBorda, 0)),
     cantosParede: arred(paredes.pecas.reduce((s, p) => s + p.altura, 0)),
   };
-  solda.total = arred(solda.emendaChao + solda.chaoNaParede + solda.cantosParede);
+  solda.anexos = soldaAnexos;
+  solda.total = arred(solda.emendaChao + solda.chaoNaParede + solda.cantosParede + soldaAnexos);
   return {
     chao,
     paredes,
+    anexos: anexosCalc,
+    anexoNinho,
     lista,
     pedido,
     solda,

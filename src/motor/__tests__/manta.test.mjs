@@ -11,11 +11,13 @@
 import { faixasPara, coberturaDe, cortarChao, cortarPeca, cortarParedes,
          facesRetangulo, facesComPrainha, regioesChao, cortarChaoRegioes,
          cortarCorrida, ninharComplementos, cortarChaoContorno, facesDoContorno,
-         encaixarBobinas, analisarSobra, planoManta, MANTA } from "../manta.js";
+         encaixarBobinas, analisarSobra, anexoExterno, anexoCanto,
+         contornoCantoRetangular, contornoCantoRedondo, planoManta, MANTA } from "../manta.js";
 
 let falhas=0,total=0;
 const perto=(a,b,tol=0.011)=>Math.abs(a-b)<=tol;
 const arredondar=v=>Math.round(v*100)/100;
+const n2=v=>Number(v).toFixed(2).replace(".",",");
 const ok=(nome,cond,obtido,esperado)=>{
   total++;
   if(cond)console.log(`  ok  ${nome}`);
@@ -277,6 +279,171 @@ console.log("\nfacesDoContorno — a parede acompanha o desenho inteiro");
   ok("chão do L corre no comprimento", c.sentido==="comprimento", c.sentido, "comprimento");
   ok("faixas de comprimentos diferentes", new Set(c.pecas.map(x=>x.comp)).size>1,
      c.pecas.map(x=>x.comp).join("/"), "variados");
+}
+
+// ── Defeitos encontrados por revisão independente em 2026-08-19.
+//    Os três faziam a ferramenta pedir MENOS material do que a obra consome.
+console.log("\nregressão — peça maior que o rolo não pode sumir da conta");
+{
+  const cfg={...MANTA,larguraBobina:1.55,comprimentoBobina:25};
+  const bob=L=>planoManta({comp:L,larg:4,prof:1.4,praiComp:0,
+    faces:facesRetangulo(L,4,1.4)},cfg).pedido.qtd;
+  // antes: a partir de 25 m a peça era descartada em silêncio e o pedido caía para 1
+  ok("24,00 m pede 6 bobinas", bob(24)===6,  bob(24), 6);
+  ok("25,00 m NÃO despenca",   bob(25)>=6,   bob(25), "≥ 6");
+  ok("30,00 m pede mais",      bob(30)>bob(25), bob(30), "> "+bob(25));
+  ok("40,00 m pede mais ainda",bob(40)>bob(30), bob(40), "> "+bob(30));
+  let cresce=true,ant=0;
+  for(let L=5;L<=45;L+=2.5){const q=bob(L);if(q<ant)cresce=false;ant=q;}
+  ok("pedido nunca cai quando a piscina cresce", cresce, cresce, true);
+}
+
+console.log("\nregressão — profundidade tem de continuar mexendo no material");
+{
+  const cfg={...MANTA,larguraBobina:1.55,comprimentoBobina:25};
+  const m2=D=>planoManta({comp:10,larg:4,prof:D,praiComp:0,
+    faces:facesRetangulo(10,4,D)},cfg).areaCobravel;
+  let cresce=true,ant=0;
+  for(let D=1.0;D<=5.0;D+=0.2){const v=m2(D);if(v<ant-1e-9)cresce=false;ant=v;}
+  ok("m² nunca cai quando a piscina fica mais funda", cresce, cresce, true);
+  ok("5,00 m consome bem mais que 1,40 m", m2(5.0)>m2(1.4)*1.8, m2(5.0)+" vs "+m2(1.4), "mais que o dobro");
+  // e nunca pedir menos manta do que a superfície geométrica da piscina
+  let sempreMaior=true;
+  for(let D=1.0;D<=5.0;D+=0.2){
+    const geo=10*4+2*(10+4)*D;
+    if(m2(D)<geo)sempreMaior=false;
+  }
+  ok("nunca pede menos que a área geométrica", sempreMaior, sempreMaior, true);
+}
+
+console.log("\nregressão — faixinha nunca pode ser mais larga que a bobina");
+{
+  for(const B of [1.40,1.55,1.65,2.05]){
+    const cfg={...MANTA,larguraBobina:B,comprimentoBobina:25};
+    let ok1=true,maior=0;
+    for(let D=1.0;D<=6.0;D+=0.1){
+      const r=cortarParedes(facesRetangulo(10,4,D),cfg);
+      for(const p of r.pecas) for(const c of (p.complementos||[])){
+        maior=Math.max(maior,c.largura);
+        if(c.largura>B+1e-9)ok1=false;
+      }
+    }
+    ok(`bobina de ${n2(B)}: nenhuma faixinha passa da largura`, ok1, n2(maior), "≤ "+n2(B));
+  }
+  // a soma das faixinhas mais a peça principal tem de cobrir a altura inteira
+  const cfg={...MANTA,larguraBobina:1.55};
+  for(const D of [1.4,2.2,3.0,4.5]){
+    const p=cortarPeca({comp:6,prof:D},cfg);
+    const coberto=p.alturaPrincipal+(p.complementos||[]).reduce((s,c)=>s+c.coberto,0);
+    ok(`prof ${n2(D)}: peça + faixinhas cobrem ${n2(p.altura)}`, perto(coberto,p.altura),
+       n2(coberto), n2(p.altura));
+  }
+}
+
+console.log("\nanexoExterno — prainha externa, banco: peça própria que SOMA");
+{
+  // encostado por um lado: sobram 3 paredes; a face que encosta vira solda
+  const a=anexoExterno({nome:"Prainha ext.",comp:2.00,larg:2.00,prof:0.50,encaixe:"lado"});
+  ok("3 paredes quando encosta por um lado", a.paredes.qtdPecas===3, a.paredes.qtdPecas, 3);
+  ok("a face de encontro vira contato",      perto(a.contato,2.00),  a.contato,          2.00);
+  ok("parede sai com 0,50 + 10 cm",          perto(a.paredes.pecas[0].altura,0.60),
+     a.paredes.pecas[0].altura, 0.60);
+  ok("piso de 2,00 × 2,00 pede 2 faixas",    a.piso.faixas===2,      a.piso.faixas,      2);
+  ok("o contato entra na solda",             a.solda.total>a.contato, a.solda.total,     "> "+a.contato);
+
+  // no canto encosta por dois lados: uma parede a menos, mais contato
+  const b=anexoExterno({nome:"Prainha canto",comp:2.00,larg:2.00,prof:0.50,encaixe:"canto"});
+  ok("2 paredes quando encosta no canto",    b.paredes.qtdPecas===2, b.paredes.qtdPecas, 2);
+  ok("contato dobra no canto",               perto(b.contato,4.00),  b.contato,          4.00);
+  ok("canto gasta menos bobina que lado",    b.paredes.metrosLineares<a.paredes.metrosLineares,
+     b.paredes.metrosLineares, "< "+a.paredes.metrosLineares);
+
+  ok("medida inválida não vira anexo",       anexoExterno({nome:"x",comp:0,larg:2,prof:0.5})===null,
+     anexoExterno({nome:"x",comp:0,larg:2,prof:0.5}), null);
+}
+
+console.log("\nplanoManta com anexos — soma sem estragar a piscina");
+{
+  const cfg={...MANTA,larguraBobina:1.55,comprimentoBobina:25};
+  const semA=planoManta({comp:10,larg:4,prof:1.4,praiComp:0,faces:facesRetangulo(10,4,1.4)},cfg);
+  const comA=planoManta({comp:10,larg:4,prof:1.4,praiComp:0,faces:facesRetangulo(10,4,1.4),
+    anexos:[{nome:"Prainha externa",comp:2,larg:2,prof:0.5,encaixe:"lado"},
+            {nome:"Banco",comp:2,larg:0.45,prof:0.45,encaixe:"lado"}]},cfg);
+  ok("a piscina sozinha não muda",     perto(semA.areaCobravel,90.61), semA.areaCobravel, 90.61);
+  ok("2 anexos calculados",            comA.anexos.length===2,         comA.anexos.length, 2);
+  ok("anexo SOMA material",            comA.metrosLineares>semA.metrosLineares,
+     comA.metrosLineares, "> "+semA.metrosLineares);
+  ok("anexo SOMA solda",               comA.solda.total>semA.solda.total, comA.solda.total, "> "+semA.solda.total);
+  ok("a solda dos anexos é separável", comA.solda.anexos>0,            comA.solda.anexos,  "> 0");
+  // as peças de anexo são baixas: têm de sair ninhadas, não uma passada cada
+  const solto=comA.anexos.flatMap(a=>a.itens).reduce((s,i)=>s+i.comp,0);
+  ok("ninhagem economiza sobre uma passada por peça", comA.anexoNinho.metrosLineares<solto,
+     comA.anexoNinho.metrosLineares, "< "+arredondar(solto));
+  // e as passadas de anexo entram no pedido de bobinas
+  ok("as passadas de anexo estão na lista de corte",
+     comA.lista.some(p=>p.nome.indexOf("Anexos")>=0), true, true);
+  // sem anexo nenhum, nada muda em lugar nenhum
+  const vazio=planoManta({comp:10,larg:4,prof:1.4,praiComp:0,faces:facesRetangulo(10,4,1.4),anexos:[]},cfg);
+  ok("lista de anexos vazia é inócua", perto(vazio.metrosLineares,semA.metrosLineares),
+     vazio.metrosLineares, semA.metrosLineares);
+}
+
+console.log("\nanexoCanto — o bico da piscina come UM QUARTO, sobram três");
+{
+  const area=p=>{let s=0;for(let i=0;i<p.length;i++){const a=p[i],b=p[(i+1)%p.length];
+    s+=a.x*b.y-b.x*a.y}return Math.abs(s)/2};
+
+  // retangular vira L de seis lados: 4 paredes retas, vira duas vezes, volta
+  const c=contornoCantoRetangular(2.00,2.00);
+  ok("contorno em L tem 6 lados",        c.poligono.length===6, c.poligono.length, 6);
+  ok("piso é 3/4 do retângulo",          perto(area(c.poligono),3.00), arredondar(area(c.poligono)), 3.00);
+  ok("4 paredes retas expostas",         c.expostas.length===4, c.expostas.length, 4);
+  ok("contato = metade de cada lado",    perto(c.contato,2.00), c.contato, 2.00);
+
+  const r=anexoCanto({nome:"Spa",comp:2.00,larg:2.00,prof:0.90});
+  ok("anexo de canto tem 4 peças de parede", r.paredes.qtdPecas===4, r.paredes.qtdPecas, 4);
+  ok("parede de 0,90 sai com 1,00",      perto(r.paredes.pecas[0].altura,1.00), r.paredes.pecas[0].altura, 1.00);
+  ok("o contato entra na solda",         r.solda.contato>0, r.solda.contato, "> 0");
+
+  // canto gasta MAIS parede que o modelo antigo de 2 lados encostados
+  const lado=anexoExterno({nome:"Spa",comp:2.00,larg:2.00,prof:0.90,encaixe:"lado"});
+  ok("canto tem mais parede que lado (4 contra 3)", r.paredes.qtdPecas>lado.paredes.qtdPecas,
+     r.paredes.qtdPecas, "> "+lado.paredes.qtdPecas);
+}
+
+console.log("\nanexoCanto redondo — três quartos de círculo, cinta curvada");
+{
+  const D=2.00;
+  const r=anexoCanto({nome:"Spa redondo",forma:"redondo",diametro:D,prof:0.90});
+  const arco=(3/4)*Math.PI*D;
+  // cilindro é superfície desenvolvível: a manta curva sem vincar, peça única
+  ok("uma peça só de cinta",             r.paredes.qtdPecas===1, r.paredes.qtdPecas, 1);
+  ok("cinta = 3/4 da circunferência + solda", perto(r.paredes.pecas[0].comp,arco+0.10,0.02),
+     r.paredes.pecas[0].comp, arredondar(arco+0.10));
+  ok("contato = os dois raios do corte", perto(r.contato,D), r.contato, D);
+  const pol=contornoCantoRedondo(D,72);
+  let s=0;for(let i=0;i<pol.length;i++){const a=pol[i],b=pol[(i+1)%pol.length];s+=a.x*b.y-b.x*a.y}
+  const ar=Math.abs(s)/2, esperado=(3/4)*Math.PI*(D/2)**2;
+  ok("piso = 3/4 do círculo",            perto(ar,esperado,0.02), arredondar(ar), arredondar(esperado));
+  ok("diâmetro inválido não vira anexo", anexoCanto({forma:"redondo",diametro:0,prof:0.9})===null,
+     anexoCanto({forma:"redondo",diametro:0,prof:0.9}), null);
+}
+
+console.log("\nplanoManta — canto e lado convivem sem estragar a piscina");
+{
+  const cfg={...MANTA,larguraBobina:1.55,comprimentoBobina:25};
+  const base=planoManta({comp:10,larg:4,prof:1.4,praiComp:0,faces:facesRetangulo(10,4,1.4)},cfg);
+  const com=planoManta({comp:10,larg:4,prof:1.4,praiComp:0,faces:facesRetangulo(10,4,1.4),
+    anexos:[{nome:"Spa canto",comp:2,larg:2,prof:0.9,encaixe:"canto"},
+            {nome:"Spa redondo",forma:"redondo",diametro:2,prof:0.9,encaixe:"canto"},
+            {nome:"Prainha",comp:2,larg:2,prof:0.5,encaixe:"lado"}]},cfg);
+  ok("gabarito da piscina intacto",  perto(base.areaCobravel,90.61), base.areaCobravel, 90.61);
+  ok("3 anexos calculados",          com.anexos.length===3,          com.anexos.length,  3);
+  ok("canto usa o modelo de canto",  com.anexos[0].encaixe==="canto"&&com.anexos[0].paredes.qtdPecas===4,
+     com.anexos[0].paredes.qtdPecas, 4);
+  ok("redondo vira cinta única",     com.anexos[1].paredes.qtdPecas===1, com.anexos[1].paredes.qtdPecas, 1);
+  ok("lado continua com 3 paredes",  com.anexos[2].paredes.qtdPecas===3, com.anexos[2].paredes.qtdPecas, 3);
+  ok("tudo isso SOMA material",      com.metrosLineares>base.metrosLineares, com.metrosLineares, "> "+base.metrosLineares);
 }
 
 console.log(`\n${total-falhas}/${total} passaram`);
