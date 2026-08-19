@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node src/motor/__tests__/areas.test.mjs && node src/services/__tests__/janela.test.mjs && node src/services/__tests__/sendWA.test.mjs && node src/services/__tests__/vinculo.test.mjs && node src/services/__tests__/respostas.test.mjs && node src/services/__tests__/score.test.mjs && node src/services/__tests__/etapaAuto.test.mjs && node src/services/__tests__/reguaBot.test.mjs && node src/services/__tests__/origem.test.mjs && node src/services/__tests__/fichaLead.test.mjs"
+    "test": "node src/motor/__tests__/areas.test.mjs && node src/motor/__tests__/manta.test.mjs && node src/services/__tests__/janela.test.mjs && node src/services/__tests__/sendWA.test.mjs && node src/services/__tests__/vinculo.test.mjs && node src/services/__tests__/respostas.test.mjs && node src/services/__tests__/score.test.mjs && node src/services/__tests__/etapaAuto.test.mjs && node src/services/__tests__/reguaBot.test.mjs && node src/services/__tests__/origem.test.mjs && node src/services/__tests__/fichaLead.test.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^9.122.0",

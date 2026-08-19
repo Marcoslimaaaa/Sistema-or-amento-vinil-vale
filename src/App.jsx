@@ -6,6 +6,7 @@ import { getEstampaByNome } from "./data/estampas.js";
 import FormaEditor, { MiniForma } from "./FormaEditor.jsx";
 import { MODELOS } from "./data/modelos.js";
 import { calcA } from "./motor/areas.js";
+import { planoManta, facesRetangulo, facesComPrainha, facesDoContorno, cortarChaoContorno } from "./motor/manta.js";
 import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho } from "./motor/formas.js";
 import { ramalSistema, totaisHidraulica, ROTULO_SIS, SEM_TUBO, BARRA_M } from "./motor/hidraulica.js";
 // jspdf/html2canvas (~200KB gz) só carregam quando alguém gera PDF/imagem
@@ -949,6 +950,62 @@ const mkItems=(tipo)=>{
     {id:14,n:"Mão de obra completa",q:1,c:0,m:0,nt:"Início ao acabamento",on:true,un:"un"},
   ];
 };
+// ═══ ITENS QUE MUDAM COM A MANTA ARMADA 1,5 mm ═══
+// A manta armada não usa manta acrílica (é forrada no chão sob o vinil comum) e
+// não usa perfil rígido — vai perfil de vulcanização, porque a fixação é soldada.
+// Em compensação entram PVC líquido e cola de contato, que o bolsão não leva.
+const ITENS_ARMADA={
+  // o item do revestimento troca de nome: ACQUALINER é a marca do vinil 0,7/0,8,
+  // não da manta armada, e não pode aparecer num orçamento de manta
+  renomeia:{1:{n:"Manta Armada 1,5mm",nt:"Alto padrão · reforçada com trama de poliéster · Estampa à escolha"}},
+  volta:{1:{n:"Vinil ACQUALINER",nt:"Resistência até 32°C · Estampa à escolha"}},
+  remove:[2],                       // Manta Acrílica 0,6mm
+  troca:{3:{id:30,n:"Perfil de Vulcanização",un:"ml",nt:"toda a borda da parede — mesma regra do perfil rígido"}},
+  entram:[
+    {id:31,n:"PVC Líquido",q:1,c:0,m:0,nt:"vedação e acabamento de toda a solda",on:true,un:"solda"},
+    {id:32,n:"Cola de Contato",q:1,c:0,m:0,nt:"",on:true,un:"un"},
+  ],
+};
+/**
+ * Ajusta a lista de itens quando o vinil vira manta armada (e desfaz quando volta).
+ * Mexe SÓ nos itens afetados — preço e quantidade que o usuário editou nas outras
+ * linhas continuam de pé.
+ */
+const aplicarItensVinil=(items,armada)=>{
+  const lista=(items||[]).slice();
+  const acha=id=>lista.findIndex(i=>i.id===id);
+  if(armada){
+    for(const [id,novo] of Object.entries(ITENS_ARMADA.renomeia)){
+      const k=acha(Number(id));if(k>=0)lista[k]={...lista[k],...novo};
+    }
+    for(const id of ITENS_ARMADA.remove){const k=acha(id);if(k>=0)lista.splice(k,1);}
+    for(const [de,para] of Object.entries(ITENS_ARMADA.troca)){
+      const k=acha(Number(de));
+      if(k>=0)lista[k]={...lista[k],...para,c:0}; // produto diferente: preço volta a zero
+    }
+    for(const novo of ITENS_ARMADA.entram){
+      if(acha(novo.id)<0){
+        const ref=acha(30);
+        lista.splice(ref>=0?ref+1:lista.length,0,{...novo});
+      }
+    }
+  }else{
+    for(const [id,volta] of Object.entries(ITENS_ARMADA.volta)){
+      const k=acha(Number(id));if(k>=0)lista[k]={...lista[k],...volta};
+    }
+    for(const novo of ITENS_ARMADA.entram){const k=acha(novo.id);if(k>=0)lista.splice(k,1);}
+    for(const [de,para] of Object.entries(ITENS_ARMADA.troca)){
+      const k=acha(para.id);
+      if(k>=0)lista[k]={...lista[k],id:Number(de),n:"Perfil Rígido",un:"ml",nt:"",c:20};
+    }
+    if(acha(2)<0){
+      const k=acha(1);
+      lista.splice(k>=0?k+1:0,0,{id:2,n:"Manta Acrílica 0,6mm",q:1,c:20,m:0,nt:"só chão",on:true,un:"chao"});
+    }
+  }
+  return lista;
+};
+
 const mkCI=(tipo)=>{
   if(tipo==="revestimento")return["Água para enchimento / Caminhão pipa"];
   if(tipo==="reforma")return["Materiais de alvenaria e hidráulico","Água para enchimento / Caminhão pipa","Remoção de entulho"];
@@ -1035,10 +1092,40 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
   const spa=d.spa||{on:false,length:"0",width:"0",depth:"0"};
   const pay=d.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
   const ar=calcA(pool,spa,d.wMode||"regular",d.walls||[],d.poolFmt,d.extras||[],d.spaType,d.desenho);
+  // Manta armada não se resume a chão + paredes: o detalhamento técnico tem de
+  // mostrar o plano de corte, senão o PDF sai com a lógica do bolsão.
+  const mantaQ=(()=>{
+    if(!vinilOpt(d.vinilT).armada)return null;
+    const n=v=>parseFloat(String(v??"").replace(",","."))||0;
+    const L=n(pool.length),W=n(pool.width),D=ar.depthInfo?.avg||n(pool.depth);
+    if(!(L>0&&W>0&&D>0))return null;
+    const praiC=d.poolFmt==="Com prainha"?n(pool.prainhaComp):0;
+    const praiP=n(pool.prainhaProf);
+    const cont=d.desenho&&(d.desenho.vertices||[]).length>=3?contornoEfetivo(d.desenho):null;
+    if(cont&&cont.length>=3){
+      const ch=cortarChaoContorno(cont,undefined,"Chão · desenho");
+      const base=planoManta({comp:L,larg:W,prof:D,perimetro:parseFloat(ar.perim)||0,
+        areaReal:parseFloat(ar.tot)||0,faces:facesDoContorno(cont,D)});
+      const dif=ch.metrosLineares-base.chao.metrosLineares;
+      return{...base,chao:{partes:[ch],metrosLineares:ch.metrosLineares,emendas:ch.emendas,soldaLinear:ch.soldaLinear},
+        metrosLineares:+(base.metrosLineares+dif).toFixed(2),
+        areaCobravel:+((base.metrosLineares+dif)*1.55).toFixed(2)};
+    }
+    const faces=praiC>0&&praiC<L
+      ?facesComPrainha(L,W,D,praiC,Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)),
+        {prainhaCorrida:(d.wMode||"regular")!=="irregular"})
+      :facesRetangulo(L,W,D);
+    return planoManta({comp:L,larg:W,prof:D,perimetro:parseFloat(ar.perim)||0,
+      areaReal:parseFloat(ar.tot)||0,praiComp:praiC,faces});
+  })();
+  // Com manta armada o m² cobrado é o do PLANO DE CORTE, não a superfície da
+  // piscina: a solda, as dobras e a largura de bobina perdida são material que
+  // sai da bobina e vai para a obra. A ponta da bobina fica de fora.
   const effQ=(i)=>{
-    if(i.un==="m²")return parseFloat(ar.tot)||0;
-    if(i.un==="chao")return parseFloat(ar.chaoTot)||0;
+    if(i.un==="m²")return mantaQ?mantaQ.areaCobravel:(parseFloat(ar.tot)||0);
+    if(i.un==="chao")return mantaQ?+(mantaQ.chao.metrosLineares*1.55).toFixed(2):(parseFloat(ar.chaoTot)||0);
     if(i.un==="ml")return parseFloat(ar.perim)||0;
+    if(i.un==="solda")return mantaQ?mantaQ.solda.total:0;
     return i.q||0;
   };
   const total=parseMoney(d.totOv)||inc.reduce((s,i)=>s+effQ(i)*(i.c||0)*(1+(i.m||0)/100),0)+(parseFloat(d.mo)||0);
@@ -1230,13 +1317,21 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
 
           <Sec title="Detalhamento Técnico"><div style={{background:`linear-gradient(135deg,${lBg},#e8edf5)`,borderRadius:"10px",padding:"14px",border:"1px solid #dce3ee"}}>
             <div style={{display:"flex",gap:"12px",alignItems:"center",justifyContent:"center",flexWrap:"wrap",marginBottom:"6px"}}>
-              {[{v:pool.length+"m",l:"Comp."},{v:pool.width+"m",l:"Larg."},{v:pool.depth+"m",l:"Prof."},{v:ar.tot+"m²",l:"Área Total"},{v:ar.perim+"m",l:"Perímetro"},{v:ar.vol+"m³",l:"Volume"}].map((p,i)=><div key={i} style={{textAlign:"center",minWidth:"50px"}}><div style={{fontSize:"16px",fontWeight:"800",color:i===3?navy:blue}}>{p.v}</div><div style={{fontSize:"6.5px",textTransform:"uppercase",letterSpacing:".5px",color:"#777",fontWeight:"600"}}>{p.l}</div></div>)}
+              {[{v:pool.length+"m",l:"Comp."},{v:pool.width+"m",l:"Larg."},{v:pool.depth+"m",l:"Prof."},
+                // com manta armada o número que importa é a manta cortada, não a
+                // área da piscina — o material vem de bobina, não de bolsão
+                mantaQ?{v:mantaQ.areaCobravel.toFixed(2).replace(".",",")+"m²",l:"Manta cortada"}:{v:ar.tot+"m²",l:"Área Total"},
+                {v:ar.perim+"m",l:"Perímetro"},{v:ar.vol+"m³",l:"Volume"}].map((p,i)=><div key={i} style={{textAlign:"center",minWidth:"50px"}}><div style={{fontSize:"16px",fontWeight:"800",color:i===3?navy:blue}}>{p.v}</div><div style={{fontSize:"6.5px",textTransform:"uppercase",letterSpacing:".5px",color:"#777",fontWeight:"600"}}>{p.l}</div></div>)}
             </div>
             <div style={{display:"flex",justifyContent:"center",gap:"8px",flexWrap:"wrap",fontSize:"8.5px"}}>
               <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Formato:</b> {d.poolFmt}{d.poolFmt==="Com Spa"&&d.spaType?` (${[d.spaType.quadrado&&"Quadrado",d.spaType.redondo&&"Redondo"].filter(Boolean).join(" + ")||"—"})`:""}</span>
               <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Vinil:</b> {vinilDesc(d.vinilT)}</span>
               <span style={{background:goldL,padding:"2px 7px",borderRadius:"10px",border:`1px solid ${gold}`}}><b>Estampa:</b> {d.stamp||"À escolha"}</span>
-              <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Chão:</b> {ar.chao}m² <b>Paredes:</b> {ar.par}m²</span>
+              {mantaQ
+                ?<span style={{background:goldL,padding:"2px 7px",borderRadius:"10px",border:`1px solid ${gold}`}}><b>Manta cortada:</b> {mantaQ.areaCobravel.toFixed(2).replace(".",",")}m² <b>·</b> {mantaQ.pedido.qtd} bobina{mantaQ.pedido.qtd===1?"":"s"} de 25m</span>
+                :<span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Chão:</b> {ar.chao}m² <b>Paredes:</b> {ar.par}m²</span>}
+              {mantaQ&&<span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Solda:</b> {mantaQ.solda.total.toFixed(2).replace(".",",")}m lineares</span>}
+              {mantaQ&&<span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Superfície da piscina:</b> {ar.tot}m² (chão {ar.chao} + paredes {ar.par})</span>}
               {d.execDays&&<span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Prazo:</b> {d.execDays} dias úteis{d.svcType==="revestimento"?" após a medição detalhada":""}</span>}
             </div>
             {d.stamp&&(()=>{const est=getEstampaByNome(d.stamp);return est?<div style={{marginTop:"8px",display:"flex",alignItems:"center",gap:"10px",background:"#fff",borderRadius:"8px",padding:"7px 10px",border:`1px solid ${gold}66`}}>
@@ -1367,6 +1462,9 @@ export default function App(){
   const [includePlanta,setIncludePlanta]=useState(true);
   const [includeIso,setIncludeIso]=useState(true);
   const [isoView,setIsoView]=useState(false);
+  // manta armada: aproveitar a tira que sobra da última faixa é decisão de quem
+  // projeta, não automatismo — por isso nasce desligado (ver motor/manta.js)
+  const [mantaAproveita,setMantaAproveita]=useState(false);
   const [desenho,setDesenho]=useState(null); // forma livre {vertices,formas} — null = paramétrico clássico
   const [showFormaEd,setShowFormaEd]=useState(false);
   const [show3D,setShow3D]=useState(false);
@@ -2170,6 +2268,9 @@ export default function App(){
     const unmatched=[];
     inc.forEach(i=>{
       const nm=i.n||"";
+      // Manta armada não tem estoque próprio no catálogo: sai da baixa sem
+      // entrar na lista de "não encontrado", que é ruído.
+      if(nm.includes("Manta Armada"))return;
       if(nm.includes("Vinil ACQUALINER")){
         const stampClean=stamp.replace(/\s+/g," ").trim();
         // Manta armada 1,5mm não tem estoque próprio no catálogo — não desconta vinil 0,7/0,8
@@ -2281,6 +2382,40 @@ export default function App(){
     const m2=v=>v.toFixed(2).replace(".",",");
     return{txt:`${m2(c)}×${m2(Math.min(p>0?p:D*0.25,Math.max(D-0.05,0.05)))}m`};
   })();
+  // ═══ MANTA ARMADA 1,5 mm ═══
+  // Só a manta é orçada por plano de corte de bobina. O vinil 0,7/0,8 (bolsão)
+  // segue por área e não passa por aqui.
+  const ehManta=vinilOpt(vinilT).armada;
+  const manta=(()=>{
+    if(!ehManta)return null;
+    const n=v=>parseFloat(String(v??"").replace(",","."))||0;
+    const L=n(pool.length),W=n(pool.width);
+    const D=ar.depthInfo?.avg||n(pool.depth);
+    if(!(L>0&&W>0&&D>0))return null;
+    const praiC=poolFmt==="Com prainha"?n(pool.prainhaComp):0;
+    const praiP=n(pool.prainhaProf);
+    // desenho livre / formato irregular: as faixas seguem o contorno real
+    const contorno=desenho&&(desenho.vertices||[]).length>=3?contornoEfetivo(desenho):null;
+    if(contorno&&contorno.length>=3){
+      const chao=cortarChaoContorno(contorno,undefined,"Chão · desenho");
+      const paredes=facesDoContorno(contorno,D);
+      const base=planoManta({comp:L,larg:W,prof:D,perimetro:parseFloat(ar.perim)||0,
+        areaReal:parseFloat(ar.tot)||0,faces:paredes,aproveitarSobra:mantaAproveita});
+      // troca o chão retangular pelo chão que acompanha o desenho
+      const diff=chao.metrosLineares-base.chao.metrosLineares;
+      return{...base,chao:{partes:[chao],metrosLineares:chao.metrosLineares,
+        emendas:chao.emendas,soldaLinear:chao.soldaLinear},
+        metrosLineares:+(base.metrosLineares+diff).toFixed(2),
+        areaCobravel:+((base.metrosLineares+diff)*1.55).toFixed(2),contorno:true};
+    }
+    const faces=praiC>0&&praiC<L
+      ?facesComPrainha(L,W,D,praiC,Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)),
+        {prainhaCorrida:wMode!=="irregular"})
+      :facesRetangulo(L,W,D);
+    return planoManta({comp:L,larg:W,prof:D,perimetro:parseFloat(ar.perim)||0,
+      areaReal:parseFloat(ar.tot)||0,praiComp:praiC,faces,aproveitarSobra:mantaAproveita});
+  })();
+
   // Versões espelhadas passadas às vistas (planta/isométrica/3D). O desenho salvo,
   // o editor de forma e o cálculo de área continuam no referencial original —
   // espelho é isometria, não muda área, perímetro nem volume.
@@ -2289,10 +2424,13 @@ export default function App(){
   const spaTypeV=flipH||flipV?{...spaType,qCanto:espelhaCanto(spaType.qCanto,flipH,flipV),rCanto:espelhaCanto(spaType.rCanto,flipH,flipV)}:spaType;
   const lowStockCount=Object.entries(stk).filter(([,s])=>s.qty>0&&s.qty<=(s.minQty||2)).length;
 
+  // Manta armada: o m² vem do plano de corte (ver motor/manta.js). Vinil 0,7/0,8
+  // segue pela superfície da piscina, como sempre.
   const effQ=(i)=>{
-    if(i.un==="m²")return parseFloat(ar.tot)||0; // area total m²
-    if(i.un==="chao")return parseFloat(ar.chaoTot)||0; // area chao
+    if(i.un==="m²")return manta?manta.areaCobravel:(parseFloat(ar.tot)||0); // area total m²
+    if(i.un==="chao")return manta?+(manta.chao.metrosLineares*1.55).toFixed(2):(parseFloat(ar.chaoTot)||0); // area chao
     if(i.un==="ml")return parseFloat(ar.perim)||0; // perimetro linear
+    if(i.un==="solda")return manta?manta.solda.total:0; // metro de solda (só manta armada)
     return i.q||0; // unidade
   };
   const matC=inc.reduce((s,i)=>s+effQ(i)*(i.c||0),0);
@@ -2674,7 +2812,7 @@ export default function App(){
 
         {/* Service type */}
         <div style={{padding:"12px 12px 8px",display:"flex",flexDirection:"column",gap:"4px"}}>
-          {SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(mkItems(sv.id));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20");setEditingId(null);setSidebarOpen(false);}} style={{padding:"8px 12px",borderRadius:"6px",border:"none",background:svcType===sv.id?"rgba(45,212,191,.13)":"transparent",color:svcType===sv.id?aguaBright:"rgba(255,255,255,.75)",fontSize:"11.5px",fontWeight:svcType===sv.id?"700":"400",fontFamily:"inherit",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:"8px"}}><sv.lucide size={14}/> {sv.label}</button>)}
+          {SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(aplicarItensVinil(mkItems(sv.id),!!vinilOpt(vinilT).armada));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20");setEditingId(null);setSidebarOpen(false);}} style={{padding:"8px 12px",borderRadius:"6px",border:"none",background:svcType===sv.id?"rgba(45,212,191,.13)":"transparent",color:svcType===sv.id?aguaBright:"rgba(255,255,255,.75)",fontSize:"11.5px",fontWeight:svcType===sv.id?"700":"400",fontFamily:"inherit",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:"8px"}}><sv.lucide size={14}/> {sv.label}</button>)}
         </div>
 
         {/* Nav items */}
@@ -2834,7 +2972,7 @@ export default function App(){
             </div>
             {!spaType.quadrado&&!spaType.redondo&&<div style={{fontSize:"9px",color:"#dc2626",marginTop:"6px"}}>⚠ Selecione pelo menos um tipo de spa</div>}
           </div>}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={v=>{setVT(v);const vo=VOPTS.find(o=>o.t===v);if(vo)setG(prev=>prev.map(g=>g.it==="Vinil (fabricação)"?{...g,y:vo.w}:g));}} options={VOPTS.map(v=>({value:v.t,label:`${v.nome} (${v.w}a)`}))} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={v=>{setVT(v);const vo=VOPTS.find(o=>o.t===v);if(vo)setG(prev=>prev.map(g=>g.it==="Vinil (fabricação)"?{...g,y:vo.w}:g));setItems(prev=>aplicarItensVinil(prev,!!vo?.armada));}} options={VOPTS.map(v=>({value:v.t,label:`${v.nome} (${v.w}a)`}))} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
           <div style={{marginTop:"10px"}}><CatalogoPicker value={stamp} onChange={setSt} t={t} dark={dark}/></div>
 
           {/* MODO PAREDES */}
@@ -2931,6 +3069,89 @@ export default function App(){
             </div>
           </div>
 
+          {/* ═══ PLANO DE CORTE — MANTA ARMADA 1,5 mm ═══
+              Aparece só com a manta selecionada. O bolsão 0,7/0,8 segue por área. */}
+          {manta&&(()=>{
+            const m2=v=>Number(v).toFixed(2).replace(".",",");
+            const linha={display:"flex",justifyContent:"space-between",gap:"10px",padding:"3px 0",fontSize:"11px"};
+            return <div style={{marginTop:"14px",borderRadius:"10px",padding:"14px",background:t.sectionBg,border:`1.5px solid ${gold}66`}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"8px",marginBottom:"10px"}}>
+                <div style={{fontSize:"11.5px",fontWeight:"800",color:navy,letterSpacing:".3px"}}>
+                  ✂️ PLANO DE CORTE · MANTA ARMADA 1,5mm
+                </div>
+                <div style={{fontSize:"9px",color:t.textMuted}}>bobina 1,55 × 25 m</div>
+              </div>
+
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}} className="vv-g2">
+                <div>
+                  <div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".5px",marginBottom:"5px"}}>Paredes — {manta.paredes.qtdPecas} peças</div>
+                  {manta.paredes.pecas.map((p,i)=><div key={i} style={linha}>
+                    <span style={{color:t.textSec}}>{p.nome}{p.corrida?<span style={{color:"#b45309",fontWeight:"700"}}> ↩ vincada</span>:""}</span>
+                    <b style={{color:t.text,whiteSpace:"nowrap"}}>{m2(p.comp)} × {m2(p.altura)}</b>
+                  </div>)}
+                  <div style={{fontSize:"9px",color:t.textMuted,marginTop:"3px"}}>{m2(manta.paredes.metrosLineares)} m lineares</div>
+                </div>
+                <div>
+                  <div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".5px",marginBottom:"5px"}}>Chão</div>
+                  {manta.chao.partes.map((p,i)=><div key={i}>
+                    <div style={linha}>
+                      <span style={{color:t.textSec}}>{p.nome}</span>
+                      <b style={{color:t.text,whiteSpace:"nowrap"}}>{p.faixas} × {m2(p.compFaixa)}</b>
+                    </div>
+                    {p.contorno&&<div style={{fontSize:"9px",color:t.textMuted,paddingLeft:"6px"}}>faixas: {p.pecas.map(f=>m2(f.comp)).join(" · ")}</div>}
+                    <div style={{fontSize:"9px",color:t.textMuted,paddingLeft:"6px"}}>{p.sentido}, {p.emendas} emenda{p.emendas===1?"":"s"}</div>
+                  </div>)}
+                  <div style={{fontSize:"9px",color:t.textMuted,marginTop:"3px"}}>{m2(manta.chao.metrosLineares)} m lineares</div>
+                </div>
+              </div>
+
+              <div style={{display:"flex",gap:"10px",flexWrap:"wrap",marginTop:"12px",paddingTop:"10px",borderTop:`1px solid ${t.cardBorder}`}}>
+                <div style={{textAlign:"center",background:gold,borderRadius:"8px",padding:"5px 14px"}}>
+                  <div style={{fontSize:"17px",fontWeight:"800",color:navy}}>{m2(manta.areaCobravel)} m²</div>
+                  <div style={{fontSize:"8px",fontWeight:"600",color:"#1a1a2e"}}>Manta cortada</div>
+                </div>
+                <div style={{textAlign:"center",padding:"5px 4px"}}>
+                  <div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{m2(manta.metrosLineares)} m</div>
+                  <div style={{fontSize:"8px",color:t.textSec}}>Lineares</div>
+                </div>
+                <div style={{textAlign:"center",padding:"5px 4px"}}>
+                  <div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{manta.pedido.qtd}</div>
+                  <div style={{fontSize:"8px",color:t.textSec}}>Bobinas</div>
+                </div>
+                <div style={{textAlign:"center",padding:"5px 4px"}}>
+                  <div style={{fontSize:"15px",fontWeight:"800",color:"#b45309"}}>{m2(manta.solda.total)} m</div>
+                  <div style={{fontSize:"8px",color:t.textSec}}>Solda</div>
+                </div>
+                <div style={{textAlign:"center",padding:"5px 4px"}}>
+                  <div style={{fontSize:"15px",fontWeight:"800",color:t.textMuted}}>{m2(manta.pedido.sobraLinear)} m</div>
+                  <div style={{fontSize:"8px",color:t.textSec}}>Ponta da bobina</div>
+                </div>
+              </div>
+
+              <div style={{fontSize:"9.5px",color:t.textSec,marginTop:"8px",lineHeight:1.5}}>
+                Solda: {m2(manta.solda.emendaChao)} m de emenda no chão · {m2(manta.solda.chaoNaParede)} m de chão na parede · {m2(manta.solda.cantosParede)} m de canto vertical.
+                A ponta da bobina volta para a prateleira e <b>não</b> entra no orçamento.
+              </div>
+
+              {manta.pedido.naoCabem.length>0&&<div style={{marginTop:"8px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:"6px",padding:"7px 9px",fontSize:"10px",color:"#991b1b"}}>
+                ⚠ Peça maior que a bobina de 25 m: {manta.pedido.naoCabem.map(p=>p.nome).join(", ")} — vai precisar de emenda no meio.
+              </div>}
+
+              {manta.oportunidades.length>0&&<div style={{marginTop:"10px",background:t.card,borderRadius:"8px",padding:"9px 10px",border:`1px solid ${t.cardBorder}`}}>
+                {manta.oportunidades.map((o,i)=><div key={i} style={{fontSize:"10px",color:t.textSec,marginBottom:"5px",lineHeight:1.5}}>
+                  Sobra uma tira de <b style={{color:t.text}}>{m2(o.tira.largura)} × {m2(o.tira.comp)} m</b> da última faixa de "{o.de}" — cabe: {o.cabem.map(c=>c.nome).join(", ")}.
+                </div>)}
+                <label style={{display:"flex",alignItems:"center",gap:"7px",cursor:"pointer",fontSize:"10.5px",fontWeight:"600",color:t.text}}>
+                  <input type="checkbox" checked={mantaAproveita} onChange={e=>setMantaAproveita(e.target.checked)} style={{cursor:"pointer",width:"15px",height:"15px"}}/>
+                  Aproveitar a tira (tira {m2(manta.economiaAproveitamento||0)} m do pedido)
+                </label>
+                <div style={{fontSize:"9px",color:t.textMuted,marginTop:"4px",lineHeight:1.45}}>
+                  Confira a peça antes de ligar: em piscina de formato diferente a tira pode não bater e o corte vira sucata.
+                </div>
+              </div>}
+            </div>;
+          })()}
+
           <div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"8px",padding:"12px",border:"1px solid "+t.cardBorder}}>
             <div style={{fontSize:"11px",fontWeight:"700",color:blue,marginBottom:"10px"}}>PLANTA HIDRAULICA</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"6px",marginBottom:"12px"}}>
@@ -2949,7 +3170,7 @@ export default function App(){
         {/* ITENS */}
         {tab==="itens"&&<Card t={t}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px",flexWrap:"wrap",gap:"6px"}}><ST icon="🛒">Custos</ST><div style={{display:"flex",gap:"5px",alignItems:"center"}}><span style={{fontSize:"9px",color:t.textSec,fontWeight:"600"}}>Margem:</span><input value={gM} onChange={e=>setGM(parseFloat(e.target.value)||0)} style={{width:"38px",padding:"3px",border:`1px solid ${t.cardBorder}`,borderRadius:"4px",textAlign:"center",fontSize:"11px",fontWeight:"700"}}/><span style={{fontSize:"9px",color:t.text}}>%</span><Btn onClick={apM} style={{fontSize:"9px",padding:"3px 6px"}}>Aplicar</Btn></div></div>
           <div style={{display:"grid",gridTemplateColumns:"24px 1fr 50px 68px 44px 78px 24px",gap:"3px",padding:"4px 0",borderBottom:"2px solid #e2e8f0",fontSize:"7.5px",fontWeight:"700",color:t.textSec,textTransform:"uppercase"}}><div/><div>Item</div><div>Qtd</div><div>R$/un</div><div>%</div><div>Total</div><div/></div>
-          {items.map(it=>{const eQ=it.un==="m²"?parseFloat(ar.tot)||0:it.un==="chao"?parseFloat(ar.chaoTot)||0:it.un==="ml"?parseFloat(ar.perim)||0:it.q||0;const sell=(it.c||0)*(1+(it.m||0)/100);const lt=eQ*sell;const unLabel=it.un==="m²"?"m²":it.un==="chao"?"chão":it.un==="ml"?"ml":"un";const unBg=it.un==="m²"?"#dbeafe":it.un==="chao"?"#d1fae5":it.un==="ml"?"#fef3c7":"";const unColor=it.un==="m²"?"#1e40af":it.un==="chao"?"#065f46":it.un==="ml"?"#92400e":"";return(
+          {items.map(it=>{const eQ=effQ(it);const sell=(it.c||0)*(1+(it.m||0)/100);const lt=eQ*sell;const unLabel=it.un==="m²"?"m²":it.un==="chao"?"chão":it.un==="ml"?"ml":it.un==="solda"?"m solda":"un";const unBg=it.un==="m²"?"#dbeafe":it.un==="chao"?"#d1fae5":it.un==="ml"?"#fef3c7":it.un==="solda"?"#fde8d7":"";const unColor=it.un==="m²"?"#1e40af":it.un==="chao"?"#065f46":it.un==="ml"?"#92400e":it.un==="solda"?"#b45309":"";return(
             <div key={it.id} style={{display:"grid",gridTemplateColumns:"24px 1fr 50px 68px 44px 78px 24px",gap:"3px",padding:"4px 0",borderBottom:`1px solid ${t.cardBorder}`,alignItems:"center",opacity:it.on?1:.35}}>
               <button onClick={()=>ti(it.id)} style={{width:"16px",height:"16px",borderRadius:"3px",border:`2px solid ${it.on?blue:"#cbd5e1"}`,background:it.on?blue:"#fff",color:"#fff",fontSize:"9px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{it.on?"✓":""}</button>
               <div><input value={it.n} onChange={e=>ui(it.id,"n",e.target.value)} style={{border:"none",fontSize:"11px",fontWeight:"600",width:"100%",outline:"none",background:"transparent",color:t.text}}/><div style={{display:"flex",alignItems:"center",gap:"4px"}}><input value={it.nt||""} onChange={e=>ui(it.id,"nt",e.target.value)} placeholder="obs" style={{border:"none",fontSize:"9px",color:t.textMuted,width:"calc(100% - 35px)",outline:"none",fontStyle:"italic",background:"transparent"}}/>{it.un!=="un"&&<span style={{fontSize:"7px",background:unBg,color:unColor,padding:"1px 4px",borderRadius:"3px",fontWeight:"700",whiteSpace:"nowrap"}}>{unLabel}</span>}</div></div>
