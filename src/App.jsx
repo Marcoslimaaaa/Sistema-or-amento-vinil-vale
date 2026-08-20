@@ -9,19 +9,35 @@ import { calcA } from "./motor/areas.js";
 import { planoManta, facesRetangulo, facesComPrainha, facesDoContorno, cortarChaoContorno } from "./motor/manta.js";
 import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho } from "./motor/formas.js";
 import { ramalSistema, totaisHidraulica, ROTULO_SIS, SEM_TUBO, BARRA_M } from "./motor/hidraulica.js";
-// jspdf/html2canvas (~200KB gz) só carregam quando alguém gera PDF/imagem
-const loadPdfLibs=async()=>{
+// Aviso de que um arquivo do app não veio do servidor. Quem escuta é o App,
+// que salva o rascunho e oferece o recarregamento — nunca recarrega sozinho.
+export const EVENTO_CHUNK="vv:chunk-error";
+// Ligado durante a busca antecipada, feita assim que a máquina fica ociosa:
+// rede ruim logo ao abrir o app é comum demais para virar aviso na tela. O
+// handler de `vite:preloadError` do main.jsx respeita esta trava, senão ele
+// avisaria por baixo do pano mesmo na tentativa silenciosa.
+let chunkSilencioso=false;
+export const emPreloadSilencioso=()=>chunkSilencioso;
+const avisarChunkQuebrado=(err)=>{if(chunkSilencioso)return;try{window.dispatchEvent(new CustomEvent(EVENTO_CHUNK,{detail:{erro:String(err)}}))}catch{}};
+
+// jspdf/html2canvas (~200KB gz) só carregam quando alguém gera PDF/imagem.
+// Guardados depois da primeira carga: o clique em "Baixar PDF" era o único
+// momento do sistema que dependia da rede no meio do trabalho.
+let pdfLibs=null;
+const loadPdfLibs=async({silencioso=false}={})=>{
+  if(pdfLibs)return pdfLibs;
+  if(silencioso)chunkSilencioso=true;
   try{
     const[h,j]=await Promise.all([import("html2canvas"),import("jspdf")]);
-    return{html2canvas:h.default,jsPDF:j.jsPDF};
+    pdfLibs={html2canvas:h.default,jsPDF:j.jsPDF};
+    return pdfLibs;
   }catch(err){
-    // Chunk com hash antigo sumiu após um novo deploy → recarrega uma vez
-    // para o navegador pegar o index.html/chunks novos.
-    if(!sessionStorage.getItem("vv-chunk-reload")){
-      sessionStorage.setItem("vv-chunk-reload","1");
-      window.location.reload();
-    }
+    // Chunk com hash antigo sumiu após um deploy, ou a rede caiu. Antes daqui
+    // saía um window.location.reload() que levava junto o orçamento em edição.
+    if(!silencioso)avisarChunkQuebrado(err);
     throw err;
+  }finally{
+    if(silencioso)chunkSilencioso=false;
   }
 };
 const Pool3DView = lazy(() => import('./Pool3DView'));
@@ -40,6 +56,7 @@ import Timeline from "./components/crm/Timeline";
 import FichaLead from "./components/crm/FichaLead";
 import AnaliseConversa from "./components/crm/AnaliseConversa";
 import { conversaDoLead, leadDaConversa, leadsCandidatos } from "./services/vinculo.js";
+import { assinatura, salvarRascunho, lerRascunho, limparRascunho, deveOferecer, descricaoRascunho } from "./services/rascunho.js";
 import { leadScore, faixaScore, conversasSemResposta } from "./services/score.js";
 import AlertaSLA from "./components/crm/AlertaSLA";
 import RevisaoEtapas from "./components/crm/RevisaoEtapas";
@@ -1082,6 +1099,39 @@ const CatalogoPicker=({value,onChange,t,dark})=>{
   </div>;
 };
 const ST=({icon,children})=><h3 className="vv-st">{children}</h3>;
+// O 3D também mora em arquivo separado. Sem isto, um chunk que não carrega
+// derruba a tela inteira — antes o reload automático escondia esse caso.
+class ChunkBoundary extends React.Component{
+  constructor(props){super(props);this.state={erro:false}}
+  static getDerivedStateFromError(){return{erro:true}}
+  componentDidCatch(err){try{window.dispatchEvent(new CustomEvent(EVENTO_CHUNK,{detail:{erro:String(err)}}))}catch{}}
+  render(){return this.state.erro?this.props.fallback:this.props.children}
+}
+
+// Faixas fixas no topo. As duas existem por causa do mesmo bug: o app
+// recarregava sozinho no clique de "Baixar PDF" e o orçamento em edição sumia.
+// Agora o recarregamento é uma escolha, e o trabalho volta depois dele.
+const FAIXA={position:"fixed",top:0,left:0,right:0,zIndex:9999,display:"flex",flexDirection:"column",gap:"1px",fontFamily:"'Segoe UI',sans-serif"};
+const LINHA={display:"flex",alignItems:"center",justifyContent:"center",gap:"10px",flexWrap:"wrap",padding:"9px 14px",fontSize:"12px",fontWeight:"600",lineHeight:1.35,textAlign:"center",boxShadow:"0 2px 8px rgba(0,0,0,.18)"};
+const BOTAO_FAIXA={padding:"5px 12px",borderRadius:"6px",border:"none",fontFamily:"inherit",fontSize:"11.5px",fontWeight:"700",cursor:"pointer",whiteSpace:"nowrap"};
+
+const Avisos=({chunkQuebrado,onAtualizar,rascunho,onRecuperar,onDescartar})=>{
+  if(!chunkQuebrado&&!rascunho)return null;
+  return(
+    <div style={FAIXA}>
+      {chunkQuebrado&&<div style={{...LINHA,background:"#fef3c7",color:"#78350f",borderBottom:"1px solid #f59e0b"}}>
+        <span>⚠️ Parte do app não carregou — atualização no servidor ou rede instável. <b>Seu orçamento está salvo.</b> Atualize para gerar o PDF.</span>
+        <button onClick={onAtualizar} style={{...BOTAO_FAIXA,background:"#b45309",color:"#fff"}}>Atualizar agora</button>
+      </div>}
+      {rascunho&&<div style={{...LINHA,background:"#dbeafe",color:"#1e3a8a",borderBottom:"1px solid #3b82f6"}}>
+        <span>💾 Tem um orçamento não salvo de <b>{descricaoRascunho(rascunho)}</b>.</span>
+        <button onClick={onRecuperar} style={{...BOTAO_FAIXA,background:"#1d4ed8",color:"#fff"}}>Recuperar</button>
+        <button onClick={onDescartar} style={{...BOTAO_FAIXA,background:"transparent",color:"#1e3a8a",border:"1px solid #93c5fd"}}>Descartar</button>
+      </div>}
+    </div>
+  );
+};
+
 const Btn=({children,onClick,style:sx})=><button onClick={onClick} style={{padding:"8px 14px",background:"var(--btn-bg,#f2f6f8)",color:"var(--btn-fg,#3d5268)",border:"1px solid var(--btn-bd,#cfdae2)",borderRadius:"6px",fontWeight:"600",fontSize:"12px",fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:"6px",...sx}}>{children}</button>;
 const DarkToggle=({dark,onToggle})=><button onClick={onToggle} aria-label={dark?"Mudar para tema claro":"Mudar para tema escuro"} style={{width:"38px",height:"22px",borderRadius:"11px",border:"none",background:dark?"#2c4368":"#cbd5e1",cursor:"pointer",position:"relative",transition:"background .3s"}}><div style={{width:"18px",height:"18px",borderRadius:"50%",background:dark?"#0b1524":"#fff",position:"absolute",top:"2px",left:dark?"18px":"2px",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>{dark?<Moon size={11} color="#2dd4bf"/>:<Sun size={11} color="#e8b100"/>}</div></button>;
 
@@ -1693,7 +1743,7 @@ export default function App(){
     }
   };
   const doLogout=()=>{
-    ["vv_hist","vv_receber","vv_pagar","vv_fixas","vv_stk","vv_stklog","vv_fornec","vv_interacoes","vv_crmmeta","vv_pending","vv_pending_del","vv_cfg_dirty"].forEach(k=>localStorage.removeItem(k));
+    ["vv_hist","vv_receber","vv_pagar","vv_fixas","vv_stk","vv_stklog","vv_fornec","vv_interacoes","vv_crmmeta","vv_pending","vv_pending_del","vv_cfg_dirty","vv_rascunho"].forEach(k=>localStorage.removeItem(k));
     if(fbReady&&fb.auth)fbFns.signOut(fb.auth);else setUser(null);
   };
 
@@ -2477,6 +2527,76 @@ export default function App(){
   const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){autoStockOut(item);syncFinancas(item);}setFbMsg("✅ Cliente fechado!");setTimeout(()=>setFbMsg(""),3000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)syncFinancas(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
   const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
+  // ═══ RASCUNHO DO EDITOR ═══ (o porquê está em services/rascunho.js)
+  const gDataRef=useRef(gData);gDataRef.current=gData;
+  const inicialRef=useRef(null);
+  // Assinatura do editor recém-aberto — o "nada foi mexido ainda".
+  if(inicialRef.current===null)inicialRef.current=assinatura(gData());
+  const [rascunho,setRascunho]=useState(null);          // oferta de recuperação
+  const [chunkQuebrado,setChunkQuebrado]=useState(false); // faltou arquivo do app
+
+  const recuperarRascunho=reg=>{
+    load({id:reg.editingId,data:reg.data});
+    // O conteúdo recuperado passa a ser a base do editor: sem isto o próprio
+    // rascunho recém-restaurado ainda contaria como "trabalho não salvo" e a
+    // faixa voltaria a aparecer.
+    inicialRef.current=assinatura(reg.data);
+    if(reg.tab)setTab(reg.tab);
+    setRascunho(null);
+    setFbMsg("Orçamento recuperado!");setTimeout(()=>setFbMsg(""),2500);
+  };
+  const descartarRascunho=()=>{limparRascunho();setRascunho(null)};
+
+  useEffect(()=>{
+    const reg=lerRascunho();
+    if(!reg)return;
+    if(reg.auto){
+      // Recarregamento que o próprio sistema pediu: devolve sem perguntar,
+      // porque ninguém escolheu perder nada. Regrava sem a marca para o
+      // próximo reload não repetir a recuperação.
+      recuperarRascunho(reg);
+      salvarRascunho({data:reg.data,editingId:reg.editingId,tab:reg.tab});
+      return;
+    }
+    if(deveOferecer(reg,{inicial:inicialRef.current,hist:histRef.current}))setRascunho(reg);
+  },[]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Grava a cada mexida, com folga de 800ms para não escrever a cada tecla.
+  useEffect(()=>{
+    const id=setTimeout(()=>{
+      const data=gDataRef.current();
+      if(assinatura(data)===inicialRef.current)return; // editor intocado
+      salvarRascunho({data,editingId,tab});
+    },800);
+    return()=>clearTimeout(id);
+  },[client,pool,items,guar,ci,pay,totOv,vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,includeIso,disps,customPos,isoView,invertSide,flipH,flipV,devHeights,raloQuenteParede,desenho,editingId,tab]);
+
+  // Arquivo do app não veio do servidor: salva na hora, marcando que a volta é
+  // automática, e só então oferece o recarregamento.
+  useEffect(()=>{
+    const aoQuebrar=()=>{
+      const data=gDataRef.current();
+      if(assinatura(data)!==inicialRef.current)salvarRascunho({data,editingId,tab,auto:true});
+      setChunkQuebrado(true);
+    };
+    window.addEventListener(EVENTO_CHUNK,aoQuebrar);
+    return()=>window.removeEventListener(EVENTO_CHUNK,aoQuebrar);
+  },[editingId,tab]);
+
+  // Puxa jspdf/html2canvas quando a máquina está ociosa. Antes eles só eram
+  // buscados no clique de "Baixar PDF" — a pior hora possível para depender da
+  // rede. No boot a falha é silenciosa (rede ruim ao abrir é comum); ao entrar
+  // na tela do orçamento ela vira aviso, ainda dá tempo de atualizar.
+  useEffect(()=>{
+    const ocioso=window.requestIdleCallback||(f=>setTimeout(f,2500));
+    const id=ocioso(()=>{loadPdfLibs({silencioso:true}).catch(()=>{})});
+    return()=>{try{(window.cancelIdleCallback||clearTimeout)(id)}catch{}};
+  },[]);
+  useEffect(()=>{if(view==="quote")loadPdfLibs().catch(()=>{})},[view]);
+
+  const atualizarApp=()=>{window.location.reload()};
+  const avisos=<Avisos chunkQuebrado={chunkQuebrado} onAtualizar={atualizarApp} rascunho={view==="editor"?rascunho:null} onRecuperar={()=>recuperarRascunho(rascunho)} onDescartar={descartarRascunho}/>;
+
   const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
   const movePipe=(id,stage)=>{
@@ -2784,7 +2904,7 @@ export default function App(){
 
 
 
-  if(view==="quote")return <QP d={gData()} autoPositions={autoPositions} onBack={()=>setView("editor")} onEntregue={(origem)=>{if(editingId)marcarEntregueNoFunil(editingId,origem)}} onSave={()=>{const d=gData();if(editingId){const existing=hist.find(q=>q.id===editingId);const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);}else{const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);}}}/>;
+  if(view==="quote")return <>{avisos}<QP d={gData()} autoPositions={autoPositions} onBack={()=>setView("editor")} onEntregue={(origem)=>{if(editingId)marcarEntregueNoFunil(editingId,origem)}} onSave={()=>{const d=gData();if(editingId){const existing=hist.find(q=>q.id===editingId);const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);}else{const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);}}}/></>;
 
   const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};// use className="vv-g2" for responsive
 
@@ -2793,6 +2913,7 @@ export default function App(){
 
   return(
     <div className="vv-layout" style={{background:t.bg,color:t.text,transition:"background .3s,color .3s","--accent-strong":t.accentStrong,"--step-fg":t.stepFg,"--step-bd":t.stepBd,"--btn-bg":t.btnBg,"--btn-fg":t.btnFg,"--btn-bd":t.btnBd}}>
+      {avisos}
       {/* SIDEBAR OVERLAY (mobile) */}
       <div className={"vv-sidebar-overlay"+(sidebarOpen?" open":"")} onClick={()=>setSidebarOpen(false)}/>
 
@@ -3911,7 +4032,7 @@ export default function App(){
                   </button>
                   <button onClick={()=>{botFetch(`/api/bot-on/${waChat}`,{method:"POST"});}} title="Ativar Bot" style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#25d366",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>🤖 Bot ON</button>
                   <button onClick={()=>{botFetch(`/api/handoff/${waChat}`,{method:"POST"});}} title="Assumir conversa" style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#ffc107",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>✋ Assumir</button>
-                  <button onClick={async()=>{if(!waChatRef.current)return;const canvas=await html2canvas(waChatRef.current,{backgroundColor:null,scale:2});const link=document.createElement("a");link.download=`whatsapp-${waChatData.leadData?.nome||waChat}-${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.png`;link.href=canvas.toDataURL("image/png");link.click()}} title="Capturar PNG" style={{background:"none",border:"none",cursor:"pointer",padding:"8px",display:"flex",borderRadius:"50%"}}>
+                  <button onClick={async()=>{if(!waChatRef.current)return;const {html2canvas}=await loadPdfLibs();const canvas=await html2canvas(waChatRef.current,{backgroundColor:null,scale:2});const link=document.createElement("a");link.download=`whatsapp-${waChatData.leadData?.nome||waChat}-${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.png`;link.href=canvas.toDataURL("image/png");link.click()}} title="Capturar PNG" style={{background:"none",border:"none",cursor:"pointer",padding:"8px",display:"flex",borderRadius:"50%"}}>
                     <DownloadIcon size={18} color="#aebac1"/>
                   </button>
                 </div>
@@ -4360,7 +4481,7 @@ export default function App(){
             <span style={{fontSize:"8px",color:t.textMuted}}>(vazio = padrão {ALTURA_QUENTE.toFixed(2)}m acima do chão; ralo no chão fica rente ao piso)</span>
           </div>}
           {show3D
-            ?<Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/></Suspense>
+            ?<ChunkBoundary fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"0 20px",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Não deu para carregar a visualização 3D. Atualize a página — seu orçamento está salvo.</div>}><Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/></Suspense></ChunkBoundary>
             :isoView
               ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide} devHeights={devHeights} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/>
               :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/>}
