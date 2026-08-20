@@ -679,6 +679,20 @@ export function planoManta({ comp, larg, prof, perimetro, areaReal, faces, praiC
 
   const metrosLineares = arred(
     chao.metrosLineares + paredes.metrosLineares - economia + anexoNinho.metrosLineares);
+
+  // PERDA DE CORTE — o que se compra menos o que fica na obra.
+  // A superficie util e a piscina de verdade: area de cada regiao de chao mais
+  // area de cada face de parede. A diferenca para a manta cortada e o que a
+  // sobreposicao das soldas, as dobras de arremate e a largura de bobina que
+  // sobra ao lado das pecas baixas comem. Nao e estimativa de tabela: sai do
+  // proprio plano de corte desta piscina.
+  const utilChao = (regioesChao(comp, larg, praiComp, cfg))
+    .reduce((s, r) => s + r.comp * r.larg, 0);
+  const utilParedes = (faces || facesRetangulo(comp, larg, prof))
+    .reduce((s, f) => s + (f.comp || 0) * (f.prof || 0), 0);
+  const utilAnexos = anexosCalc.reduce((s, a) => s + (a.areaUtil || 0), 0);
+  const areaUtil = arred(areaReal != null && !anexos.length
+    ? areaReal : (utilChao + utilParedes + utilAnexos));
   // O que se COBRA do cliente: a manta cortada para esta piscina, largura cheia
   // da bobina, porque o retalho ao lado de peça baixa não se aproveita. A ponta
   // que sobra da bobina NÃO entra — ela volta para a prateleira.
@@ -722,6 +736,9 @@ export function planoManta({ comp, larg, prof, perimetro, areaReal, faces, praiC
     economiaAproveitamento: economia,
     metrosLineares,
     areaCobravel,
+    areaUtil,
+    perda: arred(areaCobravel - areaUtil),
+    perdaPct: areaCobravel > 0 ? arred(((areaCobravel - areaUtil) / areaCobravel) * 100, 1) : 0,
     areaReal: arred(real),
     sobra: arred(areaCobravel - real),
     sobraPct: arred((areaCobravel / real - 1) * 100, 1),

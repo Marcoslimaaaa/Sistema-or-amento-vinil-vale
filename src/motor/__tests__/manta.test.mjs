@@ -446,5 +446,33 @@ console.log("\nplanoManta — canto e lado convivem sem estragar a piscina");
   ok("tudo isso SOMA material",      com.metrosLineares>base.metrosLineares, com.metrosLineares, "> "+base.metrosLineares);
 }
 
+console.log("\nperda de corte — calculada da piscina, não estimada de tabela");
+{
+  const cfg={...MANTA,larguraBobina:1.55,comprimentoBobina:25};
+  const r=planoManta({comp:10,larg:4,prof:1.4,praiComp:0,faces:facesRetangulo(10,4,1.4)},cfg);
+  ok("útil = chão + paredes reais",     perto(r.areaUtil,79.20),  r.areaUtil,  79.20);
+  ok("perda = cortada − útil",          perto(r.perda,11.41),     r.perda,     11.41);
+  ok("perda em % bate",                 perto(r.perdaPct,12.6,0.1), r.perdaPct, 12.6);
+  ok("útil + perda = cortada",          perto(r.areaUtil+r.perda,r.areaCobravel),
+     arredondar(r.areaUtil+r.perda), r.areaCobravel);
+
+  // a perda NUNCA pode ser negativa: seria pedir menos manta que a piscina tem
+  let negativa=false, fora=[];
+  for(let c=3;c<=20;c+=1) for(let l=2;l<=8;l+=1) for(let d=0.8;d<=2.2;d+=0.3){
+    const x=planoManta({comp:c,larg:l,prof:d,praiComp:0,faces:facesRetangulo(c,l,d)},cfg);
+    if(x.perda<-1e-9)negativa=true;
+    if(x.perdaPct>45)fora.push(`${c}x${l}x${d.toFixed(1)}=${x.perdaPct}%`);
+  }
+  ok("perda nunca é negativa em 336 combinações", !negativa, negativa, false);
+  ok("e nenhuma passa de 45%",                    fora.length===0, fora.slice(0,3).join(" "), "nenhuma");
+
+  // piscina com detalhe desperdiça mais — é o que o pessoal da obra diz
+  const simples=planoManta({comp:6,larg:3.5,prof:1.4,praiComp:0,faces:facesRetangulo(6,3.5,1.4)},cfg);
+  const detalhe=planoManta({comp:6,larg:3.5,prof:1.4,praiComp:1,
+    faces:facesComPrainha(6,3.5,1.4,1,0.5,true)},cfg);
+  ok("prainha desperdiça mais que a lisa", detalhe.perdaPct>simples.perdaPct,
+     detalhe.perdaPct+"%", "> "+simples.perdaPct+"%");
+}
+
 console.log(`\n${total-falhas}/${total} passaram`);
 process.exit(falhas?1:0);
