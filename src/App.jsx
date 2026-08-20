@@ -29,12 +29,17 @@ const loadPdfLibs=async({silencioso=false}={})=>{
   if(silencioso)chunkSilencioso=true;
   try{
     const[h,j]=await Promise.all([import("html2canvas"),import("jspdf")]);
+    // Cinto e suspensório: se algum dia um import voltar a resolver sem o
+    // conteúdo esperado, isso vira o mesmo aviso de sempre em vez de um
+    // TypeError cru na cara de quem está montando o orçamento.
+    if(!h?.default||!j?.jsPDF)throw new Error("Módulo do PDF veio incompleto do servidor");
     pdfLibs={html2canvas:h.default,jsPDF:j.jsPDF};
     return pdfLibs;
   }catch(err){
     // Chunk com hash antigo sumiu após um deploy, ou a rede caiu. Antes daqui
     // saía um window.location.reload() que levava junto o orçamento em edição.
     if(!silencioso)avisarChunkQuebrado(err);
+    try{err.chunkQuebrado=true}catch{}
     throw err;
   }finally{
     if(silencioso)chunkSilencioso=false;
@@ -1315,7 +1320,7 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
       if(onSave)onSave();
       setTimeout(()=>setPdfStatus(""),5000);
     }catch(e){
-      setPdfStatus("❌ Erro: "+String(e));setTimeout(()=>setPdfStatus(""),5000);
+      setPdfStatus(e?.chunkQuebrado?"❌ Atualize a página para gerar o PDF":"❌ Erro: "+String(e));setTimeout(()=>setPdfStatus(""),6000);
     }
   };
 
