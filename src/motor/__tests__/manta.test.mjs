@@ -103,10 +103,17 @@ console.log("\ncorrida × peças soltas — e o caso fora de esquadro");
   const com=cortarParedes(facesComPrainha(6.00,3.50,1.40,1.00,0.50,{prainhaCorrida:true}));
   const sem=cortarParedes(facesComPrainha(6.00,3.50,1.40,1.00,0.50,{prainhaCorrida:false}));
   ok("soltas dão 7 peças",         sem.qtdPecas===7,                sem.qtdPecas,       7);
-  ok("soltas gastam 23,20",        perto(sem.metrosLineares,23.20), sem.metrosLineares, 23.20);
-  ok("a corrida economiza 0,20 m", perto(sem.metrosLineares-com.metrosLineares,0.20),
-     arredondar(sem.metrosLineares-com.metrosLineares), 0.20);
-  ok("e faz menos solda",          sem.soldaLinear>com.soldaLinear, sem.soldaLinear, "> "+com.soldaLinear);
+  // Com as paredes ninhadas a conta virou: as 3 peças baixas soltas saem 2 por
+  // passada e gastam MENOS bobina que a cinta vincada, que é uma peça longa
+  // sozinha numa passada. A corrida deixou de economizar material — ela troca
+  // material por MENOS SOLDA, que é o passo caro e arriscado da manta armada.
+  ok("soltas gastam 22,10 ninhadas", perto(sem.metrosLineares,22.10), sem.metrosLineares, 22.10);
+  ok("a corrida gasta um pouco mais de bobina", com.metrosLineares>sem.metrosLineares,
+     com.metrosLineares, "> "+sem.metrosLineares);
+  ok("mas faz menos solda — é a troca", com.soldaLinear<sem.soldaLinear,
+     com.soldaLinear, "< "+sem.soldaLinear);
+  ok("a diferença de bobina é pequena", (com.metrosLineares-sem.metrosLineares)<1.0,
+     arredondar(com.metrosLineares-sem.metrosLineares), "< 1,00 m");
   // parede fora de esquadro: a manta de 1,5 mm não acomoda no vinco, tem que cortar e soldar
   ok("fora de esquadro volta a soldar canto a canto", sem.qtdPecas>com.qtdPecas, sem.qtdPecas, "> "+com.qtdPecas);
 }
@@ -472,6 +479,27 @@ console.log("\nperda de corte — calculada da piscina, não estimada de tabela"
     faces:facesComPrainha(6,3.5,1.4,1,0.5,true)},cfg);
   ok("prainha desperdiça mais que a lisa", detalhe.perdaPct>simples.perdaPct,
      detalhe.perdaPct+"%", "> "+simples.perdaPct+"%");
+}
+
+console.log("\nparedes também saem ninhadas — peça baixa não come uma passada inteira");
+{
+  const cfg={...MANTA,larguraBobina:1.55,comprimentoBobina:25};
+  // duas peças que somam menos que a bobina TÊM de dividir a mesma passada
+  const par=ninharComplementos([
+    {largura:0.60,comp:5.60,de:"cinta"},{largura:0.90,comp:3.60,de:"espelho"}],cfg);
+  ok("0,60 + 0,90 = 1,50 dividem a passada", par.passadas.length===1, par.passadas.length, 1);
+  ok("a passada custa a peça mais longa",    perto(par.metrosLineares,5.60), par.metrosLineares, 5.60);
+  // e duas que estouram continuam separadas
+  const sep=ninharComplementos([
+    {largura:0.60,comp:5.60,de:"cinta"},{largura:1.00,comp:3.60,de:"espelho"}],cfg);
+  ok("0,60 + 1,00 = 1,60 não cabem juntas",  sep.passadas.length===2, sep.passadas.length, 2);
+
+  // parede alta continua abrindo passada propria: 1,50 + 1,50 estoura
+  const alt=cortarParedes(facesRetangulo(10.00,4.00,1.40),cfg);
+  ok("4 paredes de 1,50 não ninham entre si", alt.ninho.passadas.length===4,
+     alt.ninho.passadas.length, 4);
+  ok("e o total continua 28,40",              perto(alt.metrosLineares,28.40),
+     alt.metrosLineares, 28.40);
 }
 
 console.log(`\n${total-falhas}/${total} passaram`);

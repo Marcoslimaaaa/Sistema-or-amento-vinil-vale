@@ -355,11 +355,18 @@ export function cortarParedes(faces, cfg = MANTA) {
   ];
   const complementos = ninharComplementos(
     lista.flatMap(p => (p.complementos || []).map(c => ({ ...c, de: p.nome }))), cfg);
+  // As paredes tambem saem NINHADAS: peca baixa nao precisa de uma passada
+  // inteira da bobina so para ela. Na obra a cinta da prainha e o espelho saem
+  // da mesma passada quando as duas alturas somadas cabem na largura.
+  // Peca alta continua abrindo passada propria — o algoritmo cuida disso.
+  const ninho = ninharComplementos(
+    lista.map(p => ({ largura: p.altura, comp: p.comp, de: p.nome })), cfg);
   return {
     pecas: lista,
     qtdPecas: lista.length,
     complementos,
-    metrosLineares: arred(lista.reduce((s, p) => s + p.metrosLineares, 0) + complementos.metrosLineares),
+    ninho,
+    metrosLineares: arred(ninho.metrosLineares + complementos.metrosLineares),
     soldaLinear: arred(lista.reduce((s, p) => s + p.soldaLinear, 0)),
     alturaMax: arred(Math.max(0, ...lista.map(p => p.altura))),
   };
