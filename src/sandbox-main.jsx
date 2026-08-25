@@ -16,6 +16,7 @@ import RevisaoEtapas from "./components/crm/RevisaoEtapas";
 import OrigemReport from "./components/dashboard/OrigemReport";
 import FichaLead from "./components/crm/FichaLead";
 import AnaliseConversa from "./components/crm/AnaliseConversa";
+import SeloPotencial from "./components/crm/SeloPotencial";
 import { classificarBase } from "./services/etapaAuto.js";
 import { leadScore, faixaScore } from "./services/score.js";
 
@@ -143,6 +144,25 @@ function App() {
             </div>
           );
         })}
+      </Bloco>
+
+      <Bloco titulo="SeloPotencial" nota="Nota do bot no fim da triagem. Compacto é o que aparece na lista de conversas; o detalhado mostra os motivos. Sem qualificação NÃO deve renderizar nada.">
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          {[
+            { nota: 85, faixa: "A", ticketEstimado: 5280, motivos: ["32 m² ≈ R$ 5.280 de revestimento", "quer fazer: esse mês", "piscina pronta esperando revestimento"] },
+            { nota: 52, faixa: "B", ticketEstimado: null, motivos: ["50 m² de piscina", "ainda vai construir", "escreveu 4 mensagens"] },
+            { nota: 28, faixa: "C", ticketEstimado: null, motivos: ["só 1 mensagem", "não disse nada sobre a própria piscina"] },
+          ].map((q) => (
+            <div key={q.nota} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "12px", color: t.text }}>
+              <span style={{ width: "90px" }}>Ana Paula</span>
+              <SeloPotencial qualificacao={q} />
+              <SeloPotencial qualificacao={q} compacto={false} />
+            </div>
+          ))}
+          <div style={{ fontSize: "11px", color: t.textMuted }}>
+            sem qualificação: [<SeloPotencial qualificacao={null} />] (tem que ficar vazio)
+          </div>
+        </div>
       </Bloco>
 
       <Bloco titulo="TodayTasks" nota="Follow-up acionável. O botão Enviar cai no wa.me (canal manual).">

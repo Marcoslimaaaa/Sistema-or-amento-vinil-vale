@@ -64,6 +64,7 @@ import { conversaDoLead, leadDaConversa, leadsCandidatos } from "./services/vinc
 import { assinatura, salvarRascunho, lerRascunho, limparRascunho, deveOferecer, descricaoRascunho } from "./services/rascunho.js";
 import { leadScore, faixaScore, conversasSemResposta } from "./services/score.js";
 import AlertaSLA from "./components/crm/AlertaSLA";
+import SeloPotencial from "./components/crm/SeloPotencial";
 import RevisaoEtapas from "./components/crm/RevisaoEtapas";
 import { classificarBase } from "./services/etapaAuto.js";
 import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
@@ -3430,15 +3431,21 @@ export default function App(){
           const fechados=hist.filter(q=>["fechou","execucao","concluido"].includes(q.status));
           const ativos=hist.filter(q=>!["concluido","perdido"].includes(q.status));
           const perdidos=hist.filter(q=>q.status==="perdido");
-          const receita=fechados.reduce((s,q)=>s+(parseFloat(q.tot)||0),0);
-          const txConv=hist.length>0?Math.round((fechados.length/hist.length)*100):0;
+          // Contagem por CLIENTE, nao por documento: dois orcamentos do mesmo
+          // cliente sao um lead so, e quando fecha vale o que fechou
+          // (services/leadUnico.js). Os arrays acima seguem existindo para os
+          // detalhes que sao por orcamento mesmo.
+          const mFunil=metricasFunil(hist);
+          const gruposLead=agruparLeads(hist);
+          const dupMap=mapaDuplicados(hist);
+          const receita=mFunil.receita;
           // Taxa de vitória: só sobre leads DECIDIDOS (fechados+perdidos) — a taxa
           // antiga dividia pelo total e era diluída pelos leads ainda em aberto
-          const decididos=fechados.length+perdidos.length;
-          const winRate=decididos>0?Math.round((fechados.length/decididos)*100):0;
-          const ticketMedio=fechados.length>0?receita/fechados.length:0;
+          const txConv=mFunil.txConv;
+          const winRate=mFunil.winRate;
+          const ticketMedio=mFunil.ticketMedio;
           // Maior orçamento em aberto — normaliza o peso do valor no lead score
-          const maiorValorPipe=Math.max(0,...ativos.map(q=>parseFloat(q.tot)||0));
+          const maiorValorPipe=mFunil.maiorValorAtivo;
           const followUps=hist.filter(q=>{const s=q.status||"lead";if(!["lead","negociacao"].includes(s))return false;const d=getCachedDays(q.id);return d>=REGUA.followUp&&d<REGUA.desconhecido});
           const overdueNC=Object.keys(crmNextContact).filter(id=>isNextContactOverdue(id)&&hist.find(q=>q.id==id&&!["concluido","perdido"].includes(q.status)));
 
@@ -3474,9 +3481,9 @@ export default function App(){
             {/* KPIs */}
             <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px",marginBottom:"14px"}}>
               {[
-                {label:"Total",val:hist.length,color:blue,bg:"linear-gradient(135deg,#0055a4,#003d7a)"},
-                {label:"Ativos",val:ativos.length,color:"#f97316",bg:"linear-gradient(135deg,#f97316,#ea580c)"},
-                {label:"Fechados",val:fechados.length,color:"#16a34a",bg:"linear-gradient(135deg,#16a34a,#15803d)"},
+                {label:mFunil.orcamentosExtras>0?`Clientes (${hist.length} orcamentos)`:"Clientes",val:mFunil.leads,color:blue,bg:"linear-gradient(135deg,#0055a4,#003d7a)"},
+                {label:"Ativos",val:mFunil.ativos,color:"#f97316",bg:"linear-gradient(135deg,#f97316,#ea580c)"},
+                {label:"Fechados",val:mFunil.fechados,color:"#16a34a",bg:"linear-gradient(135deg,#16a34a,#15803d)"},
                 {label:`Conversão real (geral ${txConv}%)`,val:winRate+"%",color:"#8b5cf6",bg:"linear-gradient(135deg,#8b5cf6,#7c3aed)"},
                 {label:"Ticket Médio",val:fmt(ticketMedio),color:"#f59e0b",bg:"linear-gradient(135deg,#f59e0b,#d97706)"},
                 {label:"Follow-up",val:followUps.length+(overdueNC.length>0?"  ⏰"+overdueNC.length:""),color:"#dc2626",bg:"linear-gradient(135deg,#dc2626,#991b1b)"},
@@ -3485,12 +3492,12 @@ export default function App(){
             {/* Receita total */}
             <div style={{background:"linear-gradient(135deg,#001d3d,#0055a4)",borderRadius:"10px",padding:"14px",marginBottom:"14px",color:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div><div style={{fontSize:"9px",opacity:.7,fontWeight:"600",textTransform:"uppercase",letterSpacing:"1px"}}>Receita Total Fechada</div><div style={{fontSize:"26px",fontWeight:"800"}}>{fmt(receita)}</div></div>
-              <div style={{textAlign:"right"}}><div style={{fontSize:"9px",opacity:.7}}>Perdidos</div><div style={{fontSize:"16px",fontWeight:"700",color:"#fca5a5"}}>{perdidos.length} leads</div></div>
+              <div style={{textAlign:"right"}}><div style={{fontSize:"9px",opacity:.7}}>Perdidos</div><div style={{fontSize:"16px",fontWeight:"700",color:"#fca5a5"}}>{mFunil.perdidos} leads</div></div>
             </div>
             {/* Funil */}
             <div style={{background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`,marginBottom:"14px"}}>
               <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Funil de Vendas</div>
-              {activePipe.map(stage=>{const cnt=hist.filter(q=>(q.status||"lead")===stage.id).length;const pct=hist.length>0?Math.round((cnt/hist.length)*100):0;const val=hist.filter(q=>(q.status||"lead")===stage.id).reduce((s,q)=>s+(parseFloat(q.tot)||0),0);return <div key={stage.id} style={{marginBottom:"6px"}}><div style={{display:"flex",justifyContent:"space-between",fontSize:"9px",marginBottom:"2px"}}><span style={{fontWeight:"700",color:stage.color}}>{stage.icon} {stage.label}</span><span style={{color:t.textSec}}>{cnt} leads · {fmt(val)}</span></div><div style={{height:"10px",background:t.cardBorder,borderRadius:"5px",overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:stage.color,borderRadius:"5px",transition:"width .5s"}}/></div></div>})}
+              {activePipe.map(stage=>{const doStage=gruposLead.filter(g=>(g.status||"lead")===stage.id);const cnt=doStage.length;const pct=gruposLead.length>0?Math.round((cnt/gruposLead.length)*100):0;const val=doStage.reduce((s,g)=>s+g.valor,0);return <div key={stage.id} style={{marginBottom:"6px"}}><div style={{display:"flex",justifyContent:"space-between",fontSize:"9px",marginBottom:"2px"}}><span style={{fontWeight:"700",color:stage.color}}>{stage.icon} {stage.label}</span><span style={{color:t.textSec}}>{cnt} leads · {fmt(val)}</span></div><div style={{height:"10px",background:t.cardBorder,borderRadius:"5px",overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:stage.color,borderRadius:"5px",transition:"width .5s"}}/></div></div>})}
             </div>
             {/* Tempo médio por etapa — só conta leads com stageSince gravado */}
             {(()=>{
@@ -3624,7 +3631,13 @@ export default function App(){
                         style={{background:t.card,borderRadius:"8px",padding:"8px",border:`1px solid ${overdue?"#fca5a5":t.cardBorder}`,boxShadow:"0 1px 3px rgba(0,0,0,.04)",opacity:dragLead?.id===q.id?0.4:1,cursor:"grab"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"3px"}}>
                           <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,lineHeight:"1.2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.cN||"Sem nome"}</div>
+                            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,lineHeight:"1.2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:"4px"}}>
+                              <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{q.cN||"Sem nome"}</span>
+                              {/* Mesmo cliente com mais de um orcamento: o funil ja
+                                  conta os dois como UM lead, e o selo evita tratar o
+                                  segundo card como cliente novo. */}
+                              {dupMap[q.id]&&<span title={`${dupMap[q.id].quantos} orcamentos deste mesmo cliente — no funil conta como 1 lead${dupMap[q.id].ehPrincipal?"":". Este nao e o mais avancado."}`} style={{fontSize:"6px",background:dupMap[q.id].ehPrincipal?"#0055a41f":"#94a3b81f",color:dupMap[q.id].ehPrincipal?"#0055a4":"#64748b",padding:"1px 3px",borderRadius:"3px",fontWeight:"800",flexShrink:0}}>{dupMap[q.id].ehPrincipal?`1 de ${dupMap[q.id].quantos}`:`2º orc.`}</span>}
+                            </div>
                             <div style={{fontSize:"8px",color:t.textMuted,marginTop:"2px"}}>{[q.data?.client?.city,q.ps&&q.ps+"m",days<999&&(days+"d"),naEtapa!==null&&`${naEtapa}d nesta etapa`].filter(Boolean).join(" · ")}</div>
                           </div>
                           <div style={{textAlign:"right",flexShrink:0,marginLeft:"6px"}}>
@@ -3890,7 +3903,7 @@ export default function App(){
 
               {/* Filtros */}
               <div style={{padding:"6px 12px",background:"#f0f2f5",display:"flex",gap:"6px",flexWrap:"wrap",borderBottom:"1px solid #e2ddd1"}}>
-                {[["all","Tudo"],["unread","Não lidas"],["handed_off","Assumidos"],["qualified","Qualificados"],["starred","Favoritas"],["archived","Arquivadas"]].map(([k,lb])=>
+                {[["all","Tudo"],["unread","Não lidas"],["quentes","🔥 Quentes"],["handed_off","Assumidos"],["qualified","Qualificados"],["starred","Favoritas"],["archived","Arquivadas"]].map(([k,lb])=>
                   <button key={k} onClick={()=>{if(k==="archived"){setWaShowArchived(!waShowArchived);setWaFilter("all")}else{setWaFilter(k);setWaShowArchived(false)}}} style={{padding:"4px 12px",borderRadius:"16px",border:"none",background:(waFilter===k||(k==="archived"&&waShowArchived))?"#008069":"#e9edef",color:(waFilter===k||(k==="archived"&&waShowArchived))?"#fff":"#54656f",fontSize:"12px",fontWeight:"500",cursor:"pointer"}}>{lb}</button>
                 )}
               </div>
@@ -3908,9 +3921,15 @@ export default function App(){
                     if(isArch)return false;
                     if(waFilter==="all")return true;
                     if(waFilter==="unread")return waUnread.includes(c.phone);
+                    // Quentes = faixa A do potencial de venda calculado pelo bot.
+                    // É a fila de "quem eu atendo primeiro" antes de existir orçamento.
+                    if(waFilter==="quentes")return c.qualificacao?.faixa==="A";
                     if(waFilter==="starred")return waPinned.includes(c.phone);
                     return c.status===waFilter;
                   });
+                  // No filtro Quentes a ordem é a da nota, não a da última
+                  // mensagem: a lista deixa de ser cronológica e vira fila.
+                  if(waFilter==="quentes")filtered.sort((a,b)=>(b.qualificacao?.nota||0)-(a.qualificacao?.nota||0));
                   const pinned=filtered.filter(c=>waPinned.includes(c.phone));
                   const unpinned=filtered.filter(c=>!waPinned.includes(c.phone));
                   const renderConv=(c,isPinned)=>{
@@ -3930,7 +3949,10 @@ export default function App(){
                       </div>
                       <div style={{flex:1,overflow:"hidden"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
-                          <div style={{fontWeight:isUnread?"600":"400",fontSize:"15px",color:"#111b21",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"65%"}}>{nome}</div>
+                          <div style={{display:"flex",alignItems:"center",gap:"5px",overflow:"hidden",maxWidth:"70%"}}>
+                            <div style={{fontWeight:isUnread?"600":"400",fontSize:"15px",color:"#111b21",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{nome}</div>
+                            <SeloPotencial qualificacao={c.qualificacao}/>
+                          </div>
                           <div style={{display:"flex",alignItems:"center",gap:"4px",flexShrink:0}}>
                             {isPinned&&<svg width="14" height="14" viewBox="0 0 24 24" fill="#8696a0"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5v6h2v-6h5v-2z"/></svg>}
                             <span style={{fontSize:"11px",color:isUnread?"#25d366":"#8696a0"}}>{timeStr}</span>
