@@ -17,6 +17,7 @@ import OrigemReport from "./components/dashboard/OrigemReport";
 import FichaLead from "./components/crm/FichaLead";
 import AnaliseConversa from "./components/crm/AnaliseConversa";
 import SeloPotencial from "./components/crm/SeloPotencial";
+import RascunhosBot from "./components/crm/RascunhosBot";
 import { classificarBase } from "./services/etapaAuto.js";
 import { leadScore, faixaScore } from "./services/score.js";
 
@@ -144,6 +145,27 @@ function App() {
             </div>
           );
         })}
+      </Bloco>
+
+      <Bloco titulo="RascunhosBot" nota="Fila do que o Vini preencheu pela conversa. O 100% deve vir primeiro; o que precisa de desenho vai pro fim. Descartar e Abrir apenas registram no log abaixo.">
+        <RascunhosBot
+          t={t}
+          fmtPhone={(p) => p}
+          rascunhos={[
+            { id: "5513991112222", completude: 100, precisaDesenho: false, nota: 85,
+              campos: { svcType: "revestimento", poolFmt: "Retangular", client: { name: "Carlos", city: "Registro" }, pool: { length: "8", width: "4", depth: "1.4" } },
+              faltando: [], observacoes: ["Cliente contou 6 flanges — conferir a divisão dos dispositivos."] },
+            { id: "5513993334444", completude: 78, precisaDesenho: false, nota: 60,
+              campos: { svcType: "revestimento", poolFmt: "Com prainha", client: { name: "Ana", city: "Peruíbe" }, pool: { length: "10", width: "5", depth: "1.5" } },
+              faltando: ["avanço da prainha", "lâmina d'água da prainha"], observacoes: ["Foto: retangular com prainha na lateral"] },
+            { id: "5513995556666", completude: 100, precisaDesenho: true, nota: 70,
+              campos: { svcType: "construcao", poolFmt: "Formato L", client: { name: "Rui", city: "Cajati" }, pool: { length: "9", width: "4", depth: "1.4" } },
+              faltando: [], observacoes: [] },
+            { id: "descartado", status: "descartado", completude: 100, campos: { client: { name: "NÃO DEVE APARECER" }, pool: {} }, faltando: [] },
+          ]}
+          onAbrir={(r) => registrar(`abrir rascunho ${r.id}`)}
+          onDescartar={(r) => registrar(`descartar rascunho ${r.id}`)}
+        />
       </Bloco>
 
       <Bloco titulo="SeloPotencial" nota="Nota do bot no fim da triagem. Compacto é o que aparece na lista de conversas; o detalhado mostra os motivos. Sem qualificação NÃO deve renderizar nada.">

@@ -60,6 +60,22 @@ service cloud.firestore {
       allow read, write: if isEquipe();
     }
 
+    // Rascunhos de orcamento gerados pelo bot (colecao rascunhos_bot).
+    //
+    // Contem dados de cliente (nome, cidade, telefone), entao vale a mesma
+    // porta de tudo o mais: so a equipe. O bot escreve pelo Admin SDK e nao
+    // passa por estas regras; o painel LE a fila e ESCREVE so o desfecho
+    // (aproveitado/descartado), nunca os campos do rascunho — quem preenche
+    // e o bot, quem decide e o humano, e misturar os dois apagaria o registro
+    // do que o bot tinha proposto.
+    match /rascunhos_bot/{telefone} {
+      allow read: if isEquipe();
+      allow update: if isEquipe()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status','decididoEm','quoteId','corrigidos','completados']);
+      allow create, delete: if false;
+    }
+
     // Conversas WhatsApp - somente equipe (o bot escreve via Admin SDK, não passa por rules)
     match /whatsapp_conversations/{phone} {
       allow read: if isEquipe();
