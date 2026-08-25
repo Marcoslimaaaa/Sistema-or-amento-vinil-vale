@@ -9,19 +9,40 @@ import { calcA } from "./motor/areas.js";
 import { planoManta, facesRetangulo, facesComPrainha, facesDoContorno, cortarChaoContorno } from "./motor/manta.js";
 import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho } from "./motor/formas.js";
 import { ramalSistema, totaisHidraulica, ROTULO_SIS, SEM_TUBO, BARRA_M } from "./motor/hidraulica.js";
-// jspdf/html2canvas (~200KB gz) só carregam quando alguém gera PDF/imagem
-const loadPdfLibs=async()=>{
+// Aviso de que um arquivo do app não veio do servidor. Quem escuta é o App,
+// que salva o rascunho e oferece o recarregamento — nunca recarrega sozinho.
+export const EVENTO_CHUNK="vv:chunk-error";
+// Ligado durante a busca antecipada, feita assim que a máquina fica ociosa:
+// rede ruim logo ao abrir o app é comum demais para virar aviso na tela. O
+// handler de `vite:preloadError` do main.jsx respeita esta trava, senão ele
+// avisaria por baixo do pano mesmo na tentativa silenciosa.
+let chunkSilencioso=false;
+export const emPreloadSilencioso=()=>chunkSilencioso;
+const avisarChunkQuebrado=(err)=>{if(chunkSilencioso)return;try{window.dispatchEvent(new CustomEvent(EVENTO_CHUNK,{detail:{erro:String(err)}}))}catch{}};
+
+// jspdf/html2canvas (~200KB gz) só carregam quando alguém gera PDF/imagem.
+// Guardados depois da primeira carga: o clique em "Baixar PDF" era o único
+// momento do sistema que dependia da rede no meio do trabalho.
+let pdfLibs=null;
+const loadPdfLibs=async({silencioso=false}={})=>{
+  if(pdfLibs)return pdfLibs;
+  if(silencioso)chunkSilencioso=true;
   try{
     const[h,j]=await Promise.all([import("html2canvas"),import("jspdf")]);
-    return{html2canvas:h.default,jsPDF:j.jsPDF};
+    // Cinto e suspensório: se algum dia um import voltar a resolver sem o
+    // conteúdo esperado, isso vira o mesmo aviso de sempre em vez de um
+    // TypeError cru na cara de quem está montando o orçamento.
+    if(!h?.default||!j?.jsPDF)throw new Error("Módulo do PDF veio incompleto do servidor");
+    pdfLibs={html2canvas:h.default,jsPDF:j.jsPDF};
+    return pdfLibs;
   }catch(err){
-    // Chunk com hash antigo sumiu após um novo deploy → recarrega uma vez
-    // para o navegador pegar o index.html/chunks novos.
-    if(!sessionStorage.getItem("vv-chunk-reload")){
-      sessionStorage.setItem("vv-chunk-reload","1");
-      window.location.reload();
-    }
+    // Chunk com hash antigo sumiu após um deploy, ou a rede caiu. Antes daqui
+    // saía um window.location.reload() que levava junto o orçamento em edição.
+    if(!silencioso)avisarChunkQuebrado(err);
+    try{err.chunkQuebrado=true}catch{}
     throw err;
+  }finally{
+    if(silencioso)chunkSilencioso=false;
   }
 };
 const Pool3DView = lazy(() => import('./Pool3DView'));
@@ -40,8 +61,10 @@ import Timeline from "./components/crm/Timeline";
 import FichaLead from "./components/crm/FichaLead";
 import AnaliseConversa from "./components/crm/AnaliseConversa";
 import { conversaDoLead, leadDaConversa, leadsCandidatos } from "./services/vinculo.js";
+import { assinatura, salvarRascunho, lerRascunho, limparRascunho, deveOferecer, descricaoRascunho } from "./services/rascunho.js";
 import { leadScore, faixaScore, conversasSemResposta } from "./services/score.js";
 import AlertaSLA from "./components/crm/AlertaSLA";
+import SeloPotencial from "./components/crm/SeloPotencial";
 import RevisaoEtapas from "./components/crm/RevisaoEtapas";
 import { classificarBase } from "./services/etapaAuto.js";
 import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
@@ -1082,6 +1105,39 @@ const CatalogoPicker=({value,onChange,t,dark})=>{
   </div>;
 };
 const ST=({icon,children})=><h3 className="vv-st">{children}</h3>;
+// O 3D também mora em arquivo separado. Sem isto, um chunk que não carrega
+// derruba a tela inteira — antes o reload automático escondia esse caso.
+class ChunkBoundary extends React.Component{
+  constructor(props){super(props);this.state={erro:false}}
+  static getDerivedStateFromError(){return{erro:true}}
+  componentDidCatch(err){try{window.dispatchEvent(new CustomEvent(EVENTO_CHUNK,{detail:{erro:String(err)}}))}catch{}}
+  render(){return this.state.erro?this.props.fallback:this.props.children}
+}
+
+// Faixas fixas no topo. As duas existem por causa do mesmo bug: o app
+// recarregava sozinho no clique de "Baixar PDF" e o orçamento em edição sumia.
+// Agora o recarregamento é uma escolha, e o trabalho volta depois dele.
+const FAIXA={position:"fixed",top:0,left:0,right:0,zIndex:9999,display:"flex",flexDirection:"column",gap:"1px",fontFamily:"'Segoe UI',sans-serif"};
+const LINHA={display:"flex",alignItems:"center",justifyContent:"center",gap:"10px",flexWrap:"wrap",padding:"9px 14px",fontSize:"12px",fontWeight:"600",lineHeight:1.35,textAlign:"center",boxShadow:"0 2px 8px rgba(0,0,0,.18)"};
+const BOTAO_FAIXA={padding:"5px 12px",borderRadius:"6px",border:"none",fontFamily:"inherit",fontSize:"11.5px",fontWeight:"700",cursor:"pointer",whiteSpace:"nowrap"};
+
+const Avisos=({chunkQuebrado,onAtualizar,rascunho,onRecuperar,onDescartar})=>{
+  if(!chunkQuebrado&&!rascunho)return null;
+  return(
+    <div style={FAIXA}>
+      {chunkQuebrado&&<div style={{...LINHA,background:"#fef3c7",color:"#78350f",borderBottom:"1px solid #f59e0b"}}>
+        <span>⚠️ Parte do app não carregou — atualização no servidor ou rede instável. <b>Seu orçamento está salvo.</b> Atualize para gerar o PDF.</span>
+        <button onClick={onAtualizar} style={{...BOTAO_FAIXA,background:"#b45309",color:"#fff"}}>Atualizar agora</button>
+      </div>}
+      {rascunho&&<div style={{...LINHA,background:"#dbeafe",color:"#1e3a8a",borderBottom:"1px solid #3b82f6"}}>
+        <span>💾 Tem um orçamento não salvo de <b>{descricaoRascunho(rascunho)}</b>.</span>
+        <button onClick={onRecuperar} style={{...BOTAO_FAIXA,background:"#1d4ed8",color:"#fff"}}>Recuperar</button>
+        <button onClick={onDescartar} style={{...BOTAO_FAIXA,background:"transparent",color:"#1e3a8a",border:"1px solid #93c5fd"}}>Descartar</button>
+      </div>}
+    </div>
+  );
+};
+
 const Btn=({children,onClick,style:sx})=><button onClick={onClick} style={{padding:"8px 14px",background:"var(--btn-bg,#f2f6f8)",color:"var(--btn-fg,#3d5268)",border:"1px solid var(--btn-bd,#cfdae2)",borderRadius:"6px",fontWeight:"600",fontSize:"12px",fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:"6px",...sx}}>{children}</button>;
 const DarkToggle=({dark,onToggle})=><button onClick={onToggle} aria-label={dark?"Mudar para tema claro":"Mudar para tema escuro"} style={{width:"38px",height:"22px",borderRadius:"11px",border:"none",background:dark?"#2c4368":"#cbd5e1",cursor:"pointer",position:"relative",transition:"background .3s"}}><div style={{width:"18px",height:"18px",borderRadius:"50%",background:dark?"#0b1524":"#fff",position:"absolute",top:"2px",left:dark?"18px":"2px",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>{dark?<Moon size={11} color="#2dd4bf"/>:<Sun size={11} color="#e8b100"/>}</div></button>;
 
@@ -1265,7 +1321,7 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
       if(onSave)onSave();
       setTimeout(()=>setPdfStatus(""),5000);
     }catch(e){
-      setPdfStatus("❌ Erro: "+String(e));setTimeout(()=>setPdfStatus(""),5000);
+      setPdfStatus(e?.chunkQuebrado?"❌ Atualize a página para gerar o PDF":"❌ Erro: "+String(e));setTimeout(()=>setPdfStatus(""),6000);
     }
   };
 
@@ -1693,7 +1749,7 @@ export default function App(){
     }
   };
   const doLogout=()=>{
-    ["vv_hist","vv_receber","vv_pagar","vv_fixas","vv_stk","vv_stklog","vv_fornec","vv_interacoes","vv_crmmeta","vv_pending","vv_pending_del","vv_cfg_dirty"].forEach(k=>localStorage.removeItem(k));
+    ["vv_hist","vv_receber","vv_pagar","vv_fixas","vv_stk","vv_stklog","vv_fornec","vv_interacoes","vv_crmmeta","vv_pending","vv_pending_del","vv_cfg_dirty","vv_rascunho"].forEach(k=>localStorage.removeItem(k));
     if(fbReady&&fb.auth)fbFns.signOut(fb.auth);else setUser(null);
   };
 
@@ -2477,6 +2533,76 @@ export default function App(){
   const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){autoStockOut(item);syncFinancas(item);}setFbMsg("✅ Cliente fechado!");setTimeout(()=>setFbMsg(""),3000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)syncFinancas(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
   const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
+  // ═══ RASCUNHO DO EDITOR ═══ (o porquê está em services/rascunho.js)
+  const gDataRef=useRef(gData);gDataRef.current=gData;
+  const inicialRef=useRef(null);
+  // Assinatura do editor recém-aberto — o "nada foi mexido ainda".
+  if(inicialRef.current===null)inicialRef.current=assinatura(gData());
+  const [rascunho,setRascunho]=useState(null);          // oferta de recuperação
+  const [chunkQuebrado,setChunkQuebrado]=useState(false); // faltou arquivo do app
+
+  const recuperarRascunho=reg=>{
+    load({id:reg.editingId,data:reg.data});
+    // O conteúdo recuperado passa a ser a base do editor: sem isto o próprio
+    // rascunho recém-restaurado ainda contaria como "trabalho não salvo" e a
+    // faixa voltaria a aparecer.
+    inicialRef.current=assinatura(reg.data);
+    if(reg.tab)setTab(reg.tab);
+    setRascunho(null);
+    setFbMsg("Orçamento recuperado!");setTimeout(()=>setFbMsg(""),2500);
+  };
+  const descartarRascunho=()=>{limparRascunho();setRascunho(null)};
+
+  useEffect(()=>{
+    const reg=lerRascunho();
+    if(!reg)return;
+    if(reg.auto){
+      // Recarregamento que o próprio sistema pediu: devolve sem perguntar,
+      // porque ninguém escolheu perder nada. Regrava sem a marca para o
+      // próximo reload não repetir a recuperação.
+      recuperarRascunho(reg);
+      salvarRascunho({data:reg.data,editingId:reg.editingId,tab:reg.tab});
+      return;
+    }
+    if(deveOferecer(reg,{inicial:inicialRef.current,hist:histRef.current}))setRascunho(reg);
+  },[]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Grava a cada mexida, com folga de 800ms para não escrever a cada tecla.
+  useEffect(()=>{
+    const id=setTimeout(()=>{
+      const data=gDataRef.current();
+      if(assinatura(data)===inicialRef.current)return; // editor intocado
+      salvarRascunho({data,editingId,tab});
+    },800);
+    return()=>clearTimeout(id);
+  },[client,pool,items,guar,ci,pay,totOv,vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,includeIso,disps,customPos,isoView,invertSide,flipH,flipV,devHeights,raloQuenteParede,desenho,editingId,tab]);
+
+  // Arquivo do app não veio do servidor: salva na hora, marcando que a volta é
+  // automática, e só então oferece o recarregamento.
+  useEffect(()=>{
+    const aoQuebrar=()=>{
+      const data=gDataRef.current();
+      if(assinatura(data)!==inicialRef.current)salvarRascunho({data,editingId,tab,auto:true});
+      setChunkQuebrado(true);
+    };
+    window.addEventListener(EVENTO_CHUNK,aoQuebrar);
+    return()=>window.removeEventListener(EVENTO_CHUNK,aoQuebrar);
+  },[editingId,tab]);
+
+  // Puxa jspdf/html2canvas quando a máquina está ociosa. Antes eles só eram
+  // buscados no clique de "Baixar PDF" — a pior hora possível para depender da
+  // rede. No boot a falha é silenciosa (rede ruim ao abrir é comum); ao entrar
+  // na tela do orçamento ela vira aviso, ainda dá tempo de atualizar.
+  useEffect(()=>{
+    const ocioso=window.requestIdleCallback||(f=>setTimeout(f,2500));
+    const id=ocioso(()=>{loadPdfLibs({silencioso:true}).catch(()=>{})});
+    return()=>{try{(window.cancelIdleCallback||clearTimeout)(id)}catch{}};
+  },[]);
+  useEffect(()=>{if(view==="quote")loadPdfLibs().catch(()=>{})},[view]);
+
+  const atualizarApp=()=>{window.location.reload()};
+  const avisos=<Avisos chunkQuebrado={chunkQuebrado} onAtualizar={atualizarApp} rascunho={view==="editor"?rascunho:null} onRecuperar={()=>recuperarRascunho(rascunho)} onDescartar={descartarRascunho}/>;
+
   const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
   const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
   const movePipe=(id,stage)=>{
@@ -2784,7 +2910,7 @@ export default function App(){
 
 
 
-  if(view==="quote")return <QP d={gData()} autoPositions={autoPositions} onBack={()=>setView("editor")} onEntregue={(origem)=>{if(editingId)marcarEntregueNoFunil(editingId,origem)}} onSave={()=>{const d=gData();if(editingId){const existing=hist.find(q=>q.id===editingId);const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);}else{const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);}}}/>;
+  if(view==="quote")return <>{avisos}<QP d={gData()} autoPositions={autoPositions} onBack={()=>setView("editor")} onEntregue={(origem)=>{if(editingId)marcarEntregueNoFunil(editingId,origem)}} onSave={()=>{const d=gData();if(editingId){const existing=hist.find(q=>q.id===editingId);const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);}else{const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);}}}/></>;
 
   const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};// use className="vv-g2" for responsive
 
@@ -2793,6 +2919,7 @@ export default function App(){
 
   return(
     <div className="vv-layout" style={{background:t.bg,color:t.text,transition:"background .3s,color .3s","--accent-strong":t.accentStrong,"--step-fg":t.stepFg,"--step-bd":t.stepBd,"--btn-bg":t.btnBg,"--btn-fg":t.btnFg,"--btn-bd":t.btnBd}}>
+      {avisos}
       {/* SIDEBAR OVERLAY (mobile) */}
       <div className={"vv-sidebar-overlay"+(sidebarOpen?" open":"")} onClick={()=>setSidebarOpen(false)}/>
 
@@ -3304,15 +3431,21 @@ export default function App(){
           const fechados=hist.filter(q=>["fechou","execucao","concluido"].includes(q.status));
           const ativos=hist.filter(q=>!["concluido","perdido"].includes(q.status));
           const perdidos=hist.filter(q=>q.status==="perdido");
-          const receita=fechados.reduce((s,q)=>s+(parseFloat(q.tot)||0),0);
-          const txConv=hist.length>0?Math.round((fechados.length/hist.length)*100):0;
+          // Contagem por CLIENTE, nao por documento: dois orcamentos do mesmo
+          // cliente sao um lead so, e quando fecha vale o que fechou
+          // (services/leadUnico.js). Os arrays acima seguem existindo para os
+          // detalhes que sao por orcamento mesmo.
+          const mFunil=metricasFunil(hist);
+          const gruposLead=agruparLeads(hist);
+          const dupMap=mapaDuplicados(hist);
+          const receita=mFunil.receita;
           // Taxa de vitória: só sobre leads DECIDIDOS (fechados+perdidos) — a taxa
           // antiga dividia pelo total e era diluída pelos leads ainda em aberto
-          const decididos=fechados.length+perdidos.length;
-          const winRate=decididos>0?Math.round((fechados.length/decididos)*100):0;
-          const ticketMedio=fechados.length>0?receita/fechados.length:0;
+          const txConv=mFunil.txConv;
+          const winRate=mFunil.winRate;
+          const ticketMedio=mFunil.ticketMedio;
           // Maior orçamento em aberto — normaliza o peso do valor no lead score
-          const maiorValorPipe=Math.max(0,...ativos.map(q=>parseFloat(q.tot)||0));
+          const maiorValorPipe=mFunil.maiorValorAtivo;
           const followUps=hist.filter(q=>{const s=q.status||"lead";if(!["lead","negociacao"].includes(s))return false;const d=getCachedDays(q.id);return d>=REGUA.followUp&&d<REGUA.desconhecido});
           const overdueNC=Object.keys(crmNextContact).filter(id=>isNextContactOverdue(id)&&hist.find(q=>q.id==id&&!["concluido","perdido"].includes(q.status)));
 
@@ -3348,9 +3481,9 @@ export default function App(){
             {/* KPIs */}
             <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px",marginBottom:"14px"}}>
               {[
-                {label:"Total",val:hist.length,color:blue,bg:"linear-gradient(135deg,#0055a4,#003d7a)"},
-                {label:"Ativos",val:ativos.length,color:"#f97316",bg:"linear-gradient(135deg,#f97316,#ea580c)"},
-                {label:"Fechados",val:fechados.length,color:"#16a34a",bg:"linear-gradient(135deg,#16a34a,#15803d)"},
+                {label:mFunil.orcamentosExtras>0?`Clientes (${hist.length} orcamentos)`:"Clientes",val:mFunil.leads,color:blue,bg:"linear-gradient(135deg,#0055a4,#003d7a)"},
+                {label:"Ativos",val:mFunil.ativos,color:"#f97316",bg:"linear-gradient(135deg,#f97316,#ea580c)"},
+                {label:"Fechados",val:mFunil.fechados,color:"#16a34a",bg:"linear-gradient(135deg,#16a34a,#15803d)"},
                 {label:`Conversão real (geral ${txConv}%)`,val:winRate+"%",color:"#8b5cf6",bg:"linear-gradient(135deg,#8b5cf6,#7c3aed)"},
                 {label:"Ticket Médio",val:fmt(ticketMedio),color:"#f59e0b",bg:"linear-gradient(135deg,#f59e0b,#d97706)"},
                 {label:"Follow-up",val:followUps.length+(overdueNC.length>0?"  ⏰"+overdueNC.length:""),color:"#dc2626",bg:"linear-gradient(135deg,#dc2626,#991b1b)"},
@@ -3359,12 +3492,12 @@ export default function App(){
             {/* Receita total */}
             <div style={{background:"linear-gradient(135deg,#001d3d,#0055a4)",borderRadius:"10px",padding:"14px",marginBottom:"14px",color:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div><div style={{fontSize:"9px",opacity:.7,fontWeight:"600",textTransform:"uppercase",letterSpacing:"1px"}}>Receita Total Fechada</div><div style={{fontSize:"26px",fontWeight:"800"}}>{fmt(receita)}</div></div>
-              <div style={{textAlign:"right"}}><div style={{fontSize:"9px",opacity:.7}}>Perdidos</div><div style={{fontSize:"16px",fontWeight:"700",color:"#fca5a5"}}>{perdidos.length} leads</div></div>
+              <div style={{textAlign:"right"}}><div style={{fontSize:"9px",opacity:.7}}>Perdidos</div><div style={{fontSize:"16px",fontWeight:"700",color:"#fca5a5"}}>{mFunil.perdidos} leads</div></div>
             </div>
             {/* Funil */}
             <div style={{background:t.sectionBg,borderRadius:"10px",padding:"12px",border:`1px solid ${t.cardBorder}`,marginBottom:"14px"}}>
               <div style={{fontSize:"11px",fontWeight:"700",color:t.text,marginBottom:"10px"}}>Funil de Vendas</div>
-              {activePipe.map(stage=>{const cnt=hist.filter(q=>(q.status||"lead")===stage.id).length;const pct=hist.length>0?Math.round((cnt/hist.length)*100):0;const val=hist.filter(q=>(q.status||"lead")===stage.id).reduce((s,q)=>s+(parseFloat(q.tot)||0),0);return <div key={stage.id} style={{marginBottom:"6px"}}><div style={{display:"flex",justifyContent:"space-between",fontSize:"9px",marginBottom:"2px"}}><span style={{fontWeight:"700",color:stage.color}}>{stage.icon} {stage.label}</span><span style={{color:t.textSec}}>{cnt} leads · {fmt(val)}</span></div><div style={{height:"10px",background:t.cardBorder,borderRadius:"5px",overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:stage.color,borderRadius:"5px",transition:"width .5s"}}/></div></div>})}
+              {activePipe.map(stage=>{const doStage=gruposLead.filter(g=>(g.status||"lead")===stage.id);const cnt=doStage.length;const pct=gruposLead.length>0?Math.round((cnt/gruposLead.length)*100):0;const val=doStage.reduce((s,g)=>s+g.valor,0);return <div key={stage.id} style={{marginBottom:"6px"}}><div style={{display:"flex",justifyContent:"space-between",fontSize:"9px",marginBottom:"2px"}}><span style={{fontWeight:"700",color:stage.color}}>{stage.icon} {stage.label}</span><span style={{color:t.textSec}}>{cnt} leads · {fmt(val)}</span></div><div style={{height:"10px",background:t.cardBorder,borderRadius:"5px",overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:stage.color,borderRadius:"5px",transition:"width .5s"}}/></div></div>})}
             </div>
             {/* Tempo médio por etapa — só conta leads com stageSince gravado */}
             {(()=>{
@@ -3498,7 +3631,13 @@ export default function App(){
                         style={{background:t.card,borderRadius:"8px",padding:"8px",border:`1px solid ${overdue?"#fca5a5":t.cardBorder}`,boxShadow:"0 1px 3px rgba(0,0,0,.04)",opacity:dragLead?.id===q.id?0.4:1,cursor:"grab"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"3px"}}>
                           <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,lineHeight:"1.2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.cN||"Sem nome"}</div>
+                            <div style={{fontSize:"11px",fontWeight:"700",color:t.text,lineHeight:"1.2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:"4px"}}>
+                              <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{q.cN||"Sem nome"}</span>
+                              {/* Mesmo cliente com mais de um orcamento: o funil ja
+                                  conta os dois como UM lead, e o selo evita tratar o
+                                  segundo card como cliente novo. */}
+                              {dupMap[q.id]&&<span title={`${dupMap[q.id].quantos} orcamentos deste mesmo cliente — no funil conta como 1 lead${dupMap[q.id].ehPrincipal?"":". Este nao e o mais avancado."}`} style={{fontSize:"6px",background:dupMap[q.id].ehPrincipal?"#0055a41f":"#94a3b81f",color:dupMap[q.id].ehPrincipal?"#0055a4":"#64748b",padding:"1px 3px",borderRadius:"3px",fontWeight:"800",flexShrink:0}}>{dupMap[q.id].ehPrincipal?`1 de ${dupMap[q.id].quantos}`:`2º orc.`}</span>}
+                            </div>
                             <div style={{fontSize:"8px",color:t.textMuted,marginTop:"2px"}}>{[q.data?.client?.city,q.ps&&q.ps+"m",days<999&&(days+"d"),naEtapa!==null&&`${naEtapa}d nesta etapa`].filter(Boolean).join(" · ")}</div>
                           </div>
                           <div style={{textAlign:"right",flexShrink:0,marginLeft:"6px"}}>
@@ -3764,7 +3903,7 @@ export default function App(){
 
               {/* Filtros */}
               <div style={{padding:"6px 12px",background:"#f0f2f5",display:"flex",gap:"6px",flexWrap:"wrap",borderBottom:"1px solid #e2ddd1"}}>
-                {[["all","Tudo"],["unread","Não lidas"],["handed_off","Assumidos"],["qualified","Qualificados"],["starred","Favoritas"],["archived","Arquivadas"]].map(([k,lb])=>
+                {[["all","Tudo"],["unread","Não lidas"],["quentes","🔥 Quentes"],["handed_off","Assumidos"],["qualified","Qualificados"],["starred","Favoritas"],["archived","Arquivadas"]].map(([k,lb])=>
                   <button key={k} onClick={()=>{if(k==="archived"){setWaShowArchived(!waShowArchived);setWaFilter("all")}else{setWaFilter(k);setWaShowArchived(false)}}} style={{padding:"4px 12px",borderRadius:"16px",border:"none",background:(waFilter===k||(k==="archived"&&waShowArchived))?"#008069":"#e9edef",color:(waFilter===k||(k==="archived"&&waShowArchived))?"#fff":"#54656f",fontSize:"12px",fontWeight:"500",cursor:"pointer"}}>{lb}</button>
                 )}
               </div>
@@ -3782,9 +3921,15 @@ export default function App(){
                     if(isArch)return false;
                     if(waFilter==="all")return true;
                     if(waFilter==="unread")return waUnread.includes(c.phone);
+                    // Quentes = faixa A do potencial de venda calculado pelo bot.
+                    // É a fila de "quem eu atendo primeiro" antes de existir orçamento.
+                    if(waFilter==="quentes")return c.qualificacao?.faixa==="A";
                     if(waFilter==="starred")return waPinned.includes(c.phone);
                     return c.status===waFilter;
                   });
+                  // No filtro Quentes a ordem é a da nota, não a da última
+                  // mensagem: a lista deixa de ser cronológica e vira fila.
+                  if(waFilter==="quentes")filtered.sort((a,b)=>(b.qualificacao?.nota||0)-(a.qualificacao?.nota||0));
                   const pinned=filtered.filter(c=>waPinned.includes(c.phone));
                   const unpinned=filtered.filter(c=>!waPinned.includes(c.phone));
                   const renderConv=(c,isPinned)=>{
@@ -3804,7 +3949,10 @@ export default function App(){
                       </div>
                       <div style={{flex:1,overflow:"hidden"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
-                          <div style={{fontWeight:isUnread?"600":"400",fontSize:"15px",color:"#111b21",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"65%"}}>{nome}</div>
+                          <div style={{display:"flex",alignItems:"center",gap:"5px",overflow:"hidden",maxWidth:"70%"}}>
+                            <div style={{fontWeight:isUnread?"600":"400",fontSize:"15px",color:"#111b21",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{nome}</div>
+                            <SeloPotencial qualificacao={c.qualificacao}/>
+                          </div>
                           <div style={{display:"flex",alignItems:"center",gap:"4px",flexShrink:0}}>
                             {isPinned&&<svg width="14" height="14" viewBox="0 0 24 24" fill="#8696a0"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5v6h2v-6h5v-2z"/></svg>}
                             <span style={{fontSize:"11px",color:isUnread?"#25d366":"#8696a0"}}>{timeStr}</span>
@@ -3911,7 +4059,7 @@ export default function App(){
                   </button>
                   <button onClick={()=>{botFetch(`/api/bot-on/${waChat}`,{method:"POST"});}} title="Ativar Bot" style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#25d366",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>🤖 Bot ON</button>
                   <button onClick={()=>{botFetch(`/api/handoff/${waChat}`,{method:"POST"});}} title="Assumir conversa" style={{padding:"5px 10px",borderRadius:"6px",border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#ffc107",fontSize:"11px",fontWeight:"600",cursor:"pointer"}}>✋ Assumir</button>
-                  <button onClick={async()=>{if(!waChatRef.current)return;const canvas=await html2canvas(waChatRef.current,{backgroundColor:null,scale:2});const link=document.createElement("a");link.download=`whatsapp-${waChatData.leadData?.nome||waChat}-${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.png`;link.href=canvas.toDataURL("image/png");link.click()}} title="Capturar PNG" style={{background:"none",border:"none",cursor:"pointer",padding:"8px",display:"flex",borderRadius:"50%"}}>
+                  <button onClick={async()=>{if(!waChatRef.current)return;const {html2canvas}=await loadPdfLibs();const canvas=await html2canvas(waChatRef.current,{backgroundColor:null,scale:2});const link=document.createElement("a");link.download=`whatsapp-${waChatData.leadData?.nome||waChat}-${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.png`;link.href=canvas.toDataURL("image/png");link.click()}} title="Capturar PNG" style={{background:"none",border:"none",cursor:"pointer",padding:"8px",display:"flex",borderRadius:"50%"}}>
                     <DownloadIcon size={18} color="#aebac1"/>
                   </button>
                 </div>
@@ -4360,7 +4508,7 @@ export default function App(){
             <span style={{fontSize:"8px",color:t.textMuted}}>(vazio = padrão {ALTURA_QUENTE.toFixed(2)}m acima do chão; ralo no chão fica rente ao piso)</span>
           </div>}
           {show3D
-            ?<Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/></Suspense>
+            ?<ChunkBoundary fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"0 20px",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Não deu para carregar a visualização 3D. Atualize a página — seu orçamento está salvo.</div>}><Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/></Suspense></ChunkBoundary>
             :isoView
               ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide} devHeights={devHeights} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/>
               :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/>}
