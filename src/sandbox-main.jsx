@@ -18,6 +18,7 @@ import FichaLead from "./components/crm/FichaLead";
 import AnaliseConversa from "./components/crm/AnaliseConversa";
 import SeloPotencial from "./components/crm/SeloPotencial";
 import RascunhosBot from "./components/crm/RascunhosBot";
+import Agenda from "./components/crm/Agenda";
 import { metricasFunil } from "./services/leadUnico.js";
 import { classificarBase } from "./services/etapaAuto.js";
 import { leadScore, faixaScore } from "./services/score.js";
@@ -146,6 +147,35 @@ function App() {
             </div>
           );
         })}
+      </Bloco>
+
+      <Bloco titulo="Agenda de servico" nota="Lista por dia, nao calendario mensal: com 3 compromissos na semana, a grade do mes mostra 28 quadrados vazios. O ATRASADO vem sempre primeiro. Botoes so registram no log aqui.">
+        {(() => {
+          const d = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+          const histEx = [
+            { id: 91, status: "negociacao", cN: "Solange", cC: "Peruíbe-Sp", data: { client: { name: "Solange", city: "Peruíbe-Sp", phone: "13991112222" } } },
+            { id: 92, status: "orcamento", cN: "Edilson", cC: "Peruibe-Sp", data: { client: { name: "Edilson", city: "Peruibe-Sp" } } },
+            { id: 93, status: "fechou", cN: "Jerry", cC: "Itanhaem-Sp", data: { client: { name: "Jerry", city: "Itanhaem-Sp" } } },
+            { id: 94, status: "negociacao", cN: "Suzana", cC: "Registro-Sp", data: { client: { name: "Suzana", city: "Registro-Sp" } } },
+          ];
+          return (
+            <Agenda
+              t={t} blue={blue} hist={histEx}
+              agendamentos={[
+                { id: 1, quoteId: "94", cliente: "Suzana", cidade: "Registro-Sp", tipo: "visita", data: d(-3), periodo: "manha", status: "agendado", obs: "Levar amostra da Petros" },
+                { id: 2, quoteId: "91", cliente: "Solange", cidade: "Peruíbe-Sp", tipo: "visita", data: d(0), periodo: "tarde", status: "agendado" },
+                { id: 3, quoteId: "93", cliente: "Jerry", cidade: "Itanhaem-Sp", tipo: "instalacao", data: d(1), periodo: "dia", status: "agendado", obs: "2 dias de obra" },
+                { id: 4, quoteId: "92", cliente: "Edilson", cidade: "Peruibe-Sp", tipo: "entrega", data: d(6), periodo: "manha", status: "agendado" },
+                { id: 5, quoteId: "94", cliente: "Ja feito", cidade: "Cajati", tipo: "visita", data: d(-10), periodo: "manha", status: "feito" },
+              ]}
+              onNovo={(f) => registrar(`novo agendamento ${f.tipo} em ${f.data}`)}
+              onMarcarFeito={(a) => registrar(`feito: ${a.cliente}`)}
+              onRemarcar={(a, nova) => registrar(`remarcar ${a.cliente} para ${nova}`)}
+              onCancelar={(a) => registrar(`cancelar ${a.cliente}`)}
+              onAbrirLead={(id) => registrar(`abrir lead ${id}`)}
+            />
+          );
+        })()}
       </Bloco>
 
       <Bloco titulo="Aba CRM — como fica dentro do sistema" nota="Recorte da aba CRM com o que mudou: os KPIs contando CLIENTE (nao documento) e a fila do Vini no lugar onde ela aparece, acima dos avisos.">

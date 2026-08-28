@@ -66,6 +66,7 @@ import { leadScore, faixaScore, conversasSemResposta } from "./services/score.js
 import AlertaSLA from "./components/crm/AlertaSLA";
 import SeloPotencial from "./components/crm/SeloPotencial";
 import RascunhosBot from "./components/crm/RascunhosBot";
+import Agenda from "./components/crm/Agenda";
 import { estadoDoRascunho, camposEditados } from "./services/rascunhoBot.js";
 import RevisaoEtapas from "./components/crm/RevisaoEtapas";
 import { classificarBase } from "./services/etapaAuto.js";
@@ -1045,6 +1046,7 @@ const parseMoney=v=>parseFloat(String(v??"").replace(/\./g,"").replace(",","."))
 // ═══ AREA CALCULATION ═══ (motor em src/motor/areas.js — testado em areas.test.mjs)
 
 // ═══ CRM CONSTANTS ═══
+const TIPOS_LABEL={visita:"Visita/medição",instalacao:"Instalação",entrega:"Entrega de material",manutencao:"Manutenção"};
 const TAGS_OPTS=["Interessado","Aguardando","Sem resposta","Retornar","Urgente","Visita agendada"];
 const TIPO_ICONS={
   whatsapp:{icon:"📱",color:"#25d366",label:"WhatsApp"},
@@ -2104,6 +2106,57 @@ export default function App(){
     },(err)=>console.warn("rascunhos_bot:",err.code||err.message));
     return ()=>unsub();
   },[fbReady,user]);
+
+  // AGENDA DE SERVICO — visita, instalacao, entrega, manutencao.
+  //
+  // Mora em users/{uid}/agendamentos: e dado do dono, e as regras de
+  // users/{uid}/** ja cobrem, entao nao precisou publicar rule nova.
+  //
+  // Marcacao a mao de proposito: nada aqui sugere horario nem fala com o
+  // cliente. O volume hoje e baixo e quem escolhe o dia e o Marcos.
+  const [agendamentos,setAgendamentos]=useState([]);
+  useEffect(()=>{
+    if(!fbReady||!fb.db||!user||user.uid==="local")return;
+    const ref=fbFns.collection(fb.db,"users",user.uid,"agendamentos");
+    const unsub=fbFns.onSnapshot(ref,(snap)=>{
+      const l=[];snap.forEach(d=>l.push({id:d.id,...d.data()}));
+      setAgendamentos(l);
+    },(err)=>console.warn("agendamentos:",err.code||err.message));
+    return ()=>unsub();
+  },[fbReady,user]);
+
+  const salvarAgendamento=async(ag)=>{
+    if(!fbReady||!fb.db||!user||user.uid==="local"){setFbMsg("Entre na conta para agendar");setTimeout(()=>setFbMsg(""),2500);return}
+    try{
+      await fbFns.setDoc(fbFns.doc(fb.db,"users",user.uid,"agendamentos",String(ag.id)),JSON.parse(JSON.stringify(ag)),{merge:true});
+    }catch(e){console.warn("salvar agendamento:",e.message);setFbMsg("Não consegui salvar o agendamento");setTimeout(()=>setFbMsg(""),3000)}
+  };
+
+  const novoAgendamento=(form)=>{
+    const lead=hist.find(q=>String(q.id)===String(form.quoteId));
+    const ag={
+      id:Date.now(),
+      quoteId:String(form.quoteId),
+      cliente:lead?.cN||lead?.data?.client?.name||"",
+      telefone:lead?.data?.client?.phone||"",
+      cidade:lead?.data?.client?.city||lead?.cC||"",
+      tipo:form.tipo,data:form.data,periodo:form.periodo,obs:form.obs||"",
+      status:"agendado",criadoEm:new Date().toISOString(),
+    };
+    setAgendamentos(p=>[...p,ag]);
+    salvarAgendamento(ag);
+    // Deixa rastro na timeline do lead: quem abrir o card ve que existe visita
+    // marcada sem precisar ir na agenda.
+    if(form.quoteId)addInteracao(form.quoteId,"visita",`${TIPOS_LABEL[form.tipo]||"Compromisso"} marcado para ${form.data} (${form.periodo})`);
+    setFbMsg("Agendado!");setTimeout(()=>setFbMsg(""),2000);
+  };
+
+  const mudarAgendamento=(ag,patch,aviso)=>{
+    const novo={...ag,...patch};
+    setAgendamentos(p=>p.map(x=>x.id===ag.id?novo:x));
+    salvarAgendamento(novo);
+    if(aviso){setFbMsg(aviso);setTimeout(()=>setFbMsg(""),2000)}
+  };
 
   // WhatsApp: carrega chat individual em tempo real
   useEffect(()=>{
@@ -3531,7 +3584,7 @@ export default function App(){
             <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
               <button onClick={syncGoogleContacts} disabled={syncingContacts} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${t.cardBorder}`,background:"transparent",color:t.textSec,fontSize:"9px",fontWeight:"700",cursor:syncingContacts?"wait":"pointer",opacity:syncingContacts?0.6:1}}>{syncingContacts?"⏳ Sincronizando...":"🔄 Contatos Google"}</button>
               {syncMsg&&<span style={{fontSize:"9px",color:syncMsg.includes("Erro")?"#e74c3c":"#27ae60"}}>{syncMsg}</span>}
-              {[["pipeline","🗂️","Pipeline"],["funil","🔻","Funil"],["lista","☰","Lista"],["dashboard","📊","Analytics"],["origem","📣","Origem"],["perdas","🔍","Perdas"]].map(([k,ic,lb])=><button key={k} onClick={()=>setCrmView(k)} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${crmView===k?(k==="perdas"?"#dc2626":blue):t.cardBorder}`,background:crmView===k?(k==="perdas"?"#fef2f2":blue):"transparent",color:crmView===k?(k==="perdas"?"#dc2626":"#fff"):t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>{ic} {lb}</button>)}
+              {[["pipeline","🗂️","Pipeline"],["agenda","📅","Agenda"],["funil","🔻","Funil"],["lista","☰","Lista"],["dashboard","📊","Analytics"],["origem","📣","Origem"],["perdas","🔍","Perdas"]].map(([k,ic,lb])=><button key={k} onClick={()=>setCrmView(k)} style={{padding:"5px 10px",borderRadius:"6px",border:`1.5px solid ${crmView===k?(k==="perdas"?"#dc2626":blue):t.cardBorder}`,background:crmView===k?(k==="perdas"?"#fef2f2":blue):"transparent",color:crmView===k?(k==="perdas"?"#dc2626":"#fff"):t.textSec,fontSize:"9px",fontWeight:"700",cursor:"pointer"}}>{ic} {lb}</button>)}
             </div>
           </div>
 
@@ -3855,6 +3908,13 @@ export default function App(){
           </>}
 
           {/* ── ANÁLISE DE PERDAS ── */}
+          {crmView==="agenda"&&<Agenda
+            agendamentos={agendamentos} hist={hist} t={t} blue={blue}
+            onNovo={novoAgendamento}
+            onMarcarFeito={(a)=>mudarAgendamento(a,{status:"feito",feitoEm:new Date().toISOString()},"Marcado como feito")}
+            onRemarcar={(a,data)=>mudarAgendamento(a,{data},"Remarcado para "+data)}
+            onCancelar={(a)=>mudarAgendamento(a,{status:"cancelado"},"Compromisso cancelado")}
+            onAbrirLead={(quoteId)=>{setCrmView("pipeline");setCrmDetail(quoteId)}}/>}
           {crmView==="origem"&&<OrigemReport hist={hist} achaConversa={(q)=>conversaDoLead(q,waConvs,crmVinculos)} t={t} fmt={fmt} blue={blue}/>}
           {crmView==="perdas"&&<LossAnalysis hist={hist} interacoes={interacoes} t={t} blue={blue}/>}
 
