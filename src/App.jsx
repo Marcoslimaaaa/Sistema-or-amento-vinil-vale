@@ -65,6 +65,8 @@ import { assinatura, salvarRascunho, lerRascunho, limparRascunho, deveOferecer, 
 import { leadScore, faixaScore, conversasSemResposta } from "./services/score.js";
 import AlertaSLA from "./components/crm/AlertaSLA";
 import SeloPotencial from "./components/crm/SeloPotencial";
+import RascunhosBot from "./components/crm/RascunhosBot";
+import { estadoDoRascunho, camposEditados } from "./services/rascunhoBot.js";
 import RevisaoEtapas from "./components/crm/RevisaoEtapas";
 import { classificarBase } from "./services/etapaAuto.js";
 import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
@@ -2089,6 +2091,20 @@ export default function App(){
     return ()=>unsub();
   },[fbReady,user]);
 
+  // Rascunhos de orcamento que o bot deixou prontos (colecao rascunhos_bot).
+  // Nao sao orcamentos: nao entram no funil nem em metrica ate serem salvos.
+  const [rascunhosBot,setRascunhosBot]=useState([]);
+  const [rascunhoAtivo,setRascunhoAtivo]=useState(null); // qual foi aberto no editor
+  useEffect(()=>{
+    if(!fbReady||!fb.db||!user||user.uid==="local")return;
+    const ref=fbFns.collection(fb.db,"rascunhos_bot");
+    const unsub=fbFns.onSnapshot(ref,(snap)=>{
+      const rs=[];snap.forEach(doc=>rs.push({id:doc.id,...doc.data()}));
+      setRascunhosBot(rs);
+    },(err)=>console.warn("rascunhos_bot:",err.code||err.message));
+    return ()=>unsub();
+  },[fbReady,user]);
+
   // WhatsApp: carrega chat individual em tempo real
   useEffect(()=>{
     if(!waChat||!fbReady||!fb.db||!user||user.uid==="local")return;
@@ -2511,6 +2527,23 @@ export default function App(){
     if(Object.keys(errs).length>0){setFieldErrors(errs);setFbMsg("Preencha os campos obrigatórios");setTimeout(()=>setFbMsg(""),3000);return;}
     setFieldErrors({});
     const d=gData();
+    // Rascunho do Vini que virou orcamento: registra se foi aproveitado como
+    // veio ou se precisou de correcao. E a regua do plano — se o Marcos
+    // corrige tudo em todo rascunho, o mapeamento do bot esta ruim e volta pra
+    // mesa. Falhar aqui nao pode atrapalhar o salvamento do orcamento.
+    const fecharRascunho=async(quoteId)=>{
+      if(!rascunhoAtivo)return;
+      const editados=camposEditados(rascunhoAtivo.aplicado,{svcType:d.svcType,poolFmt:d.poolFmt,client:d.client,pool:d.pool});
+      try{
+        if(fbReady&&fb.db&&user&&user.uid!=="local")
+          await fbFns.setDoc(fbFns.doc(fb.db,"rascunhos_bot",rascunhoAtivo.id),
+            {status:"aproveitado",decididoEm:new Date().toISOString(),quoteId:String(quoteId),
+             corrigidos:editados.filter(e=>e.tipo==="corrigiu").map(e=>e.campo),
+             completados:editados.filter(e=>e.tipo==="completou").map(e=>e.campo)},{merge:true});
+      }catch(e){console.warn("fechar rascunho:",e.message)}
+      setRascunhosBot(p=>p.filter(x=>x.id!==rascunhoAtivo.id));
+      setRascunhoAtivo(null);
+    };
     if(editingId){
       const existing=hist.find(q=>q.id===editingId);
       const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};
@@ -2518,7 +2551,7 @@ export default function App(){
       const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);setFbMsg(cloudOk?"Atualizado!":"💾 Atualizado no aparelho — sincroniza ao conectar");setTimeout(()=>setFbMsg(""),cloudOk?2000:4000);
     }else{
       const cloudOk=fbReady&&fb.db&&user&&user.uid!=="local"&&navigator.onLine;
-      const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);setFbMsg(cloudOk?"Salvo!":"💾 Salvo no aparelho — sincroniza ao conectar");setTimeout(()=>setFbMsg(""),cloudOk?2000:4000);
+      const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);fecharRascunho(item.id);setFbMsg(cloudOk?"Salvo!":"💾 Salvo no aparelho — sincroniza ao conectar");setTimeout(()=>setFbMsg(""),cloudOk?2000:4000);
     }
   };
   // Avisa o finanças-pessoal para sincronizar as contas a receber (fire-and-forget).
@@ -2533,6 +2566,34 @@ export default function App(){
   const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){autoStockOut(item);syncFinancas(item);}setFbMsg("✅ Cliente fechado!");setTimeout(()=>setFbMsg(""),3000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)syncFinancas(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
   const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
+  // ═══ RASCUNHO DO VINI ═══
+  // Abre no editor o que o bot preencheu pela conversa. O tipo de servico
+  // refaz itens, garantia, condicoes e prazo pelo mesmo caminho do botao de
+  // servico da barra lateral — o bot nao opina em preco, so em geometria e
+  // cadastro. Nada e salvo aqui: o orcamento so nasce quando o Marcos salvar.
+  const abrirRascunhoBot=(r)=>{
+    const e=estadoDoRascunho(r);
+    setST2(e.svcType);
+    setItems(aplicarItensVinil(mkItems(e.svcType),!!vinilOpt(vinilT).armada));
+    setG(mkG(e.svcType));setCI(mkCI(e.svcType));
+    setED(e.svcType==="construcao"?"60 a 90":e.svcType==="reforma"?"30 a 45":"15 a 20");
+    setCl(e.client);
+    setPool(p=>({...p,...e.pool}));
+    if(e.poolFmt)setPF(e.poolFmt);
+    setDesenho(null);setWM("regular");setWalls([]);setExtras([]);
+    setEditingId(null);setTab("cliente");
+    setRascunhoAtivo({id:r.id,aplicado:{svcType:e.svcType,poolFmt:e.poolFmt,client:e.client,pool:{...e.pool}}});
+    setFbMsg("Rascunho do Vini carregado — confira antes de salvar");setTimeout(()=>setFbMsg(""),3500);
+  };
+  const descartarRascunhoBot=async(r)=>{
+    setRascunhosBot(p=>p.filter(x=>x.id!==r.id));
+    if(rascunhoAtivo?.id===r.id)setRascunhoAtivo(null);
+    try{
+      if(fbReady&&fb.db&&user&&user.uid!=="local")
+        await fbFns.setDoc(fbFns.doc(fb.db,"rascunhos_bot",r.id),{status:"descartado",decididoEm:new Date().toISOString()},{merge:true});
+    }catch(e){console.warn("descartar rascunho:",e.message)}
+  };
+
   // ═══ RASCUNHO DO EDITOR ═══ (o porquê está em services/rascunho.js)
   const gDataRef=useRef(gData);gDataRef.current=gData;
   const inicialRef=useRef(null);
@@ -3576,6 +3637,9 @@ export default function App(){
               t={t} fmt={fmt} auto={crmEtapaAuto} setAuto={(v)=>patchCrmMeta({etapaAuto:v})}
               onAplicar={(item)=>aplicarEtapas([item])} onAplicarTodas={()=>aplicarEtapas(etapasSugeridas.automaticas)}
               onIgnorar={ignorarEtapa}/>
+            {/* Rascunhos que o Vini deixou prontos pela conversa */}
+            <RascunhosBot rascunhos={rascunhosBot} t={t} fmtPhone={waFmtPhone}
+              onAbrir={(r)=>{abrirRascunhoBot(r);setTab("cliente")}} onDescartar={descartarRascunhoBot}/>
             {/* SLA: cliente esperando resposta humana há mais de 1h */}
             <AlertaSLA waConvs={waConvs} t={t} fmtPhone={waFmtPhone} onAbrirConversa={(ph)=>{setTab("whatsapp");setWaChat(ph)}}/>
             {/* Tarefas de Hoje — follow-up acionável em 1 clique */}

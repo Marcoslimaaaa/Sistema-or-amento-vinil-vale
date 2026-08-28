@@ -17,6 +17,8 @@ import OrigemReport from "./components/dashboard/OrigemReport";
 import FichaLead from "./components/crm/FichaLead";
 import AnaliseConversa from "./components/crm/AnaliseConversa";
 import SeloPotencial from "./components/crm/SeloPotencial";
+import RascunhosBot from "./components/crm/RascunhosBot";
+import { metricasFunil } from "./services/leadUnico.js";
 import { classificarBase } from "./services/etapaAuto.js";
 import { leadScore, faixaScore } from "./services/score.js";
 
@@ -144,6 +146,79 @@ function App() {
             </div>
           );
         })}
+      </Bloco>
+
+      <Bloco titulo="Aba CRM — como fica dentro do sistema" nota="Recorte da aba CRM com o que mudou: os KPIs contando CLIENTE (nao documento) e a fila do Vini no lugar onde ela aparece, acima dos avisos.">
+        {(() => {
+          const histEx = [
+            { id: 1, status: "fechou", tot: "12000", cN: "Célio Pereira", cC: "Registro", data: { client: { name: "Célio Pereira", city: "Registro", phone: "13991112222" } } },
+            { id: 2, status: "lead", tot: "9000", cN: "Célio Pereira", cC: "Registro", data: { client: { name: "Célio Pereira", city: "Registro", phone: "13991112222" } } },
+            { id: 3, status: "negociacao", tot: "11000", cN: "Ana", cC: "Peruíbe", data: { client: { name: "Ana", city: "Peruíbe", phone: "13993334444" } } },
+            { id: 4, status: "lead", tot: "3000", cN: "Novo", cC: "Cajati", data: { client: { name: "Novo", city: "Cajati", phone: "13999990000" } } },
+            { id: 5, status: "perdido", tot: "5000", cN: "Zé", cC: "Juquiá", data: { client: { name: "Zé", city: "Juquiá", phone: "13997778888" } } },
+          ];
+          const mF = metricasFunil(histEx);
+          const kpis = [
+            { label: mF.orcamentosExtras > 0 ? `Clientes (${histEx.length} orçamentos)` : "Clientes", val: mF.leads, bg: "linear-gradient(135deg,#0055a4,#003d7a)" },
+            { label: "Ativos", val: mF.ativos, bg: "linear-gradient(135deg,#f97316,#ea580c)" },
+            { label: "Fechados", val: mF.fechados, bg: "linear-gradient(135deg,#16a34a,#15803d)" },
+            { label: `Conversão real (geral ${mF.txConv}%)`, val: mF.winRate + "%", bg: "linear-gradient(135deg,#8b5cf6,#7c3aed)" },
+            { label: "Ticket Médio", val: fmt(mF.ticketMedio), bg: "linear-gradient(135deg,#f59e0b,#d97706)" },
+            { label: "Follow-up", val: 2, bg: "linear-gradient(135deg,#dc2626,#991b1b)" },
+          ];
+          return (
+            <div style={{ background: "#f8fafc", border: `1px solid ${t.cardBorder}`, borderRadius: "12px", padding: "14px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px", marginBottom: "14px" }}>
+                {kpis.map((k, i) => (
+                  <div key={i} style={{ borderRadius: "10px", padding: "12px", color: "#fff", background: k.bg }}>
+                    <div style={{ fontSize: "18px", fontWeight: "800" }}>{k.val}</div>
+                    <div style={{ fontSize: "8px", opacity: .85, marginTop: "2px", fontWeight: "600", textTransform: "uppercase", letterSpacing: ".5px" }}>{k.label}</div>
+                  </div>
+                ))}
+              </div>
+              <RascunhosBot
+                t={t} fmtPhone={(p) => p}
+                rascunhos={[
+                  { id: "a", completude: 100, precisaDesenho: false, nota: 82,
+                    campos: { svcType: "construcao", poolFmt: "Retangular", client: { name: "Suzana", city: "Sete Barras" }, pool: { length: "4", width: "3", depth: "1.5" } },
+                    faltando: [], observacoes: ["Estado: construção nova"] },
+                  { id: "b", completude: 86, precisaDesenho: false, nota: 64,
+                    campos: { svcType: "revestimento", poolFmt: "Retangular", client: { name: "Solange", city: "Terra Preta - Mairiporã" }, pool: { length: "10", width: "5", depth: "" } },
+                    faltando: ["profundidade"], observacoes: [] },
+                  { id: "c", completude: 100, precisaDesenho: true, nota: 71,
+                    campos: { svcType: "construcao", poolFmt: "Feijão", client: { name: "Janayne", city: "Registro" }, pool: { length: "6", width: "3", depth: "1.2" } },
+                    faltando: [], observacoes: [] },
+                ]}
+                onAbrir={(r) => registrar(`abrir rascunho ${r.id}`)}
+                onDescartar={(r) => registrar(`descartar rascunho ${r.id}`)}
+              />
+              <div style={{ fontSize: "10px", color: t.textMuted, marginTop: "4px" }}>
+                (abaixo daqui vêm os avisos de etapa e o SLA, e depois o kanban)
+              </div>
+            </div>
+          );
+        })()}
+      </Bloco>
+
+      <Bloco titulo="RascunhosBot" nota="Fila do que o Vini preencheu pela conversa. O 100% deve vir primeiro; o que precisa de desenho vai pro fim. Descartar e Abrir apenas registram no log abaixo.">
+        <RascunhosBot
+          t={t}
+          fmtPhone={(p) => p}
+          rascunhos={[
+            { id: "5513991112222", completude: 100, precisaDesenho: false, nota: 85,
+              campos: { svcType: "revestimento", poolFmt: "Retangular", client: { name: "Carlos", city: "Registro" }, pool: { length: "8", width: "4", depth: "1.4" } },
+              faltando: [], observacoes: ["Cliente contou 6 flanges — conferir a divisão dos dispositivos."] },
+            { id: "5513993334444", completude: 78, precisaDesenho: false, nota: 60,
+              campos: { svcType: "revestimento", poolFmt: "Com prainha", client: { name: "Ana", city: "Peruíbe" }, pool: { length: "10", width: "5", depth: "1.5" } },
+              faltando: ["avanço da prainha", "lâmina d'água da prainha"], observacoes: ["Foto: retangular com prainha na lateral"] },
+            { id: "5513995556666", completude: 100, precisaDesenho: true, nota: 70,
+              campos: { svcType: "construcao", poolFmt: "Formato L", client: { name: "Rui", city: "Cajati" }, pool: { length: "9", width: "4", depth: "1.4" } },
+              faltando: [], observacoes: [] },
+            { id: "descartado", status: "descartado", completude: 100, campos: { client: { name: "NÃO DEVE APARECER" }, pool: {} }, faltando: [] },
+          ]}
+          onAbrir={(r) => registrar(`abrir rascunho ${r.id}`)}
+          onDescartar={(r) => registrar(`descartar rascunho ${r.id}`)}
+        />
       </Bloco>
 
       <Bloco titulo="SeloPotencial" nota="Nota do bot no fim da triagem. Compacto é o que aparece na lista de conversas; o detalhado mostra os motivos. Sem qualificação NÃO deve renderizar nada.">
