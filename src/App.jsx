@@ -68,6 +68,7 @@ import SeloPotencial from "./components/crm/SeloPotencial";
 import RascunhosBot from "./components/crm/RascunhosBot";
 import Agenda from "./components/crm/Agenda";
 import CercaDeErro from "./components/CercaDeErro";
+import { metricasFunil, agruparLeads, mapaDuplicados } from "./services/leadUnico.js";
 import { estadoDoRascunho, camposEditados } from "./services/rascunhoBot.js";
 import RevisaoEtapas from "./components/crm/RevisaoEtapas";
 import { classificarBase } from "./services/etapaAuto.js";
