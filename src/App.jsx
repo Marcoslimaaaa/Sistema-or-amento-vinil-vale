@@ -3534,7 +3534,7 @@ export default function App(){
         })()}</Card>}
 
         {/* CRM */}
-        {tab==="crm"&&<Card t={t}><CercaDeErro area="CRM">{(()=>{
+        {tab==="crm"&&<Card t={t}><CercaDeErro area="CRM">{(()=>{ try {
           const activePipe=PIPE.filter(p=>p.id!=="perdido");
           // Cache getDaysSince per lead to avoid repeated date parsing
           const daysCache={};
@@ -3983,7 +3983,23 @@ export default function App(){
           })()}
 
           </>;
-        })()}</CercaDeErro></Card>}
+        } catch(e) {
+          // O conteudo do CRM e avaliado por esta funcao ANTES de a cerca de erro
+          // existir (children sao argumento), entao a excecao nasce no render do
+          // App e a cerca nunca a ve — vira tela branca. Este try/catch pega no
+          // unico lugar que alcanca.
+          console.error("[CRM] erro ao montar a tela:", e);
+          const linhas = String((e && e.stack) || "").split(String.fromCharCode(10)).slice(1, 5).join(" | ");
+          return <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:"10px",padding:"16px",color:"#7f1d1d"}}>
+            <div style={{fontSize:"13px",fontWeight:"800",marginBottom:"6px"}}>O CRM nao conseguiu montar esta tela</div>
+            <div style={{fontSize:"11px",marginBottom:"9px"}}>O resto do sistema continua funcionando — da pra trocar de aba. Mande a mensagem abaixo para o suporte.</div>
+            <div style={{fontSize:"10px",fontFamily:"monospace",background:"#fff",border:"1px solid #fecaca",borderRadius:"6px",padding:"8px",wordBreak:"break-word"}}>
+              <div style={{fontWeight:"700"}}>{String((e && e.message) || e)}</div>
+              <div style={{marginTop:"5px",opacity:.8}}>{linhas}</div>
+            </div>
+            <button onClick={()=>window.location.reload()} style={{marginTop:"10px",padding:"6px 12px",borderRadius:"6px",border:"none",background:"#dc2626",color:"#fff",fontSize:"11px",fontWeight:"700",cursor:"pointer"}}>Recarregar</button>
+          </div>;
+        } })()}</CercaDeErro></Card>}
 
         {/* ESTOQUE */}
         {tab==="whatsapp"&&<Card t={t} pad="10px">
