@@ -162,6 +162,50 @@ export function outrosNaRegiao(cidade, hist, ativos = ["orcamento", "negociacao"
   return { cidade: naCidade, regiao: naRegiao, nomeRegiao: REGIOES[reg] };
 }
 
+// Ordem do funil, para a busca mostrar antes quem esta mais perto de fechar.
+const PESO_ETAPA = { execucao: 5, fechou: 4, negociacao: 3, orcamento: 2, lead: 1 };
+
+/**
+ * Busca de cliente para marcar compromisso.
+ *
+ * POR QUE EXISTE
+ * A lista de clientes ativos passa de 140. Num campo de selecao isso vira um
+ * rolo em que ninguem acha ninguem — e marcar visita e coisa de 10 segundos,
+ * nao de procurar numa lista.
+ *
+ * Casa por NOME ou CIDADE, sem acento e sem ligar para maiuscula: quem digita
+ * "peruibe" precisa achar "Peruíbe-Sp", e quem digita "jose" precisa achar
+ * "José". A ordem privilegia quem comeca com o termo (digitou "ana", "Ana
+ * Paula" vem antes de "Mariana") e, em seguida, quem esta mais avancado no
+ * funil — visita se marca com quem esta negociando, nao com quem chegou hoje.
+ */
+export function buscarClientes(hist, termo, limite = 8) {
+  const t = cidadeChave(termo);
+  const lista = (hist || []).filter((q) => q && !["perdido", "concluido"].includes(q.status));
+  if (!t) {
+    // Sem termo: os mais avancados primeiro, que e o caso comum de quem abre o
+    // formulario ja sabendo com quem vai marcar.
+    return [...lista]
+      .sort((a, b) => (PESO_ETAPA[b.status] || 0) - (PESO_ETAPA[a.status] || 0))
+      .slice(0, limite);
+  }
+
+  const achados = [];
+  for (const q of lista) {
+    const nome = cidadeChave(q.cN || q.data?.client?.name || "");
+    const cidade = cidadeChave(q.data?.client?.city || q.cC || "");
+    const iNome = nome.indexOf(t);
+    const iCidade = cidade.indexOf(t);
+    if (iNome === -1 && iCidade === -1) continue;
+    achados.push({
+      q,
+      // menor e melhor: 0 = comeca com o termo no nome
+      rank: (iNome === 0 ? 0 : iNome > 0 ? 1 : 2) * 10 - (PESO_ETAPA[q.status] || 0),
+    });
+  }
+  return achados.sort((a, b) => a.rank - b.rank).slice(0, limite).map((x) => x.q);
+}
+
 /** Resumo para o topo da tela: o que cobra ação. */
 export function resumo(lista, hoje = hojeISO()) {
   const abertos = emAberto(lista);

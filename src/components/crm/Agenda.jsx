@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   TIPOS, PERIODOS, agruparPorDia, rotuloData, situacao, resumo,
-  outrosNaRegiao, hojeISO, REGIOES, regiao,
+  outrosNaRegiao, hojeISO, REGIOES, regiao, buscarClientes,
 } from "../../services/agenda.js";
 
 // Agenda de serviço — visita, instalação, entrega, manutenção.
@@ -31,6 +31,7 @@ function Selo({ texto, cor, titulo }) {
 
 export default function Agenda({ agendamentos, hist, t, blue, onNovo, onMarcarFeito, onRemarcar, onCancelar, onAbrirLead }) {
   const [novo, setNovo] = useState(null); // formulário aberto
+  const [busca, setBusca] = useState("");   // filtro do campo de cliente
   const hoje = hojeISO();
   const dias = agruparPorDia(agendamentos, hoje);
   const r = resumo(agendamentos, hoje);
@@ -65,14 +66,48 @@ export default function Agenda({ agendamentos, hist, t, blue, onNovo, onMarcarFe
       {novo && (
         <div style={{ background: t.sectionBg, border: `1px solid ${t.cardBorder}`, borderRadius: "10px", padding: "12px", marginBottom: "12px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: "8px" }}>
-            <label style={{ fontSize: "9px", color: t.textMuted, fontWeight: "700" }}>CLIENTE
-              <select value={form.quoteId} onChange={(e) => setNovo({ ...form, quoteId: e.target.value })}
-                style={{ width: "100%", marginTop: "3px", padding: "6px", borderRadius: "6px", border: `1.5px solid ${t.cardBorder}`, background: t.inputBg, color: t.text, fontSize: "11px" }}>
-                <option value="">— escolha —</option>
-                {(hist || []).filter((q) => !["perdido", "concluido"].includes(q.status))
-                  .map((q) => <option key={q.id} value={q.id}>{q.cN || "sem nome"} · {q.data?.client?.city || q.cC || "?"}</option>)}
-              </select>
-            </label>
+            {/* BUSCA em vez de lista: sao mais de 140 clientes ativos, e num
+                campo de selecao ninguem acha ninguem. Casa por nome OU cidade,
+                sem acento. */}
+            <div style={{ gridColumn: "1 / -1" }}>
+              <div style={{ fontSize: "9px", color: t.textMuted, fontWeight: "700" }}>CLIENTE</div>
+              {leadDoForm ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "3px", padding: "7px 9px", background: t.card, border: `1.5px solid ${blue}`, borderRadius: "6px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: "700", color: t.text }}>
+                    {leadDoForm.cN || leadDoForm.data?.client?.name || "sem nome"}
+                  </span>
+                  <span style={{ fontSize: "10px", color: t.textSec }}>{cidadeForm || "sem cidade"}</span>
+                  <button onClick={() => { setNovo({ ...form, quoteId: "" }); setBusca(""); }}
+                    style={{ marginLeft: "auto", padding: "3px 9px", borderRadius: "5px", border: `1px solid ${t.cardBorder}`, background: "transparent", color: t.textSec, fontSize: "10px", cursor: "pointer" }}>
+                    trocar
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <input autoFocus value={busca} onChange={(e) => setBusca(e.target.value)}
+                    placeholder="Digite o nome do cliente ou a cidade…"
+                    style={{ width: "100%", marginTop: "3px", padding: "7px 9px", borderRadius: "6px", border: `1.5px solid ${t.cardBorder}`, background: t.inputBg, color: t.text, fontSize: "12px" }} />
+                  <div style={{ marginTop: "4px", maxHeight: "180px", overflowY: "auto", border: busca ? `1px solid ${t.cardBorder}` : "none", borderRadius: "6px" }}>
+                    {buscarClientes(hist, busca).map((q) => {
+                      const cid = q.data?.client?.city || q.cC || "";
+                      return (
+                        <div key={q.id} onClick={() => { setNovo({ ...form, quoteId: String(q.id) }); setBusca(""); }}
+                          style={{ padding: "6px 9px", cursor: "pointer", borderBottom: `1px solid ${t.cardBorder}`, display: "flex", alignItems: "center", gap: "7px" }}>
+                          <span style={{ fontSize: "11.5px", fontWeight: "600", color: t.text }}>{q.cN || "sem nome"}</span>
+                          <span style={{ fontSize: "10px", color: t.textMuted }}>{cid}</span>
+                          <span style={{ fontSize: "9px", color: t.textSec, marginLeft: "auto" }}>{q.status}</span>
+                        </div>
+                      );
+                    })}
+                    {busca && buscarClientes(hist, busca).length === 0 && (
+                      <div style={{ padding: "8px 9px", fontSize: "10.5px", color: t.textMuted }}>
+                        Ninguém com esse nome ou cidade entre os clientes ativos.
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
             <label style={{ fontSize: "9px", color: t.textMuted, fontWeight: "700" }}>TIPO
               <select value={form.tipo} onChange={(e) => setNovo({ ...form, tipo: e.target.value })}
                 style={{ width: "100%", marginTop: "3px", padding: "6px", borderRadius: "6px", border: `1.5px solid ${t.cardBorder}`, background: t.inputBg, color: t.text, fontSize: "11px" }}>
@@ -109,7 +144,7 @@ export default function Agenda({ agendamentos, hist, t, blue, onNovo, onMarcarFe
               style={{ padding: "7px 14px", borderRadius: "7px", border: "none", background: form.quoteId ? blue : t.cardBorder, color: "#fff", fontSize: "11px", fontWeight: "700", cursor: form.quoteId ? "pointer" : "not-allowed" }}>
               Salvar
             </button>
-            <button onClick={() => setNovo(null)}
+            <button onClick={() => { setNovo(null); setBusca(""); }}
               style={{ padding: "7px 14px", borderRadius: "7px", border: `1.5px solid ${t.cardBorder}`, background: "transparent", color: t.textSec, fontSize: "11px", cursor: "pointer" }}>
               Cancelar
             </button>
