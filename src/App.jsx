@@ -67,6 +67,7 @@ import AlertaSLA from "./components/crm/AlertaSLA";
 import SeloPotencial from "./components/crm/SeloPotencial";
 import RascunhosBot from "./components/crm/RascunhosBot";
 import Agenda from "./components/crm/Agenda";
+import CercaDeErro from "./components/CercaDeErro";
 import { estadoDoRascunho, camposEditados } from "./services/rascunhoBot.js";
 import RevisaoEtapas from "./components/crm/RevisaoEtapas";
 import { classificarBase } from "./services/etapaAuto.js";
@@ -3533,7 +3534,7 @@ export default function App(){
         })()}</Card>}
 
         {/* CRM */}
-        {tab==="crm"&&<Card t={t}>{(()=>{
+        {tab==="crm"&&<Card t={t}><CercaDeErro area="CRM">{(()=>{
           const activePipe=PIPE.filter(p=>p.id!=="perdido");
           // Cache getDaysSince per lead to avoid repeated date parsing
           const daysCache={};
@@ -3982,7 +3983,7 @@ export default function App(){
           })()}
 
           </>;
-        })()}</Card>}
+        })()}</CercaDeErro></Card>}
 
         {/* ESTOQUE */}
         {tab==="whatsapp"&&<Card t={t} pad="10px">
