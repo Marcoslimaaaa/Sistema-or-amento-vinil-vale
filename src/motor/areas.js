@@ -69,9 +69,34 @@ export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
     });
   }
   chao+=extraChao;par+=extraPar;
+  // ── SPA EXTERNO (toggle) ────────────────────────────────────────────────
+  // Dois modelos de obra, e a diferença entre eles é dinheiro de verdade:
+  //   integrado = MESMO tanque. O spa é uma região com o fundo em outro nível,
+  //     igual à prainha: no encontro NÃO existe parede, existe um DEGRAU
+  //     (contato × |D − sD|). A face do spa que encosta não existe, e a parede
+  //     da piscina naquele trecho também não.
+  //   separado  = tanque próprio, parede de alvenaria entre os dois, revestida
+  //     dos dois lados (D de um lado, sD do outro). É o que o sistema sempre
+  //     fez, e continua sendo o padrão para orçamento salvo sem o campo — quem
+  //     já mandou PDF para o cliente não pode ver o número mudar sozinho.
+  // A MESMA piscina pelos dois caminhos: 6,00×2,70×1,40 + spa 2,70×1,50×0,50
+  // dá 46,1 m² integrada (idêntico ao formato "Com prainha") e 48,8 separada —
+  // os 2,7 m² de diferença são exatamente a parede divisória contada em dobro.
+  // Na planta quem ENCOSTA é sempre spa.length; spa.width é o quanto o spa
+  // avança para fora da piscina (ver PlantaView, bloco "spaExt").
   const sL=parseFloat(spa.length)||0,sW=parseFloat(spa.width)||0,sD=parseFloat(spa.depth)||0;
-  const sChao=spa.on?sL*sW:0,sPar=spa.on?(2*sL*sD+2*sW*sD):0;
-  const sPerim=spa.on?(2*sL+2*sW):0;
+  const sInteg=!!spa.on&&spa.integrado===true;
+  const sLado=(spa.side==="left"||spa.side==="right")?W:L; // parede em que ele encosta
+  const sCont=spa.on?Math.min(sL,sLado||sL):0;             // trecho de contato
+  const sChao=spa.on?sL*sW:0;
+  // integrado: 3 faces livres (+ o que sobra da face colada, se o spa for mais
+  // largo que a parede em que encosta). separado: as 4 faces.
+  const sPar=spa.on?(sInteg?(sL*sD+2*sW*sD+(sL-sCont)*sD):(2*sL*sD+2*sW*sD)):0;
+  // perímetro é borda: no integrado sai o trecho de contato e entra o contorno
+  // do spa; no separado a divisória também leva borda, mas UMA vez só.
+  const sPerim=spa.on?(sInteg?(2*sW+sL-sCont):(2*sW+sL)):0;
+  // degrau interno entre os dois níveis — face vertical, entra em `par`
+  if(sInteg)par=Math.max(0,par-sCont*D)+sCont*Math.abs(D-sD);
   // Spa do formato "Com Spa"
   const st=spaType||{};
   const sqC=parseFloat(st.qComp)||0,sqL=parseFloat(st.qLarg)||0,sqP=parseFloat(st.qProf)||0;

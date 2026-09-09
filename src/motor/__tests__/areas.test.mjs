@@ -57,5 +57,56 @@ console.log("\ncalcA — largura maior tem de crescer proporcional (6,00 × 3,00
      (parseFloat(b.chao)-parseFloat(a.chao)).toFixed(2), 3.0);
 }
 
+console.log("\ncalcA - spa externo: mesmo tanque x tanque separado (6,00 x 2,70 x 1,40)");
+{
+  // Caso real de 09/09/2026: a MESMA piscina modelada de dois jeitos dava
+  // 48,8 m2 como spa e 46,1 m2 como prainha. A diferenca de 2,7 m2 e a parede
+  // divisoria: como spa ela entra dos dois lados (2,70x1,40 + 2,70x0,50 = 5,13),
+  // como prainha vira um degrau so (2,70x0,90 = 2,43).
+  const pool={length:"6.00",width:"2.70",depth:"1.40"};
+  const spaSep={on:true,length:"2.70",width:"1.50",depth:"0.50",side:"right"};
+  const spaInt={...spaSep,integrado:true};
+  const sep=calcA(pool,spaSep,"regular",[],"Retangular",[],{},null);
+  const int=calcA(pool,spaInt,"regular",[],"Retangular",[],{},null);
+  // referencia: a mesma piscina desenhada como 7,50 com prainha de 1,50 a 0,50
+  const pra=calcA({length:"7.50",width:"2.70",depth:"1.40",prainhaComp:"1.50",prainhaProf:"0.50"},
+    SPA_OFF,"regular",[],"Com prainha",[],{},null);
+
+  ok("separado mantem a parede dos dois lados", perto(sep.tot,48.8), sep.tot, 48.8);
+  ok("integrado = mesma conta da prainha",      perto(int.tot,parseFloat(pra.tot)), int.tot, pra.tot);
+  ok("integrado da 46,1 m2",                    perto(int.tot,46.1), int.tot, 46.1);
+  ok("os 2,7 m2 sao so a divisoria",
+     perto(parseFloat(sep.tot)-parseFloat(int.tot),2.7),
+     (parseFloat(sep.tot)-parseFloat(int.tot)).toFixed(2), 2.7);
+  ok("volume nao muda com o modelo",            perto(int.vol,parseFloat(sep.vol)), int.vol, sep.vol);
+  ok("volume igual ao da prainha",              perto(int.vol,24.7), int.vol, 24.7);
+  ok("perimetro integrado = contorno externo",  perto(int.perim,20.4), int.perim, 20.4);
+  ok("perimetro separado conta a divisoria 1x", perto(sep.perim,23.1), sep.perim, 23.1);
+  ok("chao e o mesmo nos dois",
+     perto(parseFloat(int.chao)+parseFloat(int.sChao),parseFloat(sep.chao)+parseFloat(sep.sChao)),
+     int.chao, sep.chao);
+}
+
+console.log("\ncalcA - spa integrado mais FUNDO que a piscina (degrau para baixo)");
+{
+  const pool={length:"6.00",width:"3.00",depth:"1.40"};
+  const spa={on:true,length:"3.00",width:"2.00",depth:"1.90",side:"right",integrado:true};
+  const r=calcA(pool,spa,"regular",[],"Retangular",[],{},null);
+  // paredes: 2x6,00x1,40 (laterais) + 3,00x1,40 (testeira livre) = 21,00
+  //          + degrau 3,00x0,50 = 1,50  -> 22,50
+  ok("degrau usa o modulo do desnivel", perto(r.par,22.5), r.par, 22.5);
+  // spa: face oposta 3,00x1,90 + 2 laterais 2,00x1,90 = 13,30
+  ok("spa entra com 3 faces",           perto(r.sPar,13.3), r.sPar, 13.3);
+  ok("volume soma os dois tanques",     perto(r.vol,36.6),  r.vol,  36.6);
+}
+
+console.log("\ncalcA - orcamento antigo (spa sem o campo) nao pode mudar de valor");
+{
+  const pool={length:"6.00",width:"2.70",depth:"1.40"};
+  const antigo={on:true,length:"2.70",width:"1.50",depth:"0.50",side:"right"};
+  const r=calcA(pool,antigo,"regular",[],"Retangular",[],{},null);
+  ok("segue como tanque separado", perto(r.tot,48.8), r.tot, 48.8);
+}
+
 console.log(`\n${total-falhas}/${total} passaram`);
 process.exit(falhas?1:0);

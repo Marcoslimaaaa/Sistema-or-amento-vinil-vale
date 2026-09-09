@@ -1148,6 +1148,23 @@ const Btn=({children,onClick,style:sx})=><button onClick={onClick} style={{paddi
 const DarkToggle=({dark,onToggle})=><button onClick={onToggle} aria-label={dark?"Mudar para tema claro":"Mudar para tema escuro"} style={{width:"38px",height:"22px",borderRadius:"11px",border:"none",background:dark?"#2c4368":"#cbd5e1",cursor:"pointer",position:"relative",transition:"background .3s"}}><div style={{width:"18px",height:"18px",borderRadius:"50%",background:dark?"#0b1524":"#fff",position:"absolute",top:"2px",left:dark?"18px":"2px",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>{dark?<Moon size={11} color="#2dd4bf"/>:<Sun size={11} color="#e8b100"/>}</div></button>;
 
 // ═══ PDF PREVIEW ═══
+// Spa externo no plano de corte da MANTA: até aqui o plano usava só comp×larg
+// da piscina e o spa não saía da bobina — a manta vinha igual com e sem spa.
+// O motor já sabe cortar anexo encostado (motor/manta.js, anexoExterno): a face
+// que encosta não é parede, é linha de solda. Quando o spa é tanque SEPARADO
+// essa face existe dos dois lados, então a divisória entra como parede extra.
+const spaDaManta=(spa,L,W,D)=>{
+  const n=v=>parseFloat(String(v??"").replace(",","."))||0;
+  const sL=n(spa?.length),sW=n(spa?.width),sD=n(spa?.depth);
+  if(!(spa?.on&&sL>0&&sW>0&&sD>0))return{anexos:[],facesExtra:[]};
+  const lado=(spa.side==="left"||spa.side==="right")?W:L;
+  const cont=Math.min(sL,lado||sL);
+  return{
+    anexos:[{nome:"Spa",comp:cont,larg:sW,prof:sD,encaixe:"lado"}],
+    facesExtra:spa.integrado===true?[]:[{nome:"Divisória do spa",comp:cont,prof:sD}],
+  };
+};
+
 const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
   const inc=(d.items||[]).filter(i=>i.on);
   const pool=d.pool||{length:"0",width:"0",depth:"0"};
@@ -1166,8 +1183,10 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
     const cont=d.desenho&&(d.desenho.vertices||[]).length>=3?contornoEfetivo(d.desenho):null;
     if(cont&&cont.length>=3){
       const ch=cortarChaoContorno(cont,undefined,"Chão · desenho");
+      const spC=spaDaManta(spa,L,W,D);
       const base=planoManta({comp:L,larg:W,prof:D,perimetro:parseFloat(ar.perim)||0,
-        areaReal:parseFloat(ar.tot)||0,faces:facesDoContorno(cont,D)});
+        areaReal:parseFloat(ar.tot)||0,faces:[...facesDoContorno(cont,D),...spC.facesExtra],
+        anexos:spC.anexos});
       const dif=ch.metrosLineares-base.chao.metrosLineares;
       return{...base,chao:{partes:[ch],metrosLineares:ch.metrosLineares,emendas:ch.emendas,soldaLinear:ch.soldaLinear},
         metrosLineares:+(base.metrosLineares+dif).toFixed(2),
@@ -1177,8 +1196,10 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
       ?facesComPrainha(L,W,D,praiC,Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)),
         {prainhaCorrida:(d.wMode||"regular")!=="irregular"})
       :facesRetangulo(L,W,D);
+    const sp=spaDaManta(spa,L,W,D);
     return planoManta({comp:L,larg:W,prof:D,perimetro:parseFloat(ar.perim)||0,
-      areaReal:parseFloat(ar.tot)||0,praiComp:praiC,faces});
+      areaReal:parseFloat(ar.tot)||0,praiComp:praiC,faces:[...faces,...sp.facesExtra],
+      anexos:sp.anexos});
   })();
   // Com manta armada o m² cobrado é o do PLANO DE CORTE, não a superfície da
   // piscina: a solda, as dobras e a largura de bobina perdida são material que
@@ -2526,8 +2547,10 @@ export default function App(){
     if(contorno&&contorno.length>=3){
       const chao=cortarChaoContorno(contorno,undefined,"Chão · desenho");
       const paredes=facesDoContorno(contorno,D);
+      const spC=spaDaManta(spa,L,W,D);
       const base=planoManta({comp:L,larg:W,prof:D,perimetro:parseFloat(ar.perim)||0,
-        areaReal:parseFloat(ar.tot)||0,faces:paredes,aproveitarSobra:mantaAproveita});
+        areaReal:parseFloat(ar.tot)||0,faces:[...paredes,...spC.facesExtra],
+        anexos:spC.anexos,aproveitarSobra:mantaAproveita});
       // troca o chão retangular pelo chão que acompanha o desenho
       const diff=chao.metrosLineares-base.chao.metrosLineares;
       return{...base,chao:{partes:[chao],metrosLineares:chao.metrosLineares,
@@ -2539,8 +2562,10 @@ export default function App(){
       ?facesComPrainha(L,W,D,praiC,Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)),
         {prainhaCorrida:wMode!=="irregular"})
       :facesRetangulo(L,W,D);
+    const sp=spaDaManta(spa,L,W,D);
     return planoManta({comp:L,larg:W,prof:D,perimetro:parseFloat(ar.perim)||0,
-      areaReal:parseFloat(ar.tot)||0,praiComp:praiC,faces,aproveitarSobra:mantaAproveita});
+      areaReal:parseFloat(ar.tot)||0,praiComp:praiC,faces:[...faces,...sp.facesExtra],
+      anexos:sp.anexos,aproveitarSobra:mantaAproveita});
   })();
 
   // Versões espelhadas passadas às vistas (planta/isométrica/3D). O desenho salvo,
@@ -3282,11 +3307,11 @@ export default function App(){
           {/* SPA */}
           <div style={{marginTop:"14px",background:spa.on?"#fef9e7":"#f8fafc",borderRadius:"8px",padding:"12px",border:`1px solid ${spa.on?gold+"55":"#e2e8f0"}`}}>
             <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:spa.on?"10px":"0"}}>
-              <button onClick={()=>setSpa(p=>({...p,on:!p.on}))} style={{width:"36px",height:"20px",borderRadius:"10px",border:"none",background:spa.on?gold:"#cbd5e1",cursor:"pointer",position:"relative"}}><div style={{width:"16px",height:"16px",borderRadius:"50%",background:"#fff",position:"absolute",top:"2px",left:spa.on?"18px":"2px",transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.2)"}}/></button>
+              <button onClick={()=>setSpa(p=>({...p,on:!p.on,integrado:p.integrado===undefined?true:p.integrado}))} style={{width:"36px",height:"20px",borderRadius:"10px",border:"none",background:spa.on?gold:"#cbd5e1",cursor:"pointer",position:"relative"}}><div style={{width:"16px",height:"16px",borderRadius:"50%",background:"#fff",position:"absolute",top:"2px",left:spa.on?"18px":"2px",transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.2)"}}/></button>
               <span style={{fontSize:"11px",fontWeight:"700",color:blue}}>🌊 Spa Externo</span>
               {!spa.on&&<span style={{fontSize:"9px",color:t.textMuted}}>— Clique para adicionar</span>}
             </div>
-            {spa.on&&<><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px"}}><Inp label="Comp. Spa (m)" value={spa.length} onChange={uSpa("length")} t={t}/><Inp label="Larg. Spa (m)" value={spa.width} onChange={uSpa("width")} t={t}/><Inp label="Prof. Spa (m)" value={spa.depth} onChange={uSpa("depth")} t={t}/></div><div style={{marginTop:"8px",display:"flex",alignItems:"center",gap:"8px"}}><div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".4px"}}>Posicao:</div><div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>{[["top","⬆ Topo"],["bottom","⬇ Baixo"],["left","⬅ Esquerda"],["right","➡ Direita"]].map(([s,lb])=><button key={s} onClick={()=>{setSpa(p=>({...p,side:s}));setCustomPos(p=>({...p,spaExt:{side:s,pos:0.5,special:true}}))}} style={{padding:"5px 12px",borderRadius:"14px",border:`1.5px solid ${(customPos?.spaExt?.side||spa.side||"top")===s?blue:"#cbd5e1"}`,background:(customPos?.spaExt?.side||spa.side||"top")===s?blue:"#fff",color:(customPos?.spaExt?.side||spa.side||"top")===s?"#fff":"#64748b",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>{lb}</button>)}</div><span style={{fontSize:"8px",color:t.textMuted,fontStyle:"italic"}}>ou arraste na planta</span></div></>}
+            {spa.on&&<><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px"}}><Inp label="Comp. Spa (encosta)" value={spa.length} onChange={uSpa("length")} t={t}/><Inp label="Larg. Spa (m)" value={spa.width} onChange={uSpa("width")} t={t}/><Inp label="Prof. Spa (m)" value={spa.depth} onChange={uSpa("depth")} t={t}/></div><div style={{marginTop:"8px",display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".4px"}}>Construcao:</div><div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>{[[true,"▣ Mesmo tanque (degrau)"],[false,"◫ Tanque separado (parede)"]].map(([v,lb])=><button key={String(v)} onClick={()=>setSpa(p=>({...p,integrado:v}))} style={{padding:"5px 12px",borderRadius:"14px",border:`1.5px solid ${(spa.integrado===true)===v?blue:"#cbd5e1"}`,background:(spa.integrado===true)===v?blue:"#fff",color:(spa.integrado===true)===v?"#fff":"#64748b",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>{lb}</button>)}</div><span style={{fontSize:"8px",color:t.textMuted,fontStyle:"italic"}}>{spa.integrado===true?"sem parede entre os dois: so o degrau entre os niveis":"parede de alvenaria revestida dos dois lados"}</span></div><div style={{marginTop:"8px",display:"flex",alignItems:"center",gap:"8px"}}><div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".4px"}}>Posicao:</div><div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>{[["top","⬆ Topo"],["bottom","⬇ Baixo"],["left","⬅ Esquerda"],["right","➡ Direita"]].map(([s,lb])=><button key={s} onClick={()=>{setSpa(p=>({...p,side:s}));setCustomPos(p=>({...p,spaExt:{side:s,pos:0.5,special:true}}))}} style={{padding:"5px 12px",borderRadius:"14px",border:`1.5px solid ${(customPos?.spaExt?.side||spa.side||"top")===s?blue:"#cbd5e1"}`,background:(customPos?.spaExt?.side||spa.side||"top")===s?blue:"#fff",color:(customPos?.spaExt?.side||spa.side||"top")===s?"#fff":"#64748b",fontSize:"10px",fontWeight:"600",cursor:"pointer"}}>{lb}</button>)}</div><span style={{fontSize:"8px",color:t.textMuted,fontStyle:"italic"}}>ou arraste na planta</span></div></>}
           </div>
 
           {/* Stamp catalog */}
