@@ -9,6 +9,7 @@ import { calcA } from "./motor/areas.js";
 import { planoManta, facesRetangulo, facesComPrainha, facesDoContorno, cortarChaoContorno } from "./motor/manta.js";
 import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho } from "./motor/formas.js";
 import { ramalSistema, totaisHidraulica, ROTULO_SIS, SEM_TUBO, BARRA_M } from "./motor/hidraulica.js";
+import { retanguloPoli, circuloPoli, contornoComSpa, pontoNoContorno, caixaSpaNorm, bicosSpaNorm } from "./motor/spa.js";
 // Aviso de que um arquivo do app não veio do servidor. Quem escuta é o App,
 // que salva o rascunho e oferece o recarregamento — nunca recarrega sozinho.
 export const EVENTO_CHUNK="vv:chunk-error";
@@ -408,8 +409,50 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
   const L_NORM=[[0,0],[1,0],[1,.6],[.6,.6],[.6,1],[0,1]];    // contorno do Formato L em 0..1
   const lPts=L_NORM.map(([u,v])=>S(u,v)).join(" ");
   const prai=prainhaCfg(pool,L,D);
-  const alturaBicoP=(t,f)=>alturaBico(t,f,D,devHeights);
-  const positions={...autoPositions(L,W,disps,invertSide,poolFmt,{flipH,flipV,ladoPrainha,raloQuenteParede}),...customPos};
+  // dRef: bico dentro do spa mede a altura pela profundidade DO SPA, não da piscina
+  const alturaBicoP=(t,f,dRef)=>alturaBico(t,f,dRef||D,devHeights);
+  const caixaSpa=caixaSpaNorm(L,W,spa,customPos?.spaExt);
+  const optsAuto={flipH,flipV,ladoPrainha,raloQuenteParede,spaBox:caixaSpa};
+  const positions={...autoPositions(L,W,disps,invertSide,poolFmt,optsAuto),...customPos};
+  // ── Spa em pixel: uma conta só para o desenho, o contorno do tubo e o arrasto ──
+  const spaExtBox=hasSpa2?(()=>{
+    const sp=customPos["spaExt"];const side0=sp?.side||spa.side||"top";const pos0=sp?.pos??1;
+    const side=espelhaLado(side0,flipH,flipV),pos=espelhaPos(side0,pos0,flipH,flipV);
+    if(side==="bottom")return{x:ox+pos*(pw-sL),y:oy+ph,w:sL,h:sW};
+    if(side==="left")return{x:ox-sW,y:oy+pos*(ph-sL),w:sW,h:sL};
+    if(side==="right")return{x:ox+pw,y:oy+pos*(ph-sL),w:sW,h:sL};
+    return{x:ox+pos*(pw-sL),y:oy-sW,w:sL,h:sW};
+  })():null;
+  // Spa do formato "Com Spa": o quadrado colado na parede e o de canto (redondo ou quadrado)
+  const spaFmtPolis=poolFmt==="Com Spa"?(()=>{
+    const out=[];
+    if(spaType.quadrado){
+      const w2=(parseFloat(spaType.qComp)||2)*scale,h2=(parseFloat(spaType.qLarg)||2)*scale,c=spaType.qCanto;
+      const x=c==="top-left"||c==="bottom-left"?ox:ox+pw-w2;
+      const y=c==="top-left"||c==="top-right"?oy-h2:oy+ph;
+      out.push(retanguloPoli({x,y,w:w2,h:h2}));
+    }
+    if(spaType.redondo){
+      const c=spaType.rCanto;
+      const cx=c==="top-left"||c==="bottom-left"?ox:ox+pw;
+      const cy=c==="top-left"||c==="top-right"?oy:oy+ph;
+      if(spaType.rFormato==="quadrado"){
+        const w2=(parseFloat(spaType.rComp)||2)*scale,h2=(parseFloat(spaType.rLarg)||2)*scale;
+        out.push(retanguloPoli({x:cx-w2/2,y:cy-h2/2,w:w2,h:h2}));
+      }else out.push(circuloPoli(cx,cy,((parseFloat(spaType.rDiam)||2)/2)*scale));
+    }
+    return out;
+  })():[];
+  // Contorno de roteamento = piscina ∪ spa. É por ele que o tubo corre e é dentro
+  // dele que o bico pode ser solto — daí o contorno ter de nascer antes do arrasto.
+  const contornoBasePx=efMap?efPoly.map(efMap):(()=>{
+    if(poolFmt==="Formato L")return L_NORM.map(([u,v])=>PU(u,v));
+    if(poolFmt==="Oval"||poolFmt==="Feijão"){const a=[];for(let i2=0;i2<32;i2++){const th=i2/32*2*Math.PI;a.push({x:ox+pw/2+pw/2*Math.cos(th),y:oy+ph/2+ph/2*Math.sin(th)})}return a;}
+    if(poolFmt==="Oitavada"){const c=(parseFloat(pool.chanfro)||1)/L*pw,cY=(parseFloat(pool.chanfro)||1)/W*ph;return[{x:ox+c,y:oy},{x:ox+pw-c,y:oy},{x:ox+pw,y:oy+cY},{x:ox+pw,y:oy+ph-cY},{x:ox+pw-c,y:oy+ph},{x:ox+c,y:oy+ph},{x:ox,y:oy+ph-cY},{x:ox,y:oy+cY}];}
+    return[{x:ox,y:oy},{x:ox+pw,y:oy},{x:ox+pw,y:oy+ph},{x:ox,y:oy+ph}];
+  })();
+  // No desenho livre o spa já é uma forma composta do próprio contorno — não soma de novo.
+  const contornoPx=efMap?contornoBasePx:contornoComSpa(contornoBasePx,[...(spaExtBox?[retanguloPoli(spaExtBox)]:[]),...spaFmtPolis]);
   const tubeColors={retorno:"#ef4444",aspiracao:"#ec4899",dreno:"#8b5cf6",skimmer:"#f59e0b",refletor:"#f97316",nivelador:"#06b6d4",hidro:"#14b8a6",drenoQuente:"#7f1d1d",retornoQuente:"#e11d48"};
   const onDown=(key,e)=>{e.preventDefault();setDragging(key)};
   const onMove=(e)=>{if(!dragging)return;const svg=e.currentTarget;const r=svg.getBoundingClientRect();const scX=svgW/r.width,scY=svgH/r.height;const mx=((e.clientX||e.touches?.[0]?.clientX||0)-r.left)*scX;const my=((e.clientY||e.touches?.[0]?.clientY||0)-r.top)*scY;const rx=(mx-ox)/pw,ry=(my-oy)/ph;if(dragging==="casa"){setCustomPos(p=>({...p,casa:{x:Math.max(0.3,Math.min(1.8,rx)),y:Math.max(-0.3,Math.min(1.3,ry)),label:"CM",type:"casa",special:true}}))}else if(dragging==="spaExt"){
@@ -427,7 +470,18 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
       else{side=curSide;pos=Math.max(0,Math.min(1,ry));}
     }
     setCustomPos(p=>({...p,spaExt:{side,pos,special:true}}));
-  }else{const isOval=poolFmt==="Oval"||poolFmt==="Feijão";let nx=Math.max(0.01,Math.min(0.99,rx)),ny=Math.max(0.01,Math.min(0.99,ry));if(isOval){const dx=(nx-0.5)/0.5,dy=(ny-0.5)/0.5;const d2=dx*dx+dy*dy;if(d2>0.9){const sc=0.9/Math.sqrt(d2);nx=0.5+dx*0.5*sc;ny=0.5+dy*0.5*sc;}}setCustomPos(p=>({...p,[dragging]:{...positions[dragging],x:nx,y:ny}}))}};
+  }else{
+    // Trava no CONTORNO EFETIVO (piscina ∪ spa), não no retângulo da piscina: é o que
+    // permite levar um bico para dentro do spa. Fora do contorno, gruda na parede mais perto.
+    const q=pontoNoContorno({x:mx,y:my},contornoPx,{x:ox+pw/2,y:oy+ph/2});
+    let nx=(q.x-ox)/pw,ny=(q.y-oy)/ph;
+    // Soltou dentro do spa? Então a altura do bico passa a ser medida pela profundidade
+    // do spa. spaExtBox já vem espelhado, igual ao desenho — comparar em pixel evita
+    // repetir a conta do espelho e sair diferente do que está na tela.
+    const dentroSpa=!!spaExtBox&&q.x>=spaExtBox.x&&q.x<=spaExtBox.x+spaExtBox.w&&q.y>=spaExtBox.y&&q.y<=spaExtBox.y+spaExtBox.h;
+    const profSpa=parseFloat(String(spa?.depth??"").replace(",","."))||0;
+    setCustomPos(p=>({...p,[dragging]:{...positions[dragging],x:nx,y:ny,noSpa:dentroSpa||undefined,profRef:dentroSpa&&profSpa?profSpa:undefined}}))
+  }};
   const onUp=()=>setDragging(null);
   // (a estimativa antiga de tubo/barras/joelhos que vivia aqui foi removida:
   //  era código morto e concorria com o motor de material real)
@@ -465,9 +519,9 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
       {stamp&&SWATCH_SLUG[stamp]&&<image href={`/swatches/${SWATCH_SLUG[stamp]}.png`} x={ox} y={oy} width={pw} height={ph} preserveAspectRatio="xMidYMid slice" clipPath="url(#poolClip2d)" opacity="0.85"/>}
       {poolFmt==="Com prainha"&&(()=>{const a=PU(0,0),b=PU(Math.min(prai.comp/L,1),1);const x0=Math.min(a.x,b.x),y0=Math.min(a.y,b.y),wq=Math.abs(b.x-a.x),hq=Math.abs(b.y-a.y);return<g><rect x={x0} y={y0} width={wq} height={hq} rx="1" fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#2563eb" strokeWidth="0.5"/>{prai.medida&&<text x={x0+wq/2} y={y0+hq/2+3} textAnchor="middle" fontSize="5.5" fontWeight="700" fill={dark?"#93c5fd":"#1d4ed8"}>{prai.comp}m · {prai.prof}m</text>}</g>})()}
       {extras.length>0&&extras.map((e,i)=>{const pf=v=>parseFloat(String(v||"").replace(",","."))||0;const el=pf(e.l),ew=pf(e.w);if(el<=0||ew<=0)return null;const ePw=el*scale,ePh=ew*scale;const desc=(e.desc||"").toLowerCase();const isBank=desc.includes("banco");const isPrainha=desc.includes("prainha");const isDegrau=desc.includes("degrau");const eColor=isPrainha?(dark?"#1e4d7a":"#bfdbfe"):isBank?(dark?"#2d3a4a":"#c7d2fe"):(dark?"#1e3a5f":"#ddd6fe");const eX=isPrainha?ox:isBank?ox:(ox+pw-ePw);const eY=isPrainha?oy:(oy+ph-ePh);const m1={x:MX(eX),y:MY(eY)},m2={x:MX(eX+ePw),y:MY(eY+ePh)};const rx0=Math.min(m1.x,m2.x),ry0=Math.min(m1.y,m2.y);return<g key={`ext${i}`}><rect x={rx0} y={ry0} width={ePw} height={ePh} rx="2" fill={eColor} stroke={dark?"#475569":"#6366f1"} strokeWidth="0.8" strokeDasharray="3,2" opacity="0.7"/><text x={rx0+ePw/2} y={ry0+ePh/2+3} textAnchor="middle" fontSize="5.5" fill={dark?"#94a3b8":"#4f46e5"} fontWeight="600">{e.desc||"Extra"}</text></g>})}
-      {hasSpa2&&(()=>{const sp=customPos["spaExt"];const side0=sp?.side||spa.side||"top";const pos0=sp?.pos??1;const side=espelhaLado(side0,flipH,flipV);const pos=espelhaPos(side0,pos0,flipH,flipV);let sx,sy,sw2,sh;if(side==="bottom"){sw2=sL;sh=sW;sx=ox+pos*(pw-sL);sy=oy+ph;}else if(side==="left"){sw2=sW;sh=sL;sx=ox-sW;sy=oy+pos*(ph-sL);}else if(side==="right"){sw2=sW;sh=sL;sx=ox+pw;sy=oy+pos*(ph-sL);}else{sw2=sL;sh=sW;sx=ox+pos*(pw-sL);sy=oy-sW;}return<g style={{cursor:"grab"}} onMouseDown={e=>{e.preventDefault();setDragging("spaExt")}} onTouchStart={e=>{e.preventDefault();setDragging("spaExt")}}><rect x={sx} y={sy} width={sw2} height={sh} rx="3" fill={dark?"#1e3a5f":"#93c5fd"} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="4,2"/><text x={sx+sw2/2} y={sy+sh/2+3} textAnchor="middle" fontSize="7" fill="#1d4ed8" fontWeight="700">SPA</text></g>;})()}
+      {spaExtBox&&(()=>{const {x:sx,y:sy,w:sw2,h:sh}=spaExtBox;return<g style={{cursor:"grab"}} onMouseDown={e=>{e.preventDefault();setDragging("spaExt")}} onTouchStart={e=>{e.preventDefault();setDragging("spaExt")}}><rect x={sx} y={sy} width={sw2} height={sh} rx="3" fill={dark?"#1e3a5f":"#93c5fd"} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="4,2"/><text x={sx+sw2/2} y={sy+sh/2+3} textAnchor="middle" fontSize="7" fill="#1d4ed8" fontWeight="700">SPA</text></g>;})()}
       <text x={ox+pw/2} y={oy+ph/2-3} textAnchor="middle" fontSize="8" fill={dark?"#94a3b8":"#64748b"} fontWeight="600">PISCINA</text>
-      <text x={ox+pw/2} y={oy+ph/2+7} textAnchor="middle" fontSize="7" fill={dark?"#94a3b8":"#64748b"}>A= {ar.total}m2</text>
+      <text x={ox+pw/2} y={oy+ph/2+7} textAnchor="middle" fontSize="7" fill={dark?"#94a3b8":"#64748b"}>A= {ar.tot}m2</text>
       <text x={ox+pw/2} y={oy-10} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{L}m</text>
       <text x={ox+pw+16} y={oy+ph/2+3} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{W}m</text>
       <rect x={cmX} y={cmY} width={cmW+8} height={cmH} rx="2" fill={dark?"#1e293b":"#f1f5f9"} stroke="#475569" strokeWidth="1.5" style={{cursor:"grab"}} onMouseDown={e=>{e.preventDefault();setDragging("casa")}} onTouchStart={e=>{e.preventDefault();setDragging("casa")}}/>
@@ -484,18 +538,12 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
         const pxPerM0=efMap?efEsc:scale;
         const p2m=q=>({x:(q.x-ox)/pxPerM0,y:(q.y-oy)/pxPerM0});
         const m2p=q=>({x:ox+q.x*pxPerM0,y:oy+q.y*pxPerM0});
-        const contornoPx=efMap?efPoly.map(efMap):(()=>{
-          if(poolFmt==="Formato L")return L_NORM.map(([u,v])=>PU(u,v));
-          if(poolFmt==="Oval"||poolFmt==="Feijão"){const a=[];for(let i2=0;i2<32;i2++){const th=i2/32*2*Math.PI;a.push({x:ox+pw/2+pw/2*Math.cos(th),y:oy+ph/2+ph/2*Math.sin(th)})}return a;}
-          if(poolFmt==="Oitavada"){const c=(parseFloat(pool.chanfro)||1)/L*pw,cY=(parseFloat(pool.chanfro)||1)/W*ph;return[{x:ox+c,y:oy},{x:ox+pw-c,y:oy},{x:ox+pw,y:oy+cY},{x:ox+pw,y:oy+ph-cY},{x:ox+pw-c,y:oy+ph},{x:ox+c,y:oy+ph},{x:ox,y:oy+ph-cY},{x:ox,y:oy+cY}];}
-          return[{x:ox,y:oy},{x:ox+pw,y:oy},{x:ox+pw,y:oy+ph},{x:ox,y:oy+ph}];
-        })();
         const contornoM=contornoPx.map(p2m);
         const casaM=p2m({x:cmX,y:cmY+cmH/2});
         const zCasa=Math.max(0,D-0.30); // linha de tubo na chegada da casa de máquinas
         // ângulos retos (padrão prancha) só em lados retos; oval/feijão/desenho livre ficam suaves
         const ortho=!efMap&&["Retangular","Retangular irregular","Formato L","Com prainha","Com Spa","Personalizado"].includes(poolFmt);
-        const autoP=autoPositions(L,W,disps,invertSide,poolFmt,{flipH,flipV,ladoPrainha,raloQuenteParede});
+        const autoP=autoPositions(L,W,disps,invertSide,poolFmt,optsAuto);
         const pipes=[];
         const sysData={};
         let sysIdx=0;
@@ -503,7 +551,7 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
           const devs=Object.entries(positions).filter(([k,p])=>p.type===sysType&&!p.special&&autoP[k]);
           if(devs.length===0||SEM_TUBO.includes(sysType))return;
           const col=tubeColors[sysType]||"#999";
-          const devsM=devs.map(([k,p2])=>({...p2m({x:ox+p2.x*pw,y:oy+p2.y*ph}),key:k,label:p2.label,floor:!!p2.floor,z:alturaBicoP(sysType,p2.floor),zBorda:D}));
+          const devsM=devs.map(([k,p2])=>({...p2m({x:ox+p2.x*pw,y:oy+p2.y*ph}),key:k,label:p2.label,floor:!!p2.floor,z:alturaBicoP(sysType,p2.floor,p2.profRef),zBorda:p2.profRef||D}));
           const r=ramalSistema({tipo:sysType,devs:devsM,contorno:contornoM,cm:casaM,zCasa,off:0.25+sysIdx*0.09,ortho});
           sysData[sysType]={...r,col,devs};
           // desenho a partir do MESMO traçado que foi medido
@@ -515,7 +563,7 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
         window._sysData=sysData;
         return pipes;
       })()}
-      {Object.entries(positions).filter(([k,p])=>!p.special&&autoPositions(L,W,disps,invertSide,poolFmt,{flipH,flipV,ladoPrainha,raloQuenteParede})[k]).map(([key,p])=>{const cx2=ox+p.x*pw,cy2=oy+p.y*ph,col=tubeColors[p.type]||"#666";return <g key={key} onMouseDown={e=>onDown(key,e)} onTouchStart={e=>{e.preventDefault();setDragging(key)}} style={{cursor:"grab"}}>{p.floor?<><circle cx={cx2} cy={cy2} r="6" fill="none" stroke={col} strokeWidth="1.5"/><line x1={cx2-3} y1={cy2-3} x2={cx2+3} y2={cy2+3} stroke={col} strokeWidth="1"/><line x1={cx2+3} y1={cy2-3} x2={cx2-3} y2={cy2+3} stroke={col} strokeWidth="1"/></>:p.type==="skimmer"?<rect x={cx2-3} y={cy2-6} width="6" height="12" rx="1" fill="none" stroke={col} strokeWidth="1.5"/>:(p.type==="retorno"||p.type==="hidro")?<rect x={cx2-3} y={cy2-5} width="6" height="10" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:p.type==="aspiracao"?<rect x={cx2-5} y={cy2-3} width="10" height="6" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:<circle cx={cx2} cy={cy2} r="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>}<text x={cx2} y={cy2+(p.floor?12:p.type==="skimmer"?10:12)} textAnchor="middle" fontSize="5" fontWeight="700" fill={col}>{p.label}</text></g>})}
+      {Object.entries(positions).filter(([k,p])=>!p.special&&autoPositions(L,W,disps,invertSide,poolFmt,optsAuto)[k]).map(([key,p])=>{const cx2=ox+p.x*pw,cy2=oy+p.y*ph,col=tubeColors[p.type]||"#666";return <g key={key} onMouseDown={e=>onDown(key,e)} onTouchStart={e=>{e.preventDefault();setDragging(key)}} style={{cursor:"grab"}}>{p.floor?<><circle cx={cx2} cy={cy2} r="6" fill="none" stroke={col} strokeWidth="1.5"/><line x1={cx2-3} y1={cy2-3} x2={cx2+3} y2={cy2+3} stroke={col} strokeWidth="1"/><line x1={cx2+3} y1={cy2-3} x2={cx2-3} y2={cy2+3} stroke={col} strokeWidth="1"/></>:p.type==="skimmer"?<rect x={cx2-3} y={cy2-6} width="6" height="12" rx="1" fill="none" stroke={col} strokeWidth="1.5"/>:(p.type==="retorno"||p.type==="hidro")?<rect x={cx2-3} y={cy2-5} width="6" height="10" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:p.type==="aspiracao"?<rect x={cx2-5} y={cy2-3} width="10" height="6" rx="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>:<circle cx={cx2} cy={cy2} r="5" fill={col} opacity="0.3" stroke={col} strokeWidth="1.5"/>}<text x={cx2} y={cy2+(p.floor?12:p.type==="skimmer"?10:12)} textAnchor="middle" fontSize="5" fontWeight="700" fill={col}>{p.label}</text></g>})}
     </svg>
     <div style={{display:"flex",gap:"6px",marginTop:"6px",flexWrap:"wrap"}}>
       {[["R","Retorno","#ef4444"],["A","Asp.","#ec4899"],["D","Dreno","#8b5cf6"],["SK","Skim.","#f59e0b"],["L","LED","#f97316"],["N","Niv.","#06b6d4"],["H","Hidro","#14b8a6"],["DQ","Ralo Q.","#7f1d1d"],["RQ","Ret. Q.","#e11d48"],["CM","Casa M.","#475569"]].map(([s,lb,c])=><div key={s} style={{display:"flex",alignItems:"center",gap:"2px"}}><div style={{width:"8px",height:"3px",borderRadius:"1px",background:c}}/><span style={{fontSize:"6px",color:t.textMuted}}>{lb}</span></div>)}
@@ -550,7 +598,7 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
       </div>
     </div>
     <div style={{display:"flex",gap:"8px",marginTop:"6px",flexWrap:"wrap",fontSize:"7px",color:t.textMuted}}>
-      <span>Area: {ar.total}m2</span><span>Chao: {ar.chao}m2</span><span>Paredes: {ar.paredes}m2</span><span>Perim: {ar.perim}m</span><span>Vol: {ar.vol}m3</span>
+      <span>Area: {ar.tot}m2</span><span>Chao: {ar.chaoTot}m2</span><span>Paredes: {ar.par}m2</span><span>Perim: {ar.perim}m</span><span>Vol: {ar.vol}m3</span>
     </div>
   </div>;
 };
@@ -811,7 +859,7 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   // Pipe run height: always 30cm below top of wall
   const pZ=Math.max(0,D-0.30);
   // Z height per device type
-  const typeZ=(type,isFloor)=>alturaBico(type,isFloor,D,devHeights);
+  const typeZ=(type,isFloor,dRef)=>alturaBico(type,isFloor,dRef||D,devHeights);
   // CM position (same as 2D autoPositions default)
   const casaFrac=customPos?.casa||(invertSide?{x:-0.15,y:0.5}:{x:1.12,y:0.5});
   const cmX0=casaFrac.x*L,cmBY0=W*0.1,cmWw=Math.min(1.4,W*0.5),cmWd=W*0.8,cmBoxH=0.45;
@@ -821,8 +869,9 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   // CM entry y per system
   const cmEntryY=(sysType,idx)=>cmBY0+cmWd*(0.1+idx*0.12);
   // Get actual device positions from autoPositions (same as 2D PlantaView)
-  const allPos=autoPositions?{...autoPositions(L,W,disps,invertSide,poolFmt,{flipH,flipV,ladoPrainha,raloQuenteParede}),...(customPos||{})}:{};
-  const activeDevs=Object.entries(allPos).filter(([k,p])=>!p.special&&autoPositions&&autoPositions(L,W,disps,invertSide,poolFmt,{flipH,flipV,ladoPrainha,raloQuenteParede})[k]);
+  const optsAutoIso={flipH,flipV,ladoPrainha,raloQuenteParede,spaBox:caixaSpaNorm(L,W,spa,customPos?.spaExt)};
+  const allPos=autoPositions?{...autoPositions(L,W,disps,invertSide,poolFmt,optsAutoIso),...(customPos||{})}:{};
+  const activeDevs=Object.entries(allPos).filter(([k,p])=>!p.special&&autoPositions&&autoPositions(L,W,disps,invertSide,poolFmt,optsAutoIso)[k]);
   // Group by system type
   const byType={};
   activeDevs.forEach(([key,p])=>{if(!byType[p.type])byType[p.type]=[];byType[p.type].push([key,p]);});
@@ -834,7 +883,7 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
     const cmEY=cmEntryY(sysType,sysIdx);
     const exitPts=[];
     devs.forEach(([key,p])=>{
-      const ix=p.x*L,iy=p.y*W,iz=typeZ(sysType,p.floor);
+      const ix=p.x*L,iy=p.y*W,iz=typeZ(sysType,p.floor,p.profRef);
       els.push(...dev(key,ix,iy,iz,p.label,col,p.floor));
       // Route pipe from device to a ground-level exit point
       let route;
@@ -1572,7 +1621,7 @@ export default function App(){
   const [tubeOffsets,setTubeOffsets]=useState({});
 
   const autoPositions=(L,W,d,inv,fmt,opts={})=>{
-    const {flipH=false,flipV=false,ladoPrainha=null,raloQuenteParede=false}=opts;
+    const {flipH=false,flipV=false,ladoPrainha=null,raloQuenteParede=false,spaBox=null}=opts;
     const pos={};const r=d.retorno||0;const refs=d.refletor||0;
     const isOval=fmt==="Oval"||fmt==="Feijão";
     // Giro do layout para a parede da prainha (ver ROT_PRAINHA). Sem prainha = 0 → layout de hoje.
@@ -1597,9 +1646,11 @@ export default function App(){
     for(let i=0;i<refs;i++){const x=(Math.floor(i/2)+1)/(Math.ceil(refs/2)+1);if(i%2===0){pos["ref_"+i]={x,y:isOval?eY(x,"top"):0.03,label:"L"+(i+1),type:"refletor"}}else{pos["ref_"+i]={x,y:isOval?eY(x,"bottom"):0.97,label:"L"+(i+1),type:"refletor"}}}
     // Nivelador: parede direita
     for(let i=0;i<(d.nivelador||0);i++){const y=0.15;const side=inv?"left":"right";pos["niv_"+i]={x:isOval?eX(y,side):(inv?0.05:0.95),y,label:"N"+(i+1),type:"nivelador"}}
-    // Hidro: mesma parede dos retornos
+    // Hidro: DENTRO do spa quando existe spa externo — é lá que a hidromassagem
+    // fica de verdade. Sem spa, segue na mesma parede dos retornos, como sempre.
     const hQty=d.hidro||0;
-    for(let i=0;i<hQty;i++){const y=(i+1)/(hQty+1);const side=inv?"right":"left";pos["hid_"+i]={x:isOval?eX(y,side):(inv?0.95:0.05),y,label:"H"+(i+1),type:"hidro"}}
+    if(spaBox&&hQty>0)Object.assign(pos,bicosSpaNorm(spaBox,hQty));
+    else for(let i=0;i<hQty;i++){const y=(i+1)/(hQty+1);const side=inv?"right":"left";pos["hid_"+i]={x:isOval?eX(y,side):(inv?0.95:0.05),y,label:"H"+(i+1),type:"hidro"}}
     // ── AQUECIMENTO ──────────────────────────────────────────────────────────
     // Ficam deliberadamente longe dos bicos frios: os frios ocupam a parede rasa
     // (retorno/hidro), a funda (skimmer/nivelador) e o meio de baixo (aspiração).
@@ -1608,7 +1659,7 @@ export default function App(){
     // Em vez de coordenada fixa, cada bico quente cai no ponto de MAIOR FOLGA da
     // parede — assim nunca encosta num LED, skimmer ou retorno, qualquer que seja
     // a quantidade dos sistemas frios.
-    const ocupadosEm=faixa=>{const o=[0.02,0.98];Object.values(pos).forEach(q=>{if(!q.special&&faixa(q))o.push(q.x)});return o};
+    const ocupadosEm=faixa=>{const o=[0.02,0.98];Object.values(pos).forEach(q=>{if(!q.special&&!q.noSpa&&faixa(q))o.push(q.x)});return o};
     const maiorFolga=(ocupados,dimX)=>{
       let melhor=0.5,melhorD=-1;
       for(let c=0.10;c<=0.901;c+=0.01){
@@ -1637,7 +1688,8 @@ export default function App(){
     }
 
     // Giro do layout para a parede da prainha (retorno/hidro na praia, ralo de fundo na ponta funda)
-    if(rotP)Object.keys(pos).forEach(k=>{pos[k]=giraPos(pos[k],rotP)});
+    // Bico que mora no spa não gira com a prainha: o spa não gira junto.
+    if(rotP)Object.keys(pos).forEach(k=>{if(!pos[k].noSpa)pos[k]=giraPos(pos[k],rotP)});
     // Espelho da piscina: os bicos viram junto com ela (a casa de máquinas NÃO — ela é fixa no terreno)
     if(flipH||flipV)Object.keys(pos).forEach(k=>{pos[k]={...pos[k],x:flipH?1-pos[k].x:pos[k].x,y:flipV?1-pos[k].y:pos[k].y}});
     // Casa de maquinas: fora da piscina

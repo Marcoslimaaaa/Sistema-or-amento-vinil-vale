@@ -4,6 +4,7 @@ import { OrbitControls, Line, GizmoHelper, GizmoViewcube, useTexture } from '@re
 import * as THREE from 'three';
 import { getEstampaByNome, swatchSizeMeters } from './data/estampas';
 import { contornoEfetivo, regioesProfundidade, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor } from './motor/formas.js';
+import { caixaSpaNorm } from "./motor/spa.js";
 
 const SWATCH_SLUG={"Marmo Carrara Azul":"marmo-carrara-azul","Marmo Carrara Verde":"marmo-carrara-verde","Marmo Carrara Cinza":"marmo-carrara-cinza","Travertino":"travertino","Travertino Gris":"travertino-gris","Travertino Verde":"travertino-verde","Travertino Azul":"travertino-azul","Bali Hijau":"bali-hijau","Bali Blue":"bali-blue","Santorini":"santorini","Malibu Azul":"malibu-azul","Malibu Verde":"malibu-verde","Punta Cana":"punta-cana","Porto Vecchio Azul":"porto-vecchio-azul","Porto Vecchio Verde":"porto-vecchio-verde","Batu Blue":"batu-blue","Batu Vert":"batu-vert","Sukabumi Azul":"sukabumi-azul","Sukabumi Verde":"sukabumi-verde","Petra Natural Azul":"petra-natural-azul","Petra Natural Verde":"petra-natural-verde","Montblanc":"montblanc","Montblanc Block":"montblanc-block","Mid Blue Liso":"mid-blue-liso","Aquática Azul":"aquatica-azul"};
 const STAMP_COLOR={"Marmo Carrara Azul":"#a8cce8","Marmo Carrara Verde":"#a8d4c0","Marmo Carrara Cinza":"#b0bcc8","Travertino":"#c8b89a","Travertino Gris":"#b0a898","Travertino Verde":"#98b4a0","Travertino Azul":"#8ab0c8","Bali Hijau":"#5aaa88","Bali Blue":"#5090c0","Santorini":"#6aaccc","Malibu Azul":"#4a98d8","Malibu Verde":"#4aac7a","Porto Vecchio Azul":"#3d8fc0","Porto Vecchio Verde":"#3da878","Batu Blue":"#4a90c0","Batu Vert":"#4aa880","Sukabumi Azul":"#3aa8d0","Sukabumi Verde":"#3ab080","Petra Natural Azul":"#6aa8c0","Petra Natural Verde":"#6ab090","Montblanc":"#7ab8e0","Montblanc Block":"#5aa0c8","Mid Blue Liso":"#3a96d0","Aquática Azul":"#3aacdc","Punta Cana":"#50c0b0"};
@@ -72,7 +73,7 @@ function buildScene(allPos, L, W, D, invertSide, customPos, devHeights) {
     devs.forEach(([key, p]) => {
       const ix = p.x * L;
       const iy = p.y * W;
-      const iz = devZ(sysType, p.floor, D, devHeights);
+      const iz = devZ(sysType, p.floor, p.profRef || D, devHeights);
 
       devices.push({ key, pos: i2t(ix, iy, iz, L, W), color: col, type: sysType });
 
@@ -534,7 +535,7 @@ function buildSceneLivre(allPos, efetivo, L, W, D, customPos, devHeights) {
     devs.forEach(([key, p]) => {
       const ix = p.x * L;
       const iy = p.y * W;
-      const iz = devZ(sysType, p.floor, D, devHeights);
+      const iz = devZ(sysType, p.floor, p.profRef || D, devHeights);
       devices.push({ key, pos: i2t(ix, iy, iz, L, W), color: col, type: sysType });
       const zTubo = p.floor ? Math.max(0, D - 0.30) : iz;
       if (zTronco === null) zTronco = zTubo;
@@ -580,7 +581,7 @@ function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide
   const W = dn ? dn.W : (parseFloat(pool?.width)  || 3);
 
   const allPos = autoPositions
-    ? { ...autoPositions(L, W, disps, invertSide, poolFmt, { flipH, flipV, ladoPrainha, raloQuenteParede }), ...(customPos || {}) }
+    ? { ...autoPositions(L, W, disps, invertSide, poolFmt, { flipH, flipV, ladoPrainha, raloQuenteParede, spaBox: caixaSpaNorm(L, W, spa, customPos?.spaExt) }), ...(customPos || {}) }
     : {};
 
   const active = {};
