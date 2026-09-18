@@ -53,7 +53,7 @@ import RescueButton, { getRescuePriority } from "./components/rescue/RescueButto
 import { useRescueAutomation } from "./components/rescue/useRescueAutomation";
 import LossAnalysis from "./components/dashboard/LossAnalysis";
 import OrigemReport from "./components/dashboard/OrigemReport";
-import { REGUA, normalizePhone, openWaMe } from "./components/crm/regua";
+import { REGUA, mesmoTelefone, openWaMe } from "./components/crm/regua";
 import TodayTasks from "./components/crm/TodayTasks";
 import CanalStatus from "./components/crm/CanalStatus";
 import RespostasRapidas from "./components/crm/RespostasRapidas";
@@ -2254,12 +2254,12 @@ export default function App(){
     const phone=phoneOverride||waChat;
     if(!waMsg.trim()||!phone||waSending)return;
     setWaSending(true);
-    const conv=waConvs.find(c=>c.phone===normalizePhone(phone)||c.phone===phone);
+    const conv=waConvs.find(c=>mesmoTelefone(c.phone,phone));
     const r=await sendWA({phone,text:waMsg,conv});
     if(r.ok){
       // Interação só depois do envio confirmado — registrar antes zerava o
       // contador de dias sem contato e tirava o lead do follow-up à toa.
-      const lead=histRef.current.find(h=>{const p=(h.data?.client?.phone||h.tel||"").replace(/\D/g,"");return p&&(normalizePhone(p)===normalizePhone(phone))});
+      const lead=histRef.current.find(h=>mesmoTelefone(h.data?.client?.phone||h.tel||"",phone));
       if(lead)addInteracao(lead.id,"whatsapp",r.canal==="wa.me"?"Mensagem enviada (WhatsApp do aparelho)":"Mensagem enviada pelo sistema");
       setWaMsg("");
     }else{
@@ -2926,8 +2926,7 @@ export default function App(){
   const openWA=(phone,msg)=>{
     const num=(phone||"").replace(/\D/g,"");
     if(!num){setFbMsg("⚠️ Sem telefone");setTimeout(()=>setFbMsg(""),2000);return}
-    const fullNum=normalizePhone(num);
-    const conv=waConvs.find(c=>c.phone===fullNum||c.phone===num);
+    const conv=waConvs.find(c=>mesmoTelefone(c.phone,num));
     if(conv){setTab("whatsapp");setWaChat(conv.phone);if(msg)setWaMsg(msg);return}
     if(openWaMe(num,msg)){setFbMsg("📱 Abrindo no WhatsApp do aparelho");setTimeout(()=>setFbMsg(""),2500)}
     else{setFbMsg("⚠️ Não foi possível abrir o WhatsApp");setTimeout(()=>setFbMsg(""),3000)}
@@ -3001,7 +3000,7 @@ export default function App(){
       const pdfBlob=pdf.output("blob");
       const fileName=`Orcamento_VinilVale_${clientName}.pdf`;
       const telefone=c.phone||"";
-      const conv=waConvs.find(cv=>cv.phone===normalizePhone(telefone));
+      const conv=waConvs.find(cv=>mesmoTelefone(cv.phone,telefone));
 
       // 1) Canal online: envia o PDF DE VERDADE pelo WhatsApp. Antes esta função
       // só baixava o arquivo, mas quem chamava registrava "Orçamento enviado via

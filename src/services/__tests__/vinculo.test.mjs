@@ -1,4 +1,5 @@
 import { conversaDoLead, leadDaConversa, leadsCandidatos } from "../vinculo.js";
+import { mesmoTelefone } from "../../components/crm/regua.js";
 import { montarTimeline } from "../timeline.js";
 
 let ok = 0, total = 0;

@@ -21,6 +21,28 @@ export const normalizePhone = (p) => {
   return d.startsWith("55") ? d : "55" + d;
 };
 
+/**
+ * Dois telefones são da mesma pessoa?
+ *
+ * Compara DDD + os 8 dígitos finais, porque a Meta entrega o número da conversa
+ * SEM o 9 para todo DDD fora da faixa 11-28, enquanto o cadastro do orçamento é
+ * digitado COM o 9. Comparar string exata fazia a conversa da Janice (41) e da
+ * Maria das Graças (51) nunca casar com o orçamento delas: o card não abria o
+ * chat e a janela de 24h era calculada como se não houvesse conversa.
+ *
+ * O DDD entra na conta de propósito — só os 8 finais casariam clientes de
+ * cidades diferentes por acaso.
+ */
+export const mesmoTelefone = (a, b) => {
+  const chave = (p) => {
+    const d = String(p || "").replace(/\D/g, "");
+    const s = d.startsWith("55") ? d.slice(2) : d;
+    return s.length >= 10 ? s.slice(0, 2) + s.slice(-8) : "";
+  };
+  const x = chave(a), y = chave(b);
+  return !!x && x === y;
+};
+
 export const openWaMe = (phone, msg) => {
   const full = normalizePhone(phone);
   if (!full) return false;

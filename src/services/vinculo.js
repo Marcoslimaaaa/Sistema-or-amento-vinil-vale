@@ -11,7 +11,7 @@
 //   2. crmQuoteId gravado pelo bot
 //   3. telefone normalizado (fallback histórico)
 
-import { normalizePhone } from "../components/crm/regua.js";
+import { normalizePhone, mesmoTelefone } from "../components/crm/regua.js";
 
 /**
  * Acha a conversa de um lead.
@@ -31,9 +31,11 @@ export function conversaDoLead(q, waConvs, vinculos = {}) {
   const porId = waConvs.find((c) => String(c.crmQuoteId || "") === String(q.id));
   if (porId) return porId;
 
-  const tel = normalizePhone(q.data?.client?.phone || q.tel || "");
+  // mesmoTelefone, e não igualdade de string: a conversa pode estar gravada
+  // sem o 9 que o cadastro tem (ver components/crm/regua.js).
+  const tel = q.data?.client?.phone || q.tel || "";
   if (!tel) return null;
-  return waConvs.find((c) => normalizePhone(c.phone) === tel) || null;
+  return waConvs.find((c) => mesmoTelefone(c.phone, tel)) || null;
 }
 
 /**
@@ -56,10 +58,10 @@ export function leadDaConversa(conv, hist, vinculos = {}) {
     if (q) return q;
   }
 
-  const tel = normalizePhone(conv.phone);
+  const tel = conv.phone;
   if (!tel) return null;
   const candidatos = hist.filter(
-    (h) => normalizePhone(h.data?.client?.phone || h.tel || "") === tel
+    (h) => mesmoTelefone(h.data?.client?.phone || h.tel || "", tel)
   );
   if (candidatos.length === 0) return null;
   if (candidatos.length === 1) return candidatos[0];
@@ -73,9 +75,9 @@ export function leadDaConversa(conv, hist, vinculos = {}) {
 /** Leads que compartilham o telefone da conversa (para o seletor de vínculo). */
 export function leadsCandidatos(conv, hist) {
   if (!conv || !hist?.length) return [];
-  const tel = normalizePhone(conv.phone);
+  const tel = conv.phone;
   if (!tel) return [];
   return hist
-    .filter((h) => normalizePhone(h.data?.client?.phone || h.tel || "") === tel)
+    .filter((h) => mesmoTelefone(h.data?.client?.phone || h.tel || "", tel))
     .sort((a, b) => Number(b.id) - Number(a.id));
 }
