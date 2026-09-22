@@ -626,11 +626,11 @@ function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide
       })()}
 
       {/* BANCO LATERAL — bloco de assento correndo a lateral escolhida. Sai do
-          fundo ate a altura do assento; a lamina digitada e a agua EM CIMA. */}
+          fundo ate o assento; a profundidade digitada e da BORDA ate o assento. */}
       {!dn&&(()=>{
         const bc=bancoCfg(pool,poolFmt,L,W,D);
         if(!bc)return null;
-        const alt=Math.max(0.05,D-bc.lamina);
+        const alt=Math.max(0.05,D-bc.prof);
         const comp=bc.sobreTrechoFundo?Math.max(0.1,bc.comprimento):L;
         const cx=(flipH?-1:1)*((L-comp)/2)*(bc.sobreTrechoFundo?1:0);
         const zBase=(bc.lado==="cima"?-1:1)*(W/2-bc.larg/2);

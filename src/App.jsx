@@ -7,7 +7,7 @@ import FormaEditor, { MiniForma } from "./FormaEditor.jsx";
 import { MODELOS } from "./data/modelos.js";
 import { calcA } from "./motor/areas.js";
 import { bancoCfg, textoBanco, FORMATOS_COM_BANCO } from "./motor/banco.js";
-import { planoManta, facesRetangulo, facesComPrainha, facesDoContorno, cortarChaoContorno } from "./motor/manta.js";
+import { planoManta, facesRetangulo, facesComPrainha, facesComBanco, facesDoContorno, cortarChaoContorno } from "./motor/manta.js";
 import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho } from "./motor/formas.js";
 import { ramalSistema, totaisHidraulica, ROTULO_SIS, SEM_TUBO, BARRA_M } from "./motor/hidraulica.js";
 import { retanguloPoli, circuloPoli, contornoComSpa, pontoNoContorno, caixaSpaNorm, bicosSpaNorm } from "./motor/spa.js";
@@ -533,7 +533,7 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
         return<g>
           <rect x={x0} y={y0} width={wq} height={hq} rx="1" fill={dark?"#2d3a4a":"#c7d2fe"} stroke="#6366f1" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.75"/>
           {banco.medida&&<text x={x0+wq/2} y={y0+hq/2+2} textAnchor="middle" fontSize={rot?"5":"5.5"} fontWeight="700" fill={dark?"#a5b4fc":"#4338ca"}>
-            BANCO {banco.larg.toFixed(2).replace(".",",")}m · lâmina {banco.lamina.toFixed(2).replace(".",",")}m
+            BANCO {banco.larg.toFixed(2).replace(".",",")}m · prof. {banco.prof.toFixed(2).replace(".",",")}m
           </text>}
         </g>;
       })()}
@@ -599,11 +599,11 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
           tracejado, como o que esta atras do plano — convencao de desenho. */}
       {banco&&banco.medida&&(()=>{
         const escY=(sloped?hMin2:cph2)/Math.max(D,0.01);
-        const yb=coy2+banco.lamina*escY;
+        const yb=coy2+banco.prof*escY;
         const x0=banco.sobreTrechoFundo?cox2+cpw2*Math.min(prai.comp/L,1):cox2;
         return<g>
           <line x1={x0+2} y1={yb} x2={cox2+cpw2-2} y2={yb} stroke="#6366f1" strokeWidth="1.2" strokeDasharray="5,3"/>
-          <text x={x0+6} y={yb-3} fontSize="5.4" fontWeight="700" fill="#6366f1">banco (atrás do corte) −{banco.lamina.toFixed(2).replace(".",",")}m</text>
+          <text x={x0+6} y={yb-3} fontSize="5.4" fontWeight="700" fill="#6366f1">banco (atrás do corte) −{banco.prof.toFixed(2).replace(".",",")}m</text>
         </g>;
       })()}
       {sloped&&<text x={cox2+cpw2+16} y={coy2+hMax2/2+3} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{dMax}m</text>}
@@ -801,7 +801,7 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   try{
     const bc=bancoCfg(pool,poolFmt,L,W,D);
     if(!bc)throw new Error("sem banco");
-    const alt=Math.max(0,D-bc.lamina);           // altura do bloco a partir do fundo
+    const alt=Math.max(0,D-bc.prof);           // altura do bloco a partir do fundo
     const y0=bc.lado==="cima"?0:W-bc.larg, y1=y0+bc.larg;
     const x0=bc.sobreTrechoFundo?prainhaCfg(pool,L,D).comp:0;
     const X=FX,Y=FY;
@@ -1288,10 +1288,17 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
         metrosLineares:+(base.metrosLineares+dif).toFixed(2),
         areaCobravel:+((base.metrosLineares+dif)*1.55).toFixed(2)};
     }
+    // BANCO LATERAL muda a lista de paredes: o degrau corre no sentido do
+    // comprimento, entao a lateral do banco vira espelho + testeira do banco e
+    // as testeiras saem com recorte. Prainha manda mais alto porque o plano
+    // dela ja existe e as duas juntas ainda nao foram levantadas na obra.
+    const bcM=bancoCfg(pool,d.poolFmt,L,W,D);
     const faces=praiC>0&&praiC<L
       ?facesComPrainha(L,W,D,praiC,Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)),
         {prainhaCorrida:(d.wMode||"regular")!=="irregular"})
-      :facesRetangulo(L,W,D);
+      :(bcM&&bcM.medida
+        ?facesComBanco(L,W,D,bcM.larg,bcM.prof)
+        :facesRetangulo(L,W,D));
     const sp=spaDaManta(spa,L,W,D);
     return planoManta({comp:L,larg:W,prof:D,perimetro:parseFloat(ar.perim)||0,
       areaReal:parseFloat(ar.tot)||0,praiComp:praiC,faces:[...faces,...sp.facesExtra],
@@ -1519,7 +1526,7 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
                 if(!bc||!bc.medida)return null;
                 const m2=v=>v.toFixed(2).replace(".",",");
                 return <span style={{background:"#eef2ff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #c7d2fe"}}>
-                  <b>Banco lateral:</b> {m2(bc.larg)}m de largura × {m2(bc.comprimento)}m · assento a {m2(bc.lamina)}m do nível da água
+                  <b>Banco lateral:</b> {m2(bc.larg)}m de largura × {m2(bc.comprimento)}m · assento a {m2(bc.prof)}m da borda
                 </span>;
               })()}
               {d.execDays&&<span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Prazo:</b> {d.execDays} dias úteis{d.svcType==="revestimento"?" após a medição detalhada":""}</span>}
@@ -2649,7 +2656,7 @@ export default function App(){
     const bc=bancoCfg(pool,poolFmt,n(pool.length),n(pool.width),D);
     if(!bc||!bc.medida)return null;
     const m2=v=>v.toFixed(2).replace(".",",");
-    return{txt:`${m2(bc.larg)}×${m2(bc.lamina)}m`,lado:bc.lado,linha:textoBanco(bc)};
+    return{txt:`${m2(bc.larg)}×${m2(bc.prof)}m`,lado:bc.lado,linha:textoBanco(bc)};
   })();
 
   // ═══ MANTA ARMADA 1,5 mm ═══
@@ -2680,10 +2687,13 @@ export default function App(){
         metrosLineares:+(base.metrosLineares+diff).toFixed(2),
         areaCobravel:+((base.metrosLineares+diff)*1.55).toFixed(2),contorno:true};
     }
+    const bcM=bancoCfg(pool,poolFmt,L,W,D);
     const faces=praiC>0&&praiC<L
       ?facesComPrainha(L,W,D,praiC,Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)),
         {prainhaCorrida:wMode!=="irregular"})
-      :facesRetangulo(L,W,D);
+      :(bcM&&bcM.medida
+        ?facesComBanco(L,W,D,bcM.larg,bcM.prof)
+        :facesRetangulo(L,W,D));
     const sp=spaDaManta(spa,L,W,D);
     return planoManta({comp:L,larg:W,prof:D,perimetro:parseFloat(ar.perim)||0,
       areaReal:parseFloat(ar.tot)||0,praiComp:praiC,faces:[...faces,...sp.facesExtra],
@@ -3299,7 +3309,7 @@ export default function App(){
             {pool.bancoOn&&<>
               <div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}>
                 <Inp label="Largura do banco (m)" value={pool.bancoLarg||""} onChange={up("bancoLarg")} t={t} placeholder="0,45"/>
-                <Inp label="Lâmina sobre o banco (m)" value={pool.bancoProf||""} onChange={up("bancoProf")} t={t} placeholder="0,40"/>
+                <Inp label="Prof. do banco (m)" value={pool.bancoProf||""} onChange={up("bancoProf")} t={t} placeholder="0,40"/>
                 <div>
                   <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>Lado (como aparece na planta)</div>
                   <div style={{display:"flex",gap:"6px"}}>
@@ -3317,8 +3327,8 @@ export default function App(){
                   {bcfg?.aviso
                     ?`⚠ ${bcfg.aviso}`
                     :bcfg?.medida
-                      ?`Assento a ${bcfg.lamina.toFixed(2).replace(".",",")}m do nível da água, bloco de ${bcfg.altura.toFixed(2).replace(".",",")}m de altura, correndo ${bcfg.comprimento.toFixed(2).replace(".",",")}m${bcfg.sobreTrechoFundo?" (para no degrau da prainha)":""}. Entra no volume e nas paredes; o topo do assento devolve o chão que o banco tapa.`
-                      :"Lâmina = quanto de água fica EM CIMA do assento, medido do nível da água para baixo (igual à prainha). Deixe vazio para o banco ficar só ilustrativo, sem entrar no cálculo."}
+                      ?`Assento a ${bcfg.prof.toFixed(2).replace(".",",")}m da borda, bloco de ${bcfg.altura.toFixed(2).replace(".",",")}m de altura, correndo ${bcfg.comprimento.toFixed(2).replace(".",",")}m${bcfg.sobreTrechoFundo?" (para no degrau da prainha)":""}. Entra no volume e nas paredes; o topo do assento devolve o chão que o banco tapa.`
+                      :"Profundidade = da BORDA da piscina até o assento, medida igual à da prainha (o vinil sobe até a borda, não tem lâmina de água na conta). Deixe vazio para o banco ficar só ilustrativo, sem entrar no cálculo."}
                 </div>;
               })()}
             </>}
@@ -3512,7 +3522,7 @@ export default function App(){
                 <div>
                   <div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".5px",marginBottom:"5px"}}>Paredes — {manta.paredes.qtdPecas} peças</div>
                   {manta.paredes.pecas.map((p,i)=><div key={i} style={linha}>
-                    <span style={{color:t.textSec}}>{p.nome}{p.corrida?<span style={{color:"#b45309",fontWeight:"700"}}> ↩ vincada</span>:""}</span>
+                    <span style={{color:t.textSec}}>{p.nome}{p.corrida?<span style={{color:"#b45309",fontWeight:"700"}}> ↩ vincada</span>:""}{p.recorte?<span style={{color:"#4338ca",fontWeight:"700"}}> ✂ recorte {m2(p.recorte.larg)}×{m2(p.recorte.alt)}</span>:""}</span>
                     <b style={{color:t.text,whiteSpace:"nowrap"}}>{m2(p.comp)} × {m2(p.altura)}</b>
                   </div>)}
                   <div style={{fontSize:"9px",color:t.textMuted,marginTop:"3px"}}>{m2(manta.paredes.metrosLineares)} m lineares</div>

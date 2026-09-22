@@ -229,7 +229,11 @@ export function cortarChaoRegioes(regioes, cfg = MANTA) {
  */
 export function cortarPeca(face, cfg = MANTA) {
   const { dobraPe, dobraTopo, solda: S, larguraBobina: B } = cfg;
-  const comp = (face.comp || 0) + 2 * S;
+  // PEÇA RENTE (`semSobraLateral`): sai no comprimento exato, sem os 5 cm de
+  // cada ponta. É o caso das peças que correm no sentido do comprimento quando
+  // existe banco lateral: as duas testeiras já trazem a sobra dos cantos, e
+  // repetir aqui daria 10 cm de manta sobreposta à toa em cada ponta.
+  const comp = (face.comp || 0) + (face.semSobraLateral ? 0 : 2 * S);
   const altura = (face.prof || 0) + dobraPe + dobraTopo;
   // Parede mais alta que a largura da bobina NÃO vira duas passadas inteiras.
   // A peça principal sai com a bobina cheia e o que falta é uma FAIXINHA
@@ -238,6 +242,10 @@ export function cortarPeca(face, cfg = MANTA) {
   const complementos = faixinhasPara(altura, comp, cfg);
   return {
     nome: face.nome || "face",
+    // O recorte do banco viaja junto: quem corta precisa ver na lista que
+    // aquela testeira sai inteira da bobina e é entalhada na obra.
+    recorte: face.recorte || null,
+    rente: !!face.semSobraLateral,
     faceComp: arred(face.comp || 0),
     faceProf: arred(face.prof || 0),
     comp: arred(comp),
@@ -379,6 +387,42 @@ export function facesRetangulo(comp, larg, prof) {
     { nome: "Lateral 2", comp, prof },
     { nome: "Testeira 1", comp: larg, prof },
     { nome: "Testeira 2", comp: larg, prof },
+  ];
+}
+
+/**
+ * Faces de uma retangular com BANCO LATERAL — a régua de assento que corre de
+ * ponta a ponta numa das laterais.
+ *
+ * A lista é a da obra, ditada pelo Marcos em 22/09/2026, para uma 6,00 × 4,00 ×
+ * 1,40 com banco de 0,50 de largura e 0,50 de profundidade:
+ *
+ *   2 testeiras       4,10 × 1,50   (COM RECORTE do banco, para arrematar
+ *                                    em cima da testeira do banco)
+ *   lateral oposta    6,00 × 1,50   rente
+ *   espelho do banco  6,00 × 1,00   rente — 0,90 de face + 5 em cima (vira
+ *                                    sobre o assento) + 5 embaixo (solda no chão)
+ *   testeira do banco 6,00 × 0,60   rente — a faixa do assento até a borda
+ *
+ * POR QUE AS DE 6 m SAEM RENTES: as duas testeiras de 4,10 já trazem os 5 cm
+ * de sobra em cada canto. Repetir nas peças do comprimento sobreporia 10 cm.
+ *
+ * O CHÃO NÃO MUDA e isso não é descuido: o degrau do banco corre PARALELO às
+ * faixas (as duas no sentido do comprimento), então nenhuma faixa precisa
+ * subir degrau — as mesmas peças forram o fundo e o topo do assento. É o
+ * contrário da prainha, cujo degrau atravessa as faixas e obriga duas regiões.
+ */
+export function facesComBanco(comp, larg, prof, bancoLarg, bancoProf) {
+  // arred: 1,40 - 0,50 em ponto flutuante da 0,8999999999999999, e esse numero
+  // ia parar na tela do plano de corte.
+  const alturaEspelho = arred(Math.max(prof - bancoProf, 0));
+  const recorte = { larg: arred(bancoLarg), alt: alturaEspelho };
+  return [
+    { nome: "Testeira 1", comp: larg, prof, recorte },
+    { nome: "Testeira 2", comp: larg, prof, recorte },
+    { nome: "Lateral (em frente ao banco)", comp, prof, semSobraLateral: true },
+    { nome: "Espelho do banco", comp, prof: alturaEspelho, semSobraLateral: true },
+    { nome: "Testeira do banco", comp, prof: bancoProf, semSobraLateral: true },
   ];
 }
 

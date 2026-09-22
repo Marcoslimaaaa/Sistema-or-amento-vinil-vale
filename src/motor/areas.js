@@ -114,7 +114,7 @@ export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
   // identico ao de antes (travado por teste, para nao mexer em orcamento
   // antigo). No desenho livre nao entra: ali o contorno e outro.
   const bco=dM?null:bancoCfg(pool,poolFmt,L,W,D);
-  const ajB=ajusteBanco(bco,{D,prainhaLamina:temPrainha?Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)):0});
+  const ajB=ajusteBanco(bco,{D,prainhaProf:temPrainha?Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)):0});
   chao+=ajB.chao;par+=ajB.parede;
   const srVol=st.redondo?(isRndSq?srC2*srL2*srP:Math.PI*srR*srR*srP):0;
   const vol=(dM?dM.vol:(temPrainha?praiVol:(isOval?(Math.PI*a*b):isOitavada?(L*W-4*(ch*ch/2)):L*W)*D))+(spa.on?sL*sW*sD:0)+(st.quadrado?sqC*sqL*sqP:0)+srVol+ajB.volume;

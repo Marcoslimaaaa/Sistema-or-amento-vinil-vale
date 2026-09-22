@@ -8,8 +8,9 @@
 //
 // O QUE O USUÁRIO DIGITA
 //   largura  – quanto o banco avança para dentro da piscina
-//   lâmina   – quanto de ÁGUA fica em cima do assento (mesma convenção da
-//              prainha: mede-se do N.A. para baixo, não do fundo para cima)
+//   profundidade – da BORDA da piscina até o assento, exatamente como se mede a
+//              prainha. NÃO é lâmina de água: o vinil sobe até a borda, e o
+//              nível da água não entra na conta (correção do Marcos, 22/09).
 //   lado     – "cima" ou "baixo", que é como o banco aparece na planta (o
 //              comprimento corre na horizontal, então os dois lados possíveis
 //              são a borda de cima e a de baixo do desenho). Dizer
@@ -35,19 +36,19 @@ const pf = (v) => parseFloat(String(v ?? "").replace(",", ".")) || 0;
 /**
  * Lê os campos do orçamento e devolve o banco já validado, ou null.
  *
- * @returns {null|{larg,lamina,altura,lado,comprimento,sobreTrechoFundo,medida,aviso}}
+ * @returns {null|{larg,prof,altura,lado,comprimento,sobreTrechoFundo,medida,aviso}}
  */
 export function bancoCfg(pool, poolFmt, L, W, D) {
   if (!pool?.bancoOn) return null;
   if (!FORMATOS_COM_BANCO.includes(poolFmt)) return null;
 
   const larg = pf(pool.bancoLarg);
-  const lamina = pf(pool.bancoProf);
+  const prof = pf(pool.bancoProf);   // da borda até o assento
   const lado = pool.bancoLado === "baixo" ? "baixo" : "cima";
   // Sem medida: desenho ilustrativo, largura de mentirinha e nada na conta.
-  const medida = larg > 0 && lamina > 0;
+  const medida = larg > 0 && prof > 0;
   if (!medida) {
-    return { larg: Math.min(W * 0.15, 0.5), lamina: Math.min(D * 0.3, 0.4), altura: 0, lado, comprimento: 0, sobreTrechoFundo: false, medida: false, aviso: null };
+    return { larg: Math.min(W * 0.15, 0.5), prof: Math.min(D * 0.3, 0.4), altura: 0, lado, comprimento: 0, sobreTrechoFundo: false, medida: false, aviso: null };
   }
 
   let aviso = null;
@@ -59,10 +60,10 @@ export function bancoCfg(pool, poolFmt, L, W, D) {
     largUsada = W * 0.45;
     aviso = `Banco de ${larg.toFixed(2).replace(".", ",")} m em piscina de ${W.toFixed(2).replace(".", ",")} m de largura: limitado a ${largUsada.toFixed(2).replace(".", ",")} m no cálculo. Confirme a medida.`;
   }
-  let laminaUsada = lamina;
-  if (lamina >= D) {
-    laminaUsada = Math.max(D - 0.1, 0.05);
-    aviso = `Lâmina de ${lamina.toFixed(2).replace(".", ",")} m em piscina de ${D.toFixed(2).replace(".", ",")} m: o assento ficaria no fundo. Usado ${laminaUsada.toFixed(2).replace(".", ",")} m.`;
+  let profUsada = prof;
+  if (prof >= D) {
+    profUsada = Math.max(D - 0.1, 0.05);
+    aviso = `Banco de ${prof.toFixed(2).replace(".", ",")} m de profundidade em piscina de ${D.toFixed(2).replace(".", ",")} m: o assento ficaria no fundo. Usado ${profUsada.toFixed(2).replace(".", ",")} m.`;
   }
 
   // Com prainha de medida, o banco corre só o trecho fundo: em cima da prainha
@@ -73,8 +74,8 @@ export function bancoCfg(pool, poolFmt, L, W, D) {
 
   return {
     larg: largUsada,
-    lamina: laminaUsada,
-    altura: Math.max(D - laminaUsada, 0),
+    prof: profUsada,
+    altura: Math.max(D - profUsada, 0),
     lado,
     comprimento,
     sobreTrechoFundo,
@@ -87,10 +88,10 @@ export function bancoCfg(pool, poolFmt, L, W, D) {
  * Quanto o banco tira (ou põe) na conta da piscina.
  *
  * @param {object} b   saída do bancoCfg
- * @param {object} dim {L, W, D, prainhaLamina} em metros
+ * @param {object} dim {L, W, D, prainhaProf} em metros
  * @returns {{chao:number, parede:number, volume:number}} deltas em m² / m³
  */
-export function ajusteBanco(b, { D = 0, prainhaLamina = 0 } = {}) {
+export function ajusteBanco(b, { D = 0, prainhaProf = 0 } = {}) {
   if (!b || !b.medida || b.altura <= 0 || b.comprimento <= 0) return { chao: 0, parede: 0, volume: 0 };
 
   // Testeiras: o bloco cobre um retângulo largura × altura em cada ponta que
@@ -100,7 +101,7 @@ export function ajusteBanco(b, { D = 0, prainhaLamina = 0 } = {}) {
   if (!b.sobreTrechoFundo) {
     parede += -b.larg * b.altura;
   } else {
-    const alturaDegrau = Math.max(D - prainhaLamina, 0);
+    const alturaDegrau = Math.max(D - prainhaProf, 0);
     parede += -b.larg * Math.min(b.altura, alturaDegrau);
   }
 
@@ -115,5 +116,5 @@ export function ajusteBanco(b, { D = 0, prainhaLamina = 0 } = {}) {
 export function textoBanco(b) {
   if (!b || !b.medida) return null;
   const n = (v) => v.toFixed(2).replace(".", ",");
-  return `Banco lateral · ${n(b.larg)} m de largura × ${n(b.comprimento)} m de extensão · assento a ${n(b.lamina)} m do nível da água (bloco de ${n(b.altura)} m de altura)`;
+  return `Banco lateral · ${n(b.larg)} m de largura × ${n(b.comprimento)} m de extensão · assento a ${n(b.prof)} m da borda (bloco de ${n(b.altura)} m de altura)`;
 }
