@@ -6,6 +6,7 @@ import { getEstampaByNome } from "./data/estampas.js";
 import FormaEditor, { MiniForma } from "./FormaEditor.jsx";
 import { MODELOS } from "./data/modelos.js";
 import { calcA } from "./motor/areas.js";
+import { bancoCfg, textoBanco, FORMATOS_COM_BANCO } from "./motor/banco.js";
 import { planoManta, facesRetangulo, facesComPrainha, facesDoContorno, cortarChaoContorno } from "./motor/manta.js";
 import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho } from "./motor/formas.js";
 import { ramalSistema, totaisHidraulica, ROTULO_SIS, SEM_TUBO, BARRA_M } from "./motor/hidraulica.js";
@@ -409,6 +410,7 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
   const L_NORM=[[0,0],[1,0],[1,.6],[.6,.6],[.6,1],[0,1]];    // contorno do Formato L em 0..1
   const lPts=L_NORM.map(([u,v])=>S(u,v)).join(" ");
   const prai=prainhaCfg(pool,L,D);
+  const banco=bancoCfg(pool,poolFmt,L,W,D);
   // dRef: bico dentro do spa mede a altura pela profundidade DO SPA, não da piscina
   const alturaBicoP=(t,f,dRef)=>alturaBico(t,f,dRef||D,devHeights);
   const caixaSpa=caixaSpaNorm(L,W,spa,customPos?.spaExt);
@@ -518,6 +520,23 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
       })()}
       {stamp&&SWATCH_SLUG[stamp]&&<image href={`/swatches/${SWATCH_SLUG[stamp]}.png`} x={ox} y={oy} width={pw} height={ph} preserveAspectRatio="xMidYMid slice" clipPath="url(#poolClip2d)" opacity="0.85"/>}
       {poolFmt==="Com prainha"&&(()=>{const a=PU(0,0),b=PU(Math.min(prai.comp/L,1),1);const x0=Math.min(a.x,b.x),y0=Math.min(a.y,b.y),wq=Math.abs(b.x-a.x),hq=Math.abs(b.y-a.y);return<g><rect x={x0} y={y0} width={wq} height={hq} rx="1" fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#2563eb" strokeWidth="0.5"/>{prai.medida&&<text x={x0+wq/2} y={y0+hq/2+3} textAnchor="middle" fontSize="5.5" fontWeight="700" fill={dark?"#93c5fd":"#1d4ed8"}>{prai.comp}m · {prai.prof}m</text>}</g>})()}
+      {/* BANCO LATERAL — faixa encostada na lateral escolhida, de ponta a
+          ponta. Usa o mesmo PU()/espelho do resto: virar a piscina vira o
+          banco junto. Com prainha de medida ele para no degrau. */}
+      {banco&&(()=>{
+        const v0=banco.lado==="cima"?0:1-banco.larg/W;
+        const u0=banco.sobreTrechoFundo?Math.min(prai.comp/L,1):0;
+        const a0=PU(u0,v0),b0=PU(1,v0+banco.larg/W);
+        const x0=Math.min(a0.x,b0.x),y0=Math.min(a0.y,b0.y);
+        const wq=Math.abs(b0.x-a0.x),hq=Math.abs(b0.y-a0.y);
+        const rot=hq<14;   // faixa estreita: o texto so cabe deitado
+        return<g>
+          <rect x={x0} y={y0} width={wq} height={hq} rx="1" fill={dark?"#2d3a4a":"#c7d2fe"} stroke="#6366f1" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.75"/>
+          {banco.medida&&<text x={x0+wq/2} y={y0+hq/2+2} textAnchor="middle" fontSize={rot?"5":"5.5"} fontWeight="700" fill={dark?"#a5b4fc":"#4338ca"}>
+            BANCO {banco.larg.toFixed(2).replace(".",",")}m · lâmina {banco.lamina.toFixed(2).replace(".",",")}m
+          </text>}
+        </g>;
+      })()}
       {extras.length>0&&extras.map((e,i)=>{const pf=v=>parseFloat(String(v||"").replace(",","."))||0;const el=pf(e.l),ew=pf(e.w);if(el<=0||ew<=0)return null;const ePw=el*scale,ePh=ew*scale;const desc=(e.desc||"").toLowerCase();const isBank=desc.includes("banco");const isPrainha=desc.includes("prainha");const isDegrau=desc.includes("degrau");const eColor=isPrainha?(dark?"#1e4d7a":"#bfdbfe"):isBank?(dark?"#2d3a4a":"#c7d2fe"):(dark?"#1e3a5f":"#ddd6fe");const eX=isPrainha?ox:isBank?ox:(ox+pw-ePw);const eY=isPrainha?oy:(oy+ph-ePh);const m1={x:MX(eX),y:MY(eY)},m2={x:MX(eX+ePw),y:MY(eY+ePh)};const rx0=Math.min(m1.x,m2.x),ry0=Math.min(m1.y,m2.y);return<g key={`ext${i}`}><rect x={rx0} y={ry0} width={ePw} height={ePh} rx="2" fill={eColor} stroke={dark?"#475569":"#6366f1"} strokeWidth="0.8" strokeDasharray="3,2" opacity="0.7"/><text x={rx0+ePw/2} y={ry0+ePh/2+3} textAnchor="middle" fontSize="5.5" fill={dark?"#94a3b8":"#4f46e5"} fontWeight="600">{e.desc||"Extra"}</text></g>})}
       {spaExtBox&&(()=>{const {x:sx,y:sy,w:sw2,h:sh}=spaExtBox;return<g style={{cursor:"grab"}} onMouseDown={e=>{e.preventDefault();setDragging("spaExt")}} onTouchStart={e=>{e.preventDefault();setDragging("spaExt")}}><rect x={sx} y={sy} width={sw2} height={sh} rx="3" fill={dark?"#1e3a5f":"#93c5fd"} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="4,2"/><text x={sx+sw2/2} y={sy+sh/2+3} textAnchor="middle" fontSize="7" fill="#1d4ed8" fontWeight="700">SPA</text></g>;})()}
       <text x={ox+pw/2} y={oy+ph/2-3} textAnchor="middle" fontSize="8" fill={dark?"#94a3b8":"#64748b"} fontWeight="600">PISCINA</text>
@@ -576,6 +595,17 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
       <text x={cox2+cpw2/2} y={coy2+13} textAnchor="middle" fontSize="6" fill="#0ea5e9">N.A.</text>
       <text x={cox2+cpw2/2} y={(sloped?Math.max(coy2+hMax2,coy2+hMin2):coy2+cph2)+14} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{L}m</text>
       <text x={cox2-14} y={coy2+(sloped?hMin2:cph2)/2+3} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{sloped?dMin:D}m</text>
+      {/* O banco corre PARALELO a este corte, entao nao e cortado: aparece
+          tracejado, como o que esta atras do plano — convencao de desenho. */}
+      {banco&&banco.medida&&(()=>{
+        const escY=(sloped?hMin2:cph2)/Math.max(D,0.01);
+        const yb=coy2+banco.lamina*escY;
+        const x0=banco.sobreTrechoFundo?cox2+cpw2*Math.min(prai.comp/L,1):cox2;
+        return<g>
+          <line x1={x0+2} y1={yb} x2={cox2+cpw2-2} y2={yb} stroke="#6366f1" strokeWidth="1.2" strokeDasharray="5,3"/>
+          <text x={x0+6} y={yb-3} fontSize="5.4" fontWeight="700" fill="#6366f1">banco (atrás do corte) −{banco.lamina.toFixed(2).replace(".",",")}m</text>
+        </g>;
+      })()}
       {sloped&&<text x={cox2+cpw2+16} y={coy2+hMax2/2+3} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{dMax}m</text>}
     </svg>
     <div style={{marginTop:"8px",background:dark?"#1e293b":"#fff",borderRadius:"6px",padding:"8px",border:"1px solid "+(dark?"#334155":"#e2e8f0")}}>
@@ -763,6 +793,23 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
     els.push(<polygon key="prainha_r" points={pts([[X(pW),Y(0),0],[X(pW),Y(W),0],[X(pW),Y(W),pH],[X(pW),Y(0),pH]])} fill={dk?"#1e4080":"#7dd3fc"} stroke="#2563eb" strokeWidth="0.5" opacity="0.5"/>);
     const pp=iso(X(pW/2),Y(W/2),pH);els.push(<text key="prainha_lbl" x={pp.x} y={pp.y-3} textAnchor="middle" fontSize="6" fontWeight="700" fill={dk?"#93c5fd":"#1d4ed8"} opacity="0.8">PRAINHA{prai.medida?` ${prai.comp}m · ${prai.prof}m`:""}</text>);
   }
+  // BANCO LATERAL na isometrica — bloco encostado na lateral escolhida, do
+  // fundo ate a altura do assento. Mesmo FX/FY do resto: espelhar a piscina
+  // espelha o banco.
+  // try/catch pelo mesmo motivo da uniao com o spa: medida estranha e problema,
+  // tela branca e pior. Sem banco, o resto da isometrica continua de pe.
+  try{
+    const bc=bancoCfg(pool,poolFmt,L,W,D);
+    if(!bc)throw new Error("sem banco");
+    const alt=Math.max(0,D-bc.lamina);           // altura do bloco a partir do fundo
+    const y0=bc.lado==="cima"?0:W-bc.larg, y1=y0+bc.larg;
+    const x0=bc.sobreTrechoFundo?prainhaCfg(pool,L,D).comp:0;
+    const X=FX,Y=FY;
+    els.push(<polygon key="banco_top" points={pts([[X(x0),Y(y0),alt],[X(L),Y(y0),alt],[X(L),Y(y1),alt],[X(x0),Y(y1),alt]])} fill={dk?"#3b4763":"#c7d2fe"} opacity="0.75"/>);
+    els.push(<polygon key="banco_face" points={pts([[X(x0),Y(bc.lado==="cima"?y1:y0),0],[X(L),Y(bc.lado==="cima"?y1:y0),0],[X(L),Y(bc.lado==="cima"?y1:y0),alt],[X(x0),Y(bc.lado==="cima"?y1:y0),alt]])} fill={dk?"#2f3a52":"#a5b4fc"} stroke="#6366f1" strokeWidth="0.5" opacity="0.65"/>);
+    const pb=iso(X((x0+L)/2),Y((y0+y1)/2),alt);
+    els.push(<text key="banco_lbl" x={pb.x} y={pb.y-3} textAnchor="middle" fontSize="6" fontWeight="700" fill={dk?"#a5b4fc":"#4338ca"} opacity="0.85">BANCO{bc.medida?` ${bc.larg.toFixed(2).replace(".",",")}m`:""}</text>);
+  }catch{/* sem banco no desenho; a conta e a planta nao dependem disto */}
   // "Com Spa" — spa(s) nos cantos da piscina
   if(poolFmt==="Com Spa"){
     const spaFill=dk?"#1e3a5f":"#93c5fd",spaStroke="#3b82f6";
@@ -1464,6 +1511,17 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
                 :<span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Chão:</b> {ar.chao}m² <b>Paredes:</b> {ar.par}m²</span>}
               {mantaQ&&<span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Solda:</b> {mantaQ.solda.total.toFixed(2).replace(".",",")}m lineares</span>}
               {mantaQ&&<span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Superfície da piscina:</b> {ar.tot}m² (chão {ar.chao} + paredes {ar.par})</span>}
+              {/* BANCO LATERAL no PDF: o cliente precisa ver a peca que ele
+                  encomendou, com as medidas que entraram na conta. */}
+              {(()=>{
+                const n=v=>parseFloat(String(v??"").replace(",","."))||0;
+                const bc=bancoCfg(pool,d.poolFmt,n(pool.length),n(pool.width),ar.depthInfo?.avg||n(pool.depth));
+                if(!bc||!bc.medida)return null;
+                const m2=v=>v.toFixed(2).replace(".",",");
+                return <span style={{background:"#eef2ff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #c7d2fe"}}>
+                  <b>Banco lateral:</b> {m2(bc.larg)}m de largura × {m2(bc.comprimento)}m · assento a {m2(bc.lamina)}m do nível da água
+                </span>;
+              })()}
               {d.execDays&&<span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Prazo:</b> {d.execDays} dias úteis{d.svcType==="revestimento"?" após a medição detalhada":""}</span>}
             </div>
             {d.stamp&&(()=>{const est=getEstampaByNome(d.stamp);return est?<div style={{marginTop:"8px",display:"flex",alignItems:"center",gap:"10px",background:"#fff",borderRadius:"8px",padding:"7px 10px",border:`1px solid ${gold}66`}}>
@@ -1577,7 +1635,7 @@ export default function App(){
   const [gM,setGM]=useState(0);
   const [client,setCl]=useState({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});
   const uc=f=>v=>setCl(p=>({...p,[f]:v}));
-  const [pool,setPool]=useState({length:"10.00",width:"4.00",depth:"1.40",depthMin:"",depthMax:"",chanfro:"1.00",prainhaComp:"",prainhaProf:""});
+  const [pool,setPool]=useState({length:"10.00",width:"4.00",depth:"1.40",depthMin:"",depthMax:"",chanfro:"1.00",prainhaComp:"",prainhaProf:"",bancoOn:false,bancoLarg:"",bancoProf:"",bancoLado:"cima"});
   const [fieldErrors,setFieldErrors]=useState({});
   // Vírgula vira ponto na entrada — "3,5" era lido como 3 pelo parseFloat e errava área/preço
   const up=f=>v=>{const nv=String(v).replace(",",".");setPool(p=>({...p,[f]:nv}));if(parseFloat(nv)>0)setFieldErrors(e=>({...e,[f]:false}));};
@@ -2582,6 +2640,18 @@ export default function App(){
     const m2=v=>v.toFixed(2).replace(".",",");
     return{txt:`${m2(c)}×${m2(Math.min(p>0?p:D*0.25,Math.max(D-0.05,0.05)))}m`};
   })();
+  // Banco do resumo: mesma condicao do calcA — so aparece quando tem medida,
+  // senao um orcamento clonado carregaria banco invisivel na conta.
+  const bancoInfo=(()=>{
+    const n=v=>parseFloat(String(v??"").replace(",","."))||0;
+    const dMin=n(pool.depthMin),dMax=n(pool.depthMax);
+    const D=(dMin>0&&dMax>0)?(dMin+dMax)/2:n(pool.depth);
+    const bc=bancoCfg(pool,poolFmt,n(pool.length),n(pool.width),D);
+    if(!bc||!bc.medida)return null;
+    const m2=v=>v.toFixed(2).replace(".",",");
+    return{txt:`${m2(bc.larg)}×${m2(bc.lamina)}m`,lado:bc.lado,linha:textoBanco(bc)};
+  })();
+
   // ═══ MANTA ARMADA 1,5 mm ═══
   // Só a manta é orçada por plano de corte de bobina. O vinil 0,7/0,8 (bolsão)
   // segue por área e não passa por aqui.
@@ -3217,6 +3287,42 @@ export default function App(){
               Preenchido, entra no chão, nas paredes e no volume: a lâmina sobre a prainha usa a profundidade informada e ganha o degrau de descida.
             </div>
           </div>}
+          {/* BANCO LATERAL — a regua de assento que corre a lateral inteira.
+              Fica ao lado da prainha de proposito: sao as duas pecas de
+              alvenaria que mudam area e volume, e o usuario pensa nas duas no
+              mesmo momento. Nasce DESLIGADO: orcamento antigo abre igual. */}
+          {FORMATOS_COM_BANCO.includes(poolFmt)&&<div style={{marginTop:"10px",background:t.sectionBg,borderRadius:"8px",padding:"10px",border:`1px solid ${t.cardBorder}`}}>
+            <label style={{display:"flex",alignItems:"center",gap:"7px",cursor:"pointer",marginBottom:pool.bancoOn?"8px":0}}>
+              <input type="checkbox" checked={!!pool.bancoOn} onChange={e=>setPool(p=>({...p,bancoOn:e.target.checked}))} style={{width:"15px",height:"15px",accentColor:blue,cursor:"pointer"}}/>
+              <span style={{fontSize:"10px",fontWeight:"700",color:blue}}>Banco lateral (de ponta a ponta)</span>
+            </label>
+            {pool.bancoOn&&<>
+              <div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}>
+                <Inp label="Largura do banco (m)" value={pool.bancoLarg||""} onChange={up("bancoLarg")} t={t} placeholder="0,45"/>
+                <Inp label="Lâmina sobre o banco (m)" value={pool.bancoProf||""} onChange={up("bancoProf")} t={t} placeholder="0,40"/>
+                <div>
+                  <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>Lado (como aparece na planta)</div>
+                  <div style={{display:"flex",gap:"6px"}}>
+                    {[["cima","Em cima"],["baixo","Embaixo"]].map(([ld,rot])=><button key={ld} type="button" onClick={()=>setPool(p=>({...p,bancoLado:ld}))}
+                      style={{flex:1,padding:"7px 4px",fontSize:"9.5px",fontWeight:"700",fontFamily:"inherit",borderRadius:"6px",cursor:"pointer",
+                        border:"1.5px solid "+((pool.bancoLado||"cima")===ld?blue:t.cardBorder),
+                        background:(pool.bancoLado||"cima")===ld?blue:"transparent",
+                        color:(pool.bancoLado||"cima")===ld?"#fff":t.textSec}}>{rot}</button>)}
+                  </div>
+                </div>
+              </div>
+              {(()=>{
+                const bcfg=bancoCfg(pool,poolFmt,parseFloat(String(pool.length||"").replace(",","."))||0,parseFloat(String(pool.width||"").replace(",","."))||0,parseFloat(String(pool.depth||"").replace(",","."))||0);
+                return <div style={{fontSize:"8.5px",color:bcfg?.aviso?"#b45309":t.textMuted,marginTop:"6px",lineHeight:1.45}}>
+                  {bcfg?.aviso
+                    ?`⚠ ${bcfg.aviso}`
+                    :bcfg?.medida
+                      ?`Assento a ${bcfg.lamina.toFixed(2).replace(".",",")}m do nível da água, bloco de ${bcfg.altura.toFixed(2).replace(".",",")}m de altura, correndo ${bcfg.comprimento.toFixed(2).replace(".",",")}m${bcfg.sobreTrechoFundo?" (para no degrau da prainha)":""}. Entra no volume e nas paredes; o topo do assento devolve o chão que o banco tapa.`
+                      :"Lâmina = quanto de água fica EM CIMA do assento, medido do nível da água para baixo (igual à prainha). Deixe vazio para o banco ficar só ilustrativo, sem entrar no cálculo."}
+                </div>;
+              })()}
+            </>}
+          </div>}
           {/* Prainha do desenho livre (Personalizado) — vale para ponta reta ou arredondada */}
           {desenho&&(desenho.vertices||[]).length>=3&&(()=>{
             const fP=achaPrainha(desenho);
@@ -3374,6 +3480,7 @@ export default function App(){
             <div style={{display:"flex",justifyContent:"center",gap:"12px",flexWrap:"wrap",alignItems:"center"}}>
               <div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{pool.length}×{pool.width}×{pool.depth}m</div><div style={{fontSize:"8px",color:t.textSec}}>Piscina</div></div>
               {praiInfo&&<><div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/><div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:"#b45309"}}>{praiInfo.txt}</div><div style={{fontSize:"8px",color:t.textSec}}>Prainha</div></div></>}
+              {bancoInfo&&<><div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/><div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:"#4338ca"}}>{bancoInfo.txt}</div><div style={{fontSize:"8px",color:t.textSec}}>Banco ({bancoInfo.lado})</div></div></>}
               <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
               <div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{ar.chao} m²</div><div style={{fontSize:"8px",color:t.textSec}}>Chão</div></div>
               <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>

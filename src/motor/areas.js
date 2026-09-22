@@ -7,6 +7,7 @@
 // - tot     = chao + par + spa. É o que puxa o metro de vinil no orçamento.
 // Toda face vertical entra em `par`, mesmo quando é interna (degrau da prainha).
 import { calcDesenho } from "./formas.js";
+import { bancoCfg, ajusteBanco } from "./banco.js";
 
 export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
   const L=parseFloat(pool.length)||0,W=parseFloat(pool.width)||0;
@@ -107,8 +108,16 @@ export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
   const srChao=st.redondo?(isRndSq?srC2*srL2:Math.PI*srR*srR):0;
   const srPar=st.redondo?(isRndSq?(2*srC2*srP+2*srL2*srP):Math.PI*(srR*2)*srP):0;
   const fmtSpaChao=sqChao+srChao,fmtSpaPar=sqPar+srPar;
+  // ── BANCO LATERAL ────────────────────────────────────────────────────────
+  // Bloco de assento correndo a lateral inteira. Entra por ultimo, sobre o que
+  // ja foi calculado, e so quando tem medida — sem os campos o resultado e
+  // identico ao de antes (travado por teste, para nao mexer em orcamento
+  // antigo). No desenho livre nao entra: ali o contorno e outro.
+  const bco=dM?null:bancoCfg(pool,poolFmt,L,W,D);
+  const ajB=ajusteBanco(bco,{D,prainhaLamina:temPrainha?Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)):0});
+  chao+=ajB.chao;par+=ajB.parede;
   const srVol=st.redondo?(isRndSq?srC2*srL2*srP:Math.PI*srR*srR*srP):0;
-  const vol=(dM?dM.vol:(temPrainha?praiVol:(isOval?(Math.PI*a*b):isOitavada?(L*W-4*(ch*ch/2)):L*W)*D))+(spa.on?sL*sW*sD:0)+(st.quadrado?sqC*sqL*sqP:0)+srVol;
+  const vol=(dM?dM.vol:(temPrainha?praiVol:(isOval?(Math.PI*a*b):isOitavada?(L*W-4*(ch*ch/2)):L*W)*D))+(spa.on?sL*sW*sD:0)+(st.quadrado?sqC*sqL*sqP:0)+srVol+ajB.volume;
   const depthInfo={avg:D,min:realDMin,max:realDMax,sloped:dMin>0&&dMax>0&&dMin!==dMax};
-  return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:(sChao+fmtSpaChao).toFixed(1),sPar:(sPar+fmtSpaPar).toFixed(1),tot:(chao+par+sChao+sPar+fmtSpaChao+fmtSpaPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao+fmtSpaChao).toFixed(1),depthInfo,extraChao:extraChao.toFixed(1),extraPar:extraPar.toFixed(1),sqChao:sqChao.toFixed(1),sqPar:sqPar.toFixed(1),srChao:srChao.toFixed(1),srPar:srPar.toFixed(1)};
+  return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:(sChao+fmtSpaChao).toFixed(1),sPar:(sPar+fmtSpaPar).toFixed(1),tot:(chao+par+sChao+sPar+fmtSpaChao+fmtSpaPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao+fmtSpaChao).toFixed(1),depthInfo,banco:bco,extraChao:extraChao.toFixed(1),extraPar:extraPar.toFixed(1),sqChao:sqChao.toFixed(1),sqPar:sqPar.toFixed(1),srChao:srChao.toFixed(1),srPar:srPar.toFixed(1)};
 };

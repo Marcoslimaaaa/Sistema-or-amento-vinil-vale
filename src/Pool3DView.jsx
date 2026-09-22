@@ -1,4 +1,5 @@
 import React, { Suspense, useRef, useMemo } from 'react';
+import { bancoCfg } from "./motor/banco.js";
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Line, GizmoHelper, GizmoViewcube, useTexture } from '@react-three/drei';
 import * as THREE from 'three';
@@ -621,6 +622,22 @@ function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide
         return <mesh position={[px, alt/2, 0]}>
           <boxGeometry args={[comp, alt, W-0.1]} />
           <meshStandardMaterial color="#7dd3fc" roughness={0.8} transparent opacity={0.6} />
+        </mesh>;
+      })()}
+
+      {/* BANCO LATERAL — bloco de assento correndo a lateral escolhida. Sai do
+          fundo ate a altura do assento; a lamina digitada e a agua EM CIMA. */}
+      {!dn&&(()=>{
+        const bc=bancoCfg(pool,poolFmt,L,W,D);
+        if(!bc)return null;
+        const alt=Math.max(0.05,D-bc.lamina);
+        const comp=bc.sobreTrechoFundo?Math.max(0.1,bc.comprimento):L;
+        const cx=(flipH?-1:1)*((L-comp)/2)*(bc.sobreTrechoFundo?1:0);
+        const zBase=(bc.lado==="cima"?-1:1)*(W/2-bc.larg/2);
+        const cz=(flipV?-1:1)*zBase;
+        return <mesh position={[cx, alt/2, cz]}>
+          <boxGeometry args={[comp, alt, bc.larg]} />
+          <meshStandardMaterial color="#a5b4fc" roughness={0.85} transparent opacity={0.72} />
         </mesh>;
       })()}
 

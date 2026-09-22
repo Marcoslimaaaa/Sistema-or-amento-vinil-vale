@@ -56,6 +56,7 @@ const FMTS = ["Retangular", "Formato L", "Oval", "Oitavada", "Com prainha", "Per
 
 function App() {
   const [poolFmt, setPoolFmt] = useState("Retangular");
+  const [banco, setBanco] = useState({ on: true, larg: "0.45", lamina: "0.40", lado: "cima" });
   const [modelo, setModelo] = useState("romana");
   const [flipH, setFlipH] = useState(false);
   const [flipV, setFlipV] = useState(false);
@@ -103,8 +104,17 @@ function App() {
         ))}
       </div>
 
+      <div style={{ display: "flex", gap: 10, alignItems: "center", margin: "10px 0", flexWrap: "wrap", fontSize: 13 }}>
+        <label style={{ display: "flex", gap: 5, alignItems: "center" }}>
+          <input type="checkbox" checked={banco.on} onChange={e => setBanco(b => ({ ...b, on: e.target.checked }))} /> banco lateral
+        </label>
+        <label>largura <input type="number" step="0.05" value={banco.larg} style={{ width: 60 }} onChange={e => setBanco(b => ({ ...b, larg: e.target.value }))} /></label>
+        <label>lâmina <input type="number" step="0.05" value={banco.lamina} style={{ width: 60 }} onChange={e => setBanco(b => ({ ...b, lamina: e.target.value }))} /></label>
+        <button onClick={() => setBanco(b => ({ ...b, lado: b.lado === "cima" ? "baixo" : "cima" }))}>lado: {banco.lado}</button>
+      </div>
+
       <PlantaView
-        pool={pool} spa={{ on: false, length: "2", width: "2", depth: "0.8", side: "top" }}
+        pool={{ ...pool, bancoOn: banco.on, bancoLarg: banco.larg, bancoProf: banco.lamina, bancoLado: banco.lado }} spa={{ on: false, length: "2", width: "2", depth: "0.8", side: "top" }}
         disps={disps} customPos={customPos} setCustomPos={setCustomPos}
         dragging={dragging} setDragging={setDragging} dark={false}
         poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={t}
