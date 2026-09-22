@@ -8,8 +8,10 @@
 // Toda face vertical entra em `par`, mesmo quando é interna (degrau da prainha).
 import { calcDesenho } from "./formas.js";
 import { bancoCfg, ajusteBanco } from "./banco.js";
+import { geometriaTriangular } from "./triangular.js";
 
 export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
+  const pf2=v=>parseFloat(String(v??"").replace(",","."))||0;
   const L=parseFloat(pool.length)||0,W=parseFloat(pool.width)||0;
   const dMin=parseFloat(pool.depthMin)||0,dMax=parseFloat(pool.depthMax)||0;
   const D=(dMin>0&&dMax>0)?(dMin+dMax)/2:parseFloat(pool.depth)||0;
@@ -53,6 +55,24 @@ export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
     par+=degrau;
     praiVol=Lf*W*D+praiC*W*pp;
   }
+  // ── TRIANGULAR ───────────────────────────────────────────────────────────
+  // Formato proprio: o motor mede o triangulo e, quando tem banco nos tres
+  // lados, separa fundo / assento / espelho / costas. Nada aqui depende de
+  // comprimento x largura, que num triangulo nao querem dizer nada.
+  if(poolFmt==="Triangular"){
+    const gT=geometriaTriangular({a:pf2(pool?.triA),b:pf2(pool?.triB),c:pf2(pool?.triC),prof:D,
+      banco:pool?.bancoOn?{larg:pf2(pool?.bancoLarg),prof:pf2(pool?.bancoProf)}:null});
+    if(gT&&!gT.erro){
+      const chaoT=gT.areas.fundo+gT.areas.assento;
+      const parT=gT.areas.espelho+gT.areas.costas+gT.areas.parede;
+      const depthInfoT={avg:D,min:realDMin,max:realDMax,sloped:false};
+      return{chao:chaoT.toFixed(1),par:parT.toFixed(1),sChao:"0.0",sPar:"0.0",
+        tot:(chaoT+parT).toFixed(1),vol:gT.volume.toFixed(1),perim:gT.perimetro.toFixed(1),
+        chaoTot:chaoT.toFixed(1),depthInfo:depthInfoT,banco:null,triangular:gT,
+        extraChao:"0.0",extraPar:"0.0",sqChao:"0.0",sqPar:"0.0",srChao:"0.0",srPar:"0.0"};
+    }
+  }
+
   // Desenho livre (modelos/editor): áreas e perímetro REAIS do formato desenhado
   const dM=desenho&&desenho.vertices&&desenho.vertices.length>=3?calcDesenho(desenho,D):null;
   if(dM){chao=dM.chao;par=dM.paredes;perim=dM.perim;}

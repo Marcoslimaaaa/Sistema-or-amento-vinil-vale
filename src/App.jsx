@@ -7,6 +7,7 @@ import FormaEditor, { MiniForma } from "./FormaEditor.jsx";
 import { MODELOS } from "./data/modelos.js";
 import { calcA } from "./motor/areas.js";
 import { bancoCfg, textoBanco, FORMATOS_COM_BANCO } from "./motor/banco.js";
+import { geometriaTriangular, planoTriangular, verticesTriangulo } from "./motor/triangular.js";
 import { planoManta, facesRetangulo, facesComPrainha, facesComBanco, facesDoContorno, cortarChaoContorno } from "./motor/manta.js";
 import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho } from "./motor/formas.js";
 import { ramalSistema, totaisHidraulica, ROTULO_SIS, SEM_TUBO, BARRA_M } from "./motor/hidraulica.js";
@@ -237,7 +238,7 @@ const PIPE=[
 ];
 const CO={name:"Vinil Vale Revestimentos e Capas para Piscinas Ltda",short:"Vinil Vale",addr:"Rodovia SP 139, KM 3, s/n, Jardim Hatori II, Registro-SP",cnpj:"42.749.688/0001-57",ie:"574.128.060.119",ph1:"(13) 99730-5949",ph2:"(13) 99678-1966",email:"vinilvale@hotmail.com",insta:"@vinilvaleoficial"};
 const SVC=[{id:"construcao",label:"Construção de Piscina",icon:"🏗️",lucide:Hammer},{id:"revestimento",label:"Revestimento em Vinil",icon:"🎨",lucide:Paintbrush},{id:"reforma",label:"Reforma de Piscina",icon:"🔧",lucide:Wrench}];
-const PFMT=["Retangular","Retangular irregular","Formato L","Oval","Feijão","Oitavada","Com prainha","Com Spa","Personalizado"];
+const PFMT=["Retangular","Retangular irregular","Formato L","Oval","Feijão","Oitavada","Com prainha","Com Spa","Triangular","Personalizado"];
 // t=espessura (chave/valor salvo), w=anos de garantia do vinil, nome=material,
 // resist=tagline técnica, armada=manta armada (linha de alto padrão, sem estoque próprio)
 const VOPTS=[
@@ -1292,6 +1293,14 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
     // comprimento, entao a lateral do banco vira espelho + testeira do banco e
     // as testeiras saem com recorte. Prainha manda mais alto porque o plano
     // dela ja existe e as duas juntas ainda nao foram levantadas na obra.
+    // TRIANGULAR tem plano proprio: paredes e chao nao saem de comprimento x
+    // largura, e o ninho (costas + espelho do mesmo lado) muda a bobina.
+    if(d.poolFmt==="Triangular"){
+      const n2=v=>parseFloat(String(v??"").replace(",","."))||0;
+      const pt=planoTriangular({a:n2(pool.triA),b:n2(pool.triB),c:n2(pool.triC),prof:D,
+        banco:pool.bancoOn?{larg:n2(pool.bancoLarg),prof:n2(pool.bancoProf)}:null});
+      return pt.erro?null:pt;
+    }
     const bcM=bancoCfg(pool,d.poolFmt,L,W,D);
     const faces=praiC>0&&praiC<L
       ?facesComPrainha(L,W,D,praiC,Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)),
@@ -1642,7 +1651,7 @@ export default function App(){
   const [gM,setGM]=useState(0);
   const [client,setCl]=useState({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});
   const uc=f=>v=>setCl(p=>({...p,[f]:v}));
-  const [pool,setPool]=useState({length:"10.00",width:"4.00",depth:"1.40",depthMin:"",depthMax:"",chanfro:"1.00",prainhaComp:"",prainhaProf:"",bancoOn:false,bancoLarg:"",bancoProf:"",bancoLado:"cima"});
+  const [pool,setPool]=useState({length:"10.00",width:"4.00",depth:"1.40",depthMin:"",depthMax:"",chanfro:"1.00",prainhaComp:"",prainhaProf:"",bancoOn:false,bancoLarg:"",bancoProf:"",bancoLado:"cima",triA:"",triB:"",triC:""});
   const [fieldErrors,setFieldErrors]=useState({});
   // Vírgula vira ponto na entrada — "3,5" era lido como 3 pelo parseFloat e errava área/preço
   const up=f=>v=>{const nv=String(v).replace(",",".");setPool(p=>({...p,[f]:nv}));if(parseFloat(nv)>0)setFieldErrors(e=>({...e,[f]:false}));};
@@ -2687,6 +2696,12 @@ export default function App(){
         metrosLineares:+(base.metrosLineares+diff).toFixed(2),
         areaCobravel:+((base.metrosLineares+diff)*1.55).toFixed(2),contorno:true};
     }
+    if(poolFmt==="Triangular"){
+      const n2=v=>parseFloat(String(v??"").replace(",","."))||0;
+      const pt=planoTriangular({a:n2(pool.triA),b:n2(pool.triB),c:n2(pool.triC),prof:D,
+        banco:pool.bancoOn?{larg:n2(pool.bancoLarg),prof:n2(pool.bancoProf)}:null});
+      return pt.erro?null:pt;
+    }
     const bcM=bancoCfg(pool,poolFmt,L,W,D);
     const faces=praiC>0&&praiC<L
       ?facesComPrainha(L,W,D,praiC,Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)),
@@ -2704,7 +2719,18 @@ export default function App(){
   // o editor de forma e o cálculo de área continuam no referencial original —
   // espelho é isometria, não muda área, perímetro nem volume.
   const ladoPrainha=ladoDaPrainha(desenho,poolFmt,extras);
-  const desenhoV=flipH||flipV?espelharDesenho(desenho,flipH,flipV):desenho;
+  // TRIANGULAR: em vez de um formato novo em cada renderizador, o triangulo
+  // vira um CONTORNO, e a planta, o 3D, a isometrica e a hidraulica ja sabem
+  // desenhar contorno qualquer (caminho do desenho livre). O banco entra na
+  // fase 2, como regiao de profundidade.
+  const desenhoTri=(()=>{
+    if(poolFmt!=="Triangular")return null;
+    const n=v=>parseFloat(String(v??"").replace(",","."))||0;
+    const v=verticesTriangulo(n(pool.triA),n(pool.triB),n(pool.triC));
+    return v?{vertices:v,formas:[]}:null;
+  })();
+  const desenhoBase=desenhoTri||desenho;
+  const desenhoV=flipH||flipV?espelharDesenho(desenhoBase,flipH,flipV):desenhoBase;
   const spaTypeV=flipH||flipV?{...spaType,qCanto:espelhaCanto(spaType.qCanto,flipH,flipV),rCanto:espelhaCanto(spaType.rCanto,flipH,flipV)}:spaType;
   const lowStockCount=Object.entries(stk).filter(([,s])=>s.qty>0&&s.qty<=(s.minQty||2)).length;
 
@@ -3297,20 +3323,42 @@ export default function App(){
               Preenchido, entra no chão, nas paredes e no volume: a lâmina sobre a prainha usa a profundidade informada e ganha o degrau de descida.
             </div>
           </div>}
+          {poolFmt==="Triangular"&&<div style={{marginTop:"10px",background:t.sectionBg,borderRadius:"8px",padding:"10px",border:`1px solid ${t.cardBorder}`}}>
+            <div style={{fontSize:"10px",fontWeight:"700",color:blue,marginBottom:"8px"}}>Lados do triângulo</div>
+            <div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}>
+              <Inp label="Lado A (m)" value={pool.triA||""} onChange={up("triA")} t={t} placeholder="4,10"/>
+              <Inp label="Lado B (m)" value={pool.triB||""} onChange={up("triB")} t={t} placeholder="3,10"/>
+              <Inp label="Lado C (m)" value={pool.triC||""} onChange={up("triC")} t={t} placeholder="2,80"/>
+            </div>
+            {(()=>{
+              const n=v=>parseFloat(String(v??"").replace(",","."))||0;
+              const g=geometriaTriangular({a:n(pool.triA),b:n(pool.triB),c:n(pool.triC),prof:n(pool.depth),
+                banco:pool.bancoOn?{larg:n(pool.bancoLarg),prof:n(pool.bancoProf)}:null});
+              const f2=x=>x.toFixed(2).replace(".",",");
+              if(!n(pool.triA)||!n(pool.triB)||!n(pool.triC))
+                return <div style={{fontSize:"8.5px",color:t.textMuted,marginTop:"6px"}}>Meça os três lados por fora. O banco dos três lados entra no quadro abaixo.</div>;
+              if(!g)return <div style={{fontSize:"8.5px",color:"#dc2626",marginTop:"6px",fontWeight:"700"}}>⚠ Esses três lados não fecham um triângulo — confira a medida.</div>;
+              if(g.erro)return <div style={{fontSize:"8.5px",color:"#b45309",marginTop:"6px",fontWeight:"700"}}>⚠ {g.erro}</div>;
+              return <div style={{fontSize:"8.5px",color:t.textMuted,marginTop:"6px",lineHeight:1.45}}>
+                Lâmina {f2(g.areas.lamina)}m² · perímetro {f2(g.perimetro)}m{g.temBanco?` · pé do banco ${g.internos.map(f2).join(" / ")}m — o espelho é bem mais curto que a parede` :""}
+                {g.temBanco?` · piso do fundo ${f2(g.areas.fundo)}m²`:""} · banco cabe até {f2(g.bancoMaximo)}m
+              </div>;
+            })()}
+          </div>}
           {/* BANCO LATERAL — a regua de assento que corre a lateral inteira.
               Fica ao lado da prainha de proposito: sao as duas pecas de
               alvenaria que mudam area e volume, e o usuario pensa nas duas no
               mesmo momento. Nasce DESLIGADO: orcamento antigo abre igual. */}
-          {FORMATOS_COM_BANCO.includes(poolFmt)&&<div style={{marginTop:"10px",background:t.sectionBg,borderRadius:"8px",padding:"10px",border:`1px solid ${t.cardBorder}`}}>
+          {(FORMATOS_COM_BANCO.includes(poolFmt)||poolFmt==="Triangular")&&<div style={{marginTop:"10px",background:t.sectionBg,borderRadius:"8px",padding:"10px",border:`1px solid ${t.cardBorder}`}}>
             <label style={{display:"flex",alignItems:"center",gap:"7px",cursor:"pointer",marginBottom:pool.bancoOn?"8px":0}}>
               <input type="checkbox" checked={!!pool.bancoOn} onChange={e=>setPool(p=>({...p,bancoOn:e.target.checked}))} style={{width:"15px",height:"15px",accentColor:blue,cursor:"pointer"}}/>
-              <span style={{fontSize:"10px",fontWeight:"700",color:blue}}>Banco lateral (de ponta a ponta)</span>
+              <span style={{fontSize:"10px",fontWeight:"700",color:blue}}>{poolFmt==="Triangular"?"Banco nos três lados":"Banco lateral (de ponta a ponta)"}</span>
             </label>
             {pool.bancoOn&&<>
               <div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}>
                 <Inp label="Largura do banco (m)" value={pool.bancoLarg||""} onChange={up("bancoLarg")} t={t} placeholder="0,45"/>
                 <Inp label="Prof. do banco (m)" value={pool.bancoProf||""} onChange={up("bancoProf")} t={t} placeholder="0,40"/>
-                <div>
+                {poolFmt!=="Triangular"&&<div>
                   <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>Lado (como aparece na planta)</div>
                   <div style={{display:"flex",gap:"6px"}}>
                     {[["cima","Em cima"],["baixo","Embaixo"]].map(([ld,rot])=><button key={ld} type="button" onClick={()=>setPool(p=>({...p,bancoLado:ld}))}
@@ -3319,9 +3367,10 @@ export default function App(){
                         background:(pool.bancoLado||"cima")===ld?blue:"transparent",
                         color:(pool.bancoLado||"cima")===ld?"#fff":t.textSec}}>{rot}</button>)}
                   </div>
-                </div>
+                </div>}
               </div>
               {(()=>{
+                if(poolFmt==="Triangular")return null;
                 const bcfg=bancoCfg(pool,poolFmt,parseFloat(String(pool.length||"").replace(",","."))||0,parseFloat(String(pool.width||"").replace(",","."))||0,parseFloat(String(pool.depth||"").replace(",","."))||0);
                 return <div style={{fontSize:"8.5px",color:bcfg?.aviso?"#b45309":t.textMuted,marginTop:"6px",lineHeight:1.45}}>
                   {bcfg?.aviso

@@ -5,6 +5,7 @@
 // profundidade, banco de 0,50 de largura e 0,50 da borda até o assento),
 // conferida com o Marcos peça por peça.
 import { trianguloValido, verticesTriangulo, geometriaTriangular, planoTriangular } from "../triangular.js";
+import { calcA } from "../areas.js";
 
 let ok = 0, falhas = 0;
 const eq = (nome, real, esperado) => {
@@ -85,6 +86,25 @@ eq("UMA bobina de 25 m", p.pedido.qtd, 1);
 eq("sem ninhar passaria de uma bobina", p.metrosSemNinhar > 25, true);
 perto("manta cobrável 26,7 m²", p.areaCobravel, 17.22 * 1.55, 0.1);
 perto("área útil = superfície real", p.areaUtil, 11.45);
+
+console.log("\n— dentro do orçamento (calcA) —");
+const poolTri = { triA: "4,10", triB: "3,10", triC: "2,80", depth: "1,00", bancoOn: true, bancoLarg: "0,50", bancoProf: "0,50" };
+const ar = calcA(poolTri, { on: false }, "regular", [], "Triangular", [], {}, null);
+perto("area total 11,5 m2", parseFloat(ar.tot), 11.5, 0.06);
+perto("chao (fundo + assento) 4,3 m2", parseFloat(ar.chao), 4.34, 0.06);
+perto("paredes (espelho + costas) 7,1 m2", parseFloat(ar.par), 7.12, 0.06);
+perto("volume 2,6 m3", parseFloat(ar.vol), 2.56, 0.06);
+perto("perimetro 10,0 m", parseFloat(ar.perim), 10.0, 0.06);
+eq("o orcamento enxerga a geometria", !!ar.triangular, true);
+
+const arSem = calcA({ ...poolTri, bancoOn: false }, { on: false }, "regular", [], "Triangular", [], {}, null);
+perto("sem banco: chao = lamina inteira", parseFloat(arSem.chao), 4.34, 0.06);
+perto("sem banco: parede = perimetro x profundidade", parseFloat(arSem.par), 10.0, 0.06);
+perto("sem banco: volume cheio", parseFloat(arSem.vol), 4.34, 0.06);
+
+// Medida impossivel NAO pode virar orcamento com area fantasma.
+const arRuim = calcA({ ...poolTri, triC: "0,20" }, { on: false }, "regular", [], "Triangular", [], {}, null);
+eq("lados impossiveis nao viram area de triangulo", arRuim.triangular === undefined, true);
 
 console.log(`\ntriangular.test: ${ok} testes ok${falhas ? `, ${falhas} FALHA(S)` : ""}`);
 process.exit(falhas ? 1 : 0);
