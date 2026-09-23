@@ -159,6 +159,42 @@ function faixasDegrau(f, paraDentro, n) {
  * @param {number} larguraM    quanto o banco avança para dentro
  * @param {number} profundidadeM  da BORDA até o assento (mesma convenção da prainha)
  */
+/**
+ * Encosta os bicos no CONTORNO quando a piscina não é retangular.
+ *
+ * POR QUE EXISTE
+ * As posições padrão nascem em fração do retângulo envolvente (0,05 da parede
+ * esquerda, 0,95 da direita...). Num triângulo — ou em qualquer desenho livre —
+ * boa parte dessas posições cai FORA da água: visto na planta em 22/09/2026,
+ * com metade dos bicos boiando do lado de fora do triângulo.
+ *
+ * Aqui cada peça de parede é puxada para o ponto mais próximo do contorno, e as
+ * de fundo (ralo) são trazidas para dentro se estiverem fora. Quem arrastar a
+ * peça depois continua mandando — isto é só o ponto de partida.
+ *
+ * @param {object} pos           mapa de posições em fração (0..1) do retângulo
+ * @param {Array}  contornoNorm  contorno na MESMA fração (0..1)
+ */
+export function encostarNoContorno(pos, contornoNorm) {
+  if (!contornoNorm || contornoNorm.length < 3) return pos;
+  const saida = {};
+  const centro = contornoNorm.reduce(
+    (s, p) => ({ x: s.x + p.x / contornoNorm.length, y: s.y + p.y / contornoNorm.length }),
+    { x: 0, y: 0 });
+  for (const [k, p] of Object.entries(pos)) {
+    if (p.special) { saida[k] = p; continue; }
+    if (p.floor) {
+      // peça de fundo: só mexe se estiver fora d'água, e aí vai para o miolo
+      saida[k] = pontoDentro(p, contornoNorm) ? p : { ...p, x: centro.x, y: centro.y };
+      continue;
+    }
+    const t = fracaoMaisProxima(contornoNorm, p);
+    const q = pontoNaFracao(contornoNorm, t);
+    saida[k] = { ...p, x: q.x, y: q.y, fracaoContorno: t };
+  }
+  return saida;
+}
+
 export function regioesBanco(contorno, larguraM, profundidadeM) {
   if (!(contorno?.length >= 3) || !(larguraM > 0)) return [];
   const dentro = offsetPoligono(contorno, -larguraM);

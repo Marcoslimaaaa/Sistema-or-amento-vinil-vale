@@ -5,7 +5,7 @@ import React, { useState } from "react";
 import ReactDOM from "react-dom/client";
 import { PlantaView } from "./App.jsx";
 import { MODELOS } from "./data/modelos.js";
-import { espelharDesenho, contornoEfetivo, regioesProfundidade } from "./motor/formas.js";
+import { espelharDesenho, contornoEfetivo, regioesProfundidade, encostarNoContorno } from "./motor/formas.js";
 import { verticesTriangulo } from "./motor/triangular.js";
 
 const ROT_PRAINHA = { esquerda: 0, cima: 90, direita: 180, baixo: 270 };
@@ -45,7 +45,7 @@ const autoPositions = (L, W, d, inv, fmt, opts = {}) => {
   if (rotP) Object.keys(pos).forEach(k => { pos[k] = giraPos(pos[k], rotP); });
   if (flipH || flipV) Object.keys(pos).forEach(k => { pos[k] = { ...pos[k], x: flipH ? 1 - pos[k].x : pos[k].x, y: flipV ? 1 - pos[k].y : pos[k].y }; });
   pos["casa"] = { x: 1.12, y: 0.5, label: "CM", type: "casa", special: true };
-  return pos;
+  return opts.contornoNorm ? encostarNoContorno(pos, opts.contornoNorm) : pos;
 };
 
 const achaPrainha = d => (d?.formas || []).find(f => f.tipo === "prainha") || null;
@@ -84,6 +84,13 @@ function App() {
       })()
     : null;
   const desenhoBase = desenhoTri || desenho;
+  // mesma regra do app: a caixa da piscina acompanha o triangulo, senao o bico
+  // certo aparece fora da agua
+  const poolV = desenhoTri
+    ? (() => { const xs = desenhoTri.vertices.map(p => p.x), ys = desenhoTri.vertices.map(p => p.y);
+        const r2 = v => String(Math.round(v * 100) / 100);
+        return { ...pool, length: r2(Math.max(...xs) - Math.min(...xs)), width: r2(Math.max(...ys) - Math.min(...ys)) }; })()
+    : pool;
   const desenhoV = desenhoBase && (flipH || flipV) ? espelharDesenho(desenhoBase, flipH, flipV) : desenhoBase;
 
   const ar = { total: "0", chao: "0", paredes: "0", perim: "0", vol: "0" };
@@ -126,7 +133,7 @@ function App() {
       </div>
 
       <PlantaView
-        pool={{ ...pool, bancoOn: banco.on, bancoLarg: banco.larg, bancoProf: banco.lamina, bancoLado: banco.lado }} spa={{ on: false, length: "2", width: "2", depth: "0.8", side: "top" }}
+        pool={{ ...poolV, bancoOn: banco.on, bancoLarg: banco.larg, bancoProf: banco.lamina, bancoLado: banco.lado }} spa={{ on: false, length: "2", width: "2", depth: "0.8", side: "top" }}
         disps={disps} customPos={customPos} setCustomPos={setCustomPos}
         dragging={dragging} setDragging={setDragging} dark={false}
         poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={t}

@@ -9,7 +9,7 @@ import { calcA } from "./motor/areas.js";
 import { bancoCfg, textoBanco, FORMATOS_COM_BANCO } from "./motor/banco.js";
 import { geometriaTriangular, planoTriangular, verticesTriangulo } from "./motor/triangular.js";
 import { planoManta, facesRetangulo, facesComPrainha, facesComBanco, facesDoContorno, cortarChaoContorno } from "./motor/manta.js";
-import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho } from "./motor/formas.js";
+import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho, encostarNoContorno } from "./motor/formas.js";
 import { ramalSistema, totaisHidraulica, ROTULO_SIS, SEM_TUBO, BARRA_M } from "./motor/hidraulica.js";
 import { retanguloPoli, circuloPoli, contornoComSpa, pontoNoContorno, caixaSpaNorm, bicosSpaNorm } from "./motor/spa.js";
 // Aviso de que um arquivo do app não veio do servidor. Quem escuta é o App,
@@ -238,6 +238,16 @@ const PIPE=[
 ];
 const CO={name:"Vinil Vale Revestimentos e Capas para Piscinas Ltda",short:"Vinil Vale",addr:"Rodovia SP 139, KM 3, s/n, Jardim Hatori II, Registro-SP",cnpj:"42.749.688/0001-57",ie:"574.128.060.119",ph1:"(13) 99730-5949",ph2:"(13) 99678-1966",email:"vinilvale@hotmail.com",insta:"@vinilvaleoficial"};
 const SVC=[{id:"construcao",label:"Construção de Piscina",icon:"🏗️",lucide:Hammer},{id:"revestimento",label:"Revestimento em Vinil",icon:"🎨",lucide:Paintbrush},{id:"reforma",label:"Reforma de Piscina",icon:"🔧",lucide:Wrench}];
+// Contorno em fracao (0..1) do retangulo que o envolve — e o referencial em
+// que as posicoes dos bicos vivem.
+const contornoEmFracao=(poly)=>{
+  if(!poly||poly.length<3)return null;
+  const xs=poly.map(p=>p.x),ys=poly.map(p=>p.y);
+  const mnx=Math.min(...xs),mxx=Math.max(...xs),mny=Math.min(...ys),mxy=Math.max(...ys);
+  const dx=mxx-mnx||1,dy=mxy-mny||1;
+  return poly.map(p=>({x:(p.x-mnx)/dx,y:(p.y-mny)/dy}));
+};
+
 const PFMT=["Retangular","Retangular irregular","Formato L","Oval","Feijão","Oitavada","Com prainha","Com Spa","Triangular","Personalizado"];
 // t=espessura (chave/valor salvo), w=anos de garantia do vinil, nome=material,
 // resist=tagline técnica, armada=manta armada (linha de alto padrão, sem estoque próprio)
@@ -415,7 +425,7 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
   // dRef: bico dentro do spa mede a altura pela profundidade DO SPA, não da piscina
   const alturaBicoP=(t,f,dRef)=>alturaBico(t,f,dRef||D,devHeights);
   const caixaSpa=caixaSpaNorm(L,W,spa,customPos?.spaExt);
-  const optsAuto={flipH,flipV,ladoPrainha,raloQuenteParede,spaBox:caixaSpa};
+  const optsAuto={contornoNorm:contornoEmFracao(efPoly),flipH,flipV,ladoPrainha,raloQuenteParede,spaBox:caixaSpa};
   const positions={...autoPositions(L,W,disps,invertSide,poolFmt,optsAuto),...customPos};
   // ── Spa em pixel: uma conta só para o desenho, o contorno do tubo e o arrasto ──
   const spaExtBox=hasSpa2?(()=>{
@@ -917,7 +927,7 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   // CM entry y per system
   const cmEntryY=(sysType,idx)=>cmBY0+cmWd*(0.1+idx*0.12);
   // Get actual device positions from autoPositions (same as 2D PlantaView)
-  const optsAutoIso={flipH,flipV,ladoPrainha,raloQuenteParede,spaBox:caixaSpaNorm(L,W,spa,customPos?.spaExt)};
+  const optsAutoIso={contornoNorm:contornoEmFracao((desenho?.vertices||[]).length>=3?contornoEfetivo(desenho):null),flipH,flipV,ladoPrainha,raloQuenteParede,spaBox:caixaSpaNorm(L,W,spa,customPos?.spaExt)};
   const allPos=autoPositions?{...autoPositions(L,W,disps,invertSide,poolFmt,optsAutoIso),...(customPos||{})}:{};
   const activeDevs=Object.entries(allPos).filter(([k,p])=>!p.special&&autoPositions&&autoPositions(L,W,disps,invertSide,poolFmt,optsAutoIso)[k]);
   // Group by system type
@@ -1768,7 +1778,10 @@ export default function App(){
     if(flipH||flipV)Object.keys(pos).forEach(k=>{pos[k]={...pos[k],x:flipH?1-pos[k].x:pos[k].x,y:flipV?1-pos[k].y:pos[k].y}});
     // Casa de maquinas: fora da piscina
     pos["casa"]={x:1.12,y:0.5,label:"CM",type:"casa",special:true};
-    return pos;
+    // CONTORNO NAO RETANGULAR: as posicoes padrao nascem em fracao do retangulo
+    // envolvente e, num triangulo, metade delas cai fora da agua. Encosta cada
+    // peca de parede no contorno; quem arrastar depois continua mandando.
+    return opts.contornoNorm?encostarNoContorno(pos,opts.contornoNorm):pos;
   };
 
   // SPA
@@ -2738,6 +2751,18 @@ export default function App(){
     return {vertices:v,formas};
   })();
   const desenhoBase=desenhoTri||desenho;
+  // A CAIXA DA PISCINA TEM DE SER A DO TRIANGULO. O contorno e desenhado por um
+  // mapeamento proprio (efMap, uniforme e centrado) e os bicos por fracao da
+  // caixa comprimento x largura. Com as duas diferentes, o bico certo aparece
+  // fora da agua — foi o que a planta mostrou em 22/09/2026. Igualando a caixa,
+  // os dois mapeamentos viram um so.
+  const poolV=(()=>{
+    if(!desenhoTri)return pool;
+    const xs=desenhoTri.vertices.map(p=>p.x),ys=desenhoTri.vertices.map(p=>p.y);
+    // 2 casas: a medida vai para a tela e "2.115633994361116m" nao e medida.
+    const r2=v=>String(Math.round(v*100)/100);
+    return {...pool,length:r2(Math.max(...xs)-Math.min(...xs)),width:r2(Math.max(...ys)-Math.min(...ys))};
+  })();
   const desenhoV=flipH||flipV?espelharDesenho(desenhoBase,flipH,flipV):desenhoBase;
   const spaTypeV=flipH||flipV?{...spaType,qCanto:espelhaCanto(spaType.qCanto,flipH,flipV),rCanto:espelhaCanto(spaType.rCanto,flipH,flipV)}:spaType;
   const lowStockCount=Object.entries(stk).filter(([,s])=>s.qty>0&&s.qty<=(s.minQty||2)).length;
@@ -3656,7 +3681,7 @@ export default function App(){
                 <button onClick={()=>{setDisps(p=>({...p,[k]:p[k]+1}));setCustomPos(p=>{const n={...p};Object.keys(n).forEach(key=>{if(key.startsWith(k.substring(0,3)))delete n[key]});return n})}} style={{width:"16px",height:"16px",borderRadius:"3px",border:"none",background:"#dcfce7",color:"#16a34a",fontSize:"10px",cursor:"pointer",fontWeight:"700"}}>+</button>
               </div>)}
             </div>
-            <PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} spaType={spaTypeV} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/>
+            <PlantaView pool={poolV} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} spaType={spaTypeV} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/>
           </div>
         </Card>}
 
@@ -4900,10 +4925,10 @@ export default function App(){
             <span style={{fontSize:"8px",color:t.textMuted}}>(vazio = padrão {ALTURA_QUENTE.toFixed(2)}m acima do chão; ralo no chão fica rente ao piso)</span>
           </div>}
           {show3D
-            ?<ChunkBoundary fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"0 20px",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Não deu para carregar a visualização 3D. Atualize a página — seu orçamento está salvo.</div>}><Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={pool} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/></Suspense></ChunkBoundary>
+            ?<ChunkBoundary fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"0 20px",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Não deu para carregar a visualização 3D. Atualize a página — seu orçamento está salvo.</div>}><Suspense fallback={<div style={{height:"440px",display:"flex",alignItems:"center",justifyContent:"center",color:t.textMuted,fontSize:"12px",background:t.sectionBg,borderRadius:"12px"}}>Carregando visualização 3D...</div>}><Pool3DView pool={poolV} spa={spa} disps={disps} customPos={customPos} poolFmt={poolFmt} autoPositions={autoPositions} invertSide={invertSide} dark={dark} devHeights={devHeights} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/></Suspense></ChunkBoundary>
             :isoView
-              ?<IsometricView ref={isoRef} pool={pool} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide} devHeights={devHeights} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/>
-              :<PlantaView pool={pool} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/>}
+              ?<IsometricView ref={isoRef} pool={poolV} spa={spa} disps={disps} dark={dark} t={t} poolFmt={poolFmt} clientName={client.name} autoPositions={autoPositions} customPos={customPos} invertSide={invertSide} devHeights={devHeights} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/>
+              :<PlantaView pool={poolV} spa={spa} disps={disps} customPos={customPos} setCustomPos={setCustomPos} dragging={dragging} setDragging={setDragging} dark={dark} poolFmt={poolFmt} ar={ar} autoPositions={autoPositions} blue={blue} t={t} tubeOffsets={tubeOffsets} setTubeOffsets={setTubeOffsets} invertSide={invertSide} wMode={wMode} walls={walls} stamp={stamp} spaType={spaTypeV} extras={extras} desenho={desenhoV} flipH={flipH} flipV={flipV} ladoPrainha={ladoPrainha} raloQuenteParede={raloQuenteParede} devHeights={devHeights}/>}
         </Card>}
 
         {/* CONTRATOS */}
