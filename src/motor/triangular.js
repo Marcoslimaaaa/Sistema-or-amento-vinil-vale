@@ -61,10 +61,25 @@ const caixa = (p) => ({
  *                    {larg, prof} — prof do banco = da BORDA até o assento
  * @returns {null|object} null quando os lados não fecham triângulo
  */
+/**
+ * A MESMA CONTA PARA QUALQUER CONTORNO — triângulo, oitavada, círculo
+ * aproximado em gomos ou desenho livre. O que muda de um para outro é só o
+ * polígono que entra.
+ *
+ * @param {object} p  {contorno, prof, banco:{larg,prof}}
+ */
+export function geometriaComBanco({ contorno, prof = 1, banco = null }) {
+  return medir(contorno, pf(prof), banco);
+}
+
 export function geometriaTriangular({ a, b, c, prof = 1, banco = null }) {
   const tri = verticesTriangulo(pf(a), pf(b), pf(c));
   if (!tri) return null;
-  const D = pf(prof);
+  return medir(tri, pf(prof), banco);
+}
+
+function medir(tri, D, banco) {
+  if (!(tri?.length >= 3)) return null;
   const bl = banco ? pf(banco.larg) : 0;
   const bp = banco ? pf(banco.prof) : 0;
   const temBanco = bl > 0 && bp > 0 && bp < D;
@@ -124,8 +139,9 @@ export function geometriaTriangular({ a, b, c, prof = 1, banco = null }) {
  * do orçamento não precisa saber que a piscina é triangular.
  */
 export function planoTriangular(entrada, cfg = MANTA) {
-  const g = geometriaTriangular(entrada);
-  if (!g) return { erro: "Os três lados não fecham um triângulo." };
+  // `contorno` pronto (oitavada, desenho) ou os três lados (triângulo).
+  const g = entrada.contorno ? geometriaComBanco(entrada) : geometriaTriangular(entrada);
+  if (!g) return { erro: entrada.contorno ? "Contorno inválido." : "Os três lados não fecham um triângulo." };
   if (g.erro) return { erro: g.erro };
 
   // ── PAREDES ───────────────────────────────────────────────────────────────

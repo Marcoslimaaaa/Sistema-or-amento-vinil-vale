@@ -8,6 +8,7 @@ import { MODELOS } from "./data/modelos.js";
 import { calcA } from "./motor/areas.js";
 import { bancoCfg, textoBanco, FORMATOS_COM_BANCO } from "./motor/banco.js";
 import { geometriaTriangular, planoTriangular, verticesTriangulo } from "./motor/triangular.js";
+import { contornoOitavada, contornoCircular, medidasCirculo } from "./motor/formatos.js";
 import { planoManta, facesRetangulo, facesComPrainha, facesComBanco, facesDoContorno, cortarChaoContorno } from "./motor/manta.js";
 import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho, encostarNoContorno } from "./motor/formas.js";
 import { ramalSistema, totaisHidraulica, ROTULO_SIS, SEM_TUBO, BARRA_M } from "./motor/hidraulica.js";
@@ -248,7 +249,7 @@ const contornoEmFracao=(poly)=>{
   return poly.map(p=>({x:(p.x-mnx)/dx,y:(p.y-mny)/dy}));
 };
 
-const PFMT=["Retangular","Retangular irregular","Formato L","Oval","Feijão","Oitavada","Com prainha","Com Spa","Triangular","Personalizado"];
+const PFMT=["Retangular","Retangular irregular","Formato L","Oval","Feijão","Oitavada","Com prainha","Com Spa","Triangular","Circular","Personalizado"];
 // t=espessura (chave/valor salvo), w=anos de garantia do vinil, nome=material,
 // resist=tagline técnica, armada=manta armada (linha de alto padrão, sem estoque próprio)
 const VOPTS=[
@@ -1305,12 +1306,15 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
     // dela ja existe e as duas juntas ainda nao foram levantadas na obra.
     // TRIANGULAR tem plano proprio: paredes e chao nao saem de comprimento x
     // largura, e o ninho (costas + espelho do mesmo lado) muda a bobina.
-    if(d.poolFmt==="Triangular"){
+    if(d.poolFmt==="Triangular"||(d.poolFmt==="Oitavada"&&pool.bancoOn)){
       const n2=v=>parseFloat(String(v??"").replace(",","."))||0;
-      const pt=planoTriangular({a:n2(pool.triA),b:n2(pool.triB),c:n2(pool.triC),prof:D,
-        banco:pool.bancoOn?{larg:n2(pool.bancoLarg),prof:n2(pool.bancoProf)}:null});
+      const banco=pool.bancoOn?{larg:n2(pool.bancoLarg),prof:n2(pool.bancoProf)}:null;
+      const pt=d.poolFmt==="Triangular"
+        ?planoTriangular({a:n2(pool.triA),b:n2(pool.triB),c:n2(pool.triC),prof:D,banco})
+        :planoTriangular({contorno:contornoOitavada(L,W,n2(pool.chanfro)),prof:D,banco});
       return pt.erro?null:pt;
     }
+    if(d.poolFmt==="Circular")return null;
     const bcM=bancoCfg(pool,d.poolFmt,L,W,D);
     const faces=praiC>0&&praiC<L
       ?facesComPrainha(L,W,D,praiC,Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)),
@@ -1522,7 +1526,9 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
 
           <Sec title="Detalhamento Técnico"><div style={{background:`linear-gradient(135deg,${lBg},#e8edf5)`,borderRadius:"10px",padding:"14px",border:"1px solid #dce3ee"}}>
             <div style={{display:"flex",gap:"12px",alignItems:"center",justifyContent:"center",flexWrap:"wrap",marginBottom:"6px"}}>
-              {[{v:pool.length+"m",l:"Comp."},{v:pool.width+"m",l:"Larg."},{v:pool.depth+"m",l:"Prof."},
+              {[...(d.poolFmt==="Triangular"
+                ?[{v:(pool.triA||"—")+"m",l:"Lado A"},{v:(pool.triB||"—")+"m",l:"Lado B"},{v:(pool.triC||"—")+"m",l:"Lado C"},{v:pool.depth+"m",l:"Prof."}]
+                :[{v:pool.length+"m",l:"Comp."},{v:pool.width+"m",l:"Larg."},{v:pool.depth+"m",l:"Prof."}]),
                 // com manta armada o número que importa é a manta cortada, não a
                 // área da piscina — o material vem de bobina, não de bolsão
                 mantaQ?{v:mantaQ.areaCobravel.toFixed(2).replace(".",",")+"m²",l:"Manta cortada"}:{v:ar.tot+"m²",l:"Área Total"},
@@ -1661,7 +1667,7 @@ export default function App(){
   const [gM,setGM]=useState(0);
   const [client,setCl]=useState({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});
   const uc=f=>v=>setCl(p=>({...p,[f]:v}));
-  const [pool,setPool]=useState({length:"10.00",width:"4.00",depth:"1.40",depthMin:"",depthMax:"",chanfro:"1.00",prainhaComp:"",prainhaProf:"",bancoOn:false,bancoLarg:"",bancoProf:"",bancoLado:"cima",triA:"",triB:"",triC:""});
+  const [pool,setPool]=useState({length:"10.00",width:"4.00",depth:"1.40",depthMin:"",depthMax:"",chanfro:"1.00",prainhaComp:"",prainhaProf:"",bancoOn:false,bancoLarg:"",bancoProf:"",bancoLado:"cima",triA:"",triB:"",triC:"",diametro:""});
   const [fieldErrors,setFieldErrors]=useState({});
   // Vírgula vira ponto na entrada — "3,5" era lido como 3 pelo parseFloat e errava área/preço
   const up=f=>v=>{const nv=String(v).replace(",",".");setPool(p=>({...p,[f]:nv}));if(parseFloat(nv)>0)setFieldErrors(e=>({...e,[f]:false}));};
@@ -2709,12 +2715,18 @@ export default function App(){
         metrosLineares:+(base.metrosLineares+diff).toFixed(2),
         areaCobravel:+((base.metrosLineares+diff)*1.55).toFixed(2),contorno:true};
     }
-    if(poolFmt==="Triangular"){
+    if(poolFmt==="Triangular"||(poolFmt==="Oitavada"&&pool.bancoOn)){
       const n2=v=>parseFloat(String(v??"").replace(",","."))||0;
-      const pt=planoTriangular({a:n2(pool.triA),b:n2(pool.triB),c:n2(pool.triC),prof:D,
-        banco:pool.bancoOn?{larg:n2(pool.bancoLarg),prof:n2(pool.bancoProf)}:null});
+      const banco=pool.bancoOn?{larg:n2(pool.bancoLarg),prof:n2(pool.bancoProf)}:null;
+      const pt=poolFmt==="Triangular"
+        ?planoTriangular({a:n2(pool.triA),b:n2(pool.triB),c:n2(pool.triC),prof:D,banco})
+        :planoTriangular({contorno:contornoOitavada(L,W,n2(pool.chanfro)),prof:D,banco});
       return pt.erro?null:pt;
     }
+    // CIRCULAR: parede curva nao sai em peca reta, e a regra de corte disso o
+    // Marcos ainda nao ditou (tira unica contornando x gomos). Devolver um
+    // plano inventado seria pior que nao devolver nenhum — a tela avisa.
+    if(poolFmt==="Circular")return null;
     const bcM=bancoCfg(pool,poolFmt,L,W,D);
     const faces=praiC>0&&praiC<L
       ?facesComPrainha(L,W,D,praiC,Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)),
@@ -2737,9 +2749,14 @@ export default function App(){
   // desenhar contorno qualquer (caminho do desenho livre). O banco entra na
   // fase 2, como regiao de profundidade.
   const desenhoTri=(()=>{
-    if(poolFmt!=="Triangular")return null;
     const n=v=>parseFloat(String(v??"").replace(",","."))||0;
-    const v=verticesTriangulo(n(pool.triA),n(pool.triB),n(pool.triC));
+    // Contorno proprio por formato. A OITAVADA so entra aqui quando tem banco:
+    // sem banco ela ja desenha do jeito nativo e nao ha motivo para mexer em
+    // orcamento que existe.
+    const v=poolFmt==="Triangular"?verticesTriangulo(n(pool.triA),n(pool.triB),n(pool.triC))
+      :poolFmt==="Circular"?contornoCircular(n(pool.diametro))
+      :(poolFmt==="Oitavada"&&pool.bancoOn)?contornoOitavada(n(pool.length),n(pool.width),n(pool.chanfro))
+      :null;
     if(!v)return null;
     // O BANCO VIRA FORMA do desenho: assim a planta, a isometrica e o 3D o
     // desenham pelo mesmo caminho das outras regioes rasas (prainha, spa),
@@ -2817,12 +2834,12 @@ export default function App(){
     };
     if(editingId){
       const existing=hist.find(q=>q.id===editingId);
-      const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};
+      const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:poolFmt==="Triangular"?`${pool.triA}/${pool.triB}/${pool.triC}x${pool.depth}`:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};
       const cloudOk=fbReady&&fb.db&&user&&user.uid!=="local"&&navigator.onLine;
       const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);setFbMsg(cloudOk?"Atualizado!":"💾 Atualizado no aparelho — sincroniza ao conectar");setTimeout(()=>setFbMsg(""),cloudOk?2000:4000);
     }else{
       const cloudOk=fbReady&&fb.db&&user&&user.uid!=="local"&&navigator.onLine;
-      const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);fecharRascunho(item.id);setFbMsg(cloudOk?"Salvo!":"💾 Salvo no aparelho — sincroniza ao conectar");setTimeout(()=>setFbMsg(""),cloudOk?2000:4000);
+      const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:poolFmt==="Triangular"?`${pool.triA}/${pool.triB}/${pool.triC}x${pool.depth}`:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);fecharRascunho(item.id);setFbMsg(cloudOk?"Salvo!":"💾 Salvo no aparelho — sincroniza ao conectar");setTimeout(()=>setFbMsg(""),cloudOk?2000:4000);
     }
   };
   // Avisa o finanças-pessoal para sincronizar as contas a receber (fire-and-forget).
@@ -3241,7 +3258,7 @@ export default function App(){
 
 
 
-  if(view==="quote")return <>{avisos}<QP d={gData()} autoPositions={autoPositions} onBack={()=>setView("editor")} onEntregue={(origem)=>{if(editingId)marcarEntregueNoFunil(editingId,origem)}} onSave={()=>{const d=gData();if(editingId){const existing=hist.find(q=>q.id===editingId);const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);}else{const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);}}}/></>;
+  if(view==="quote")return <>{avisos}<QP d={gData()} autoPositions={autoPositions} onBack={()=>setView("editor")} onEntregue={(origem)=>{if(editingId)marcarEntregueNoFunil(editingId,origem)}} onSave={()=>{const d=gData();if(editingId){const existing=hist.find(q=>q.id===editingId);const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:poolFmt==="Triangular"?`${pool.triA}/${pool.triB}/${pool.triC}x${pool.depth}`:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);}else{const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:poolFmt==="Triangular"?`${pool.triA}/${pool.triB}/${pool.triC}x${pool.depth}`:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);}}}/></>;
 
   const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};// use className="vv-g2" for responsive
 
@@ -3342,6 +3359,17 @@ export default function App(){
                 <Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/>
                 <Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/>
               </div>
+            :poolFmt==="Circular"
+            // CIRCULAR: quem descreve e o DIAMETRO; comprimento e largura sao
+            // o proprio diametro e ficam fora da tela para ninguem digitar dois
+            // numeros que tem de ser iguais.
+            ?<div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Diâmetro (m) *" value={pool.diametro||""} onChange={up("diametro")} t={t} placeholder="4,00"/><Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
+            :poolFmt==="Triangular"
+            // TRIANGULAR: comprimento e largura nao querem dizer nada aqui —
+            // quem descreve a piscina sao os tres lados, no quadro abaixo. A
+            // PROFUNDIDADE continua obrigatoria: sem ela, parede e volume dao
+            // zero (foi o que aconteceu na simulacao de 22/09).
+            ?<div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
             :<div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Comp. (m) *" value={pool.length} onChange={up("length")} t={t} error={fieldErrors.length}/><Inp label="Larg. (m) *" value={pool.width} onChange={up("width")} t={t} error={fieldErrors.width}/><Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
           }
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Formato" value={poolFmt} onChange={setPF} options={PFMT} t={t}/></div>
@@ -3370,6 +3398,8 @@ export default function App(){
               const f2=x=>x.toFixed(2).replace(".",",");
               if(!n(pool.triA)||!n(pool.triB)||!n(pool.triC))
                 return <div style={{fontSize:"8.5px",color:t.textMuted,marginTop:"6px"}}>Meça os três lados por fora. O banco dos três lados entra no quadro abaixo.</div>;
+              if(!n(pool.depth))
+                return <div style={{fontSize:"8.5px",color:"#dc2626",marginTop:"6px",fontWeight:"700"}}>⚠ Falta a PROFUNDIDADE (campo acima): sem ela a parede e o volume saem zerados.</div>;
               if(!g)return <div style={{fontSize:"8.5px",color:"#dc2626",marginTop:"6px",fontWeight:"700"}}>⚠ Esses três lados não fecham um triângulo — confira a medida.</div>;
               if(g.erro)return <div style={{fontSize:"8.5px",color:"#b45309",marginTop:"6px",fontWeight:"700"}}>⚠ {g.erro}</div>;
               return <div style={{fontSize:"8.5px",color:t.textMuted,marginTop:"6px",lineHeight:1.45}}>
@@ -3382,16 +3412,16 @@ export default function App(){
               Fica ao lado da prainha de proposito: sao as duas pecas de
               alvenaria que mudam area e volume, e o usuario pensa nas duas no
               mesmo momento. Nasce DESLIGADO: orcamento antigo abre igual. */}
-          {(FORMATOS_COM_BANCO.includes(poolFmt)||poolFmt==="Triangular")&&<div style={{marginTop:"10px",background:t.sectionBg,borderRadius:"8px",padding:"10px",border:`1px solid ${t.cardBorder}`}}>
+          {(FORMATOS_COM_BANCO.includes(poolFmt)||["Triangular","Circular","Oitavada"].includes(poolFmt))&&<div style={{marginTop:"10px",background:t.sectionBg,borderRadius:"8px",padding:"10px",border:`1px solid ${t.cardBorder}`}}>
             <label style={{display:"flex",alignItems:"center",gap:"7px",cursor:"pointer",marginBottom:pool.bancoOn?"8px":0}}>
               <input type="checkbox" checked={!!pool.bancoOn} onChange={e=>setPool(p=>({...p,bancoOn:e.target.checked}))} style={{width:"15px",height:"15px",accentColor:blue,cursor:"pointer"}}/>
-              <span style={{fontSize:"10px",fontWeight:"700",color:blue}}>{poolFmt==="Triangular"?"Banco nos três lados":"Banco lateral (de ponta a ponta)"}</span>
+              <span style={{fontSize:"10px",fontWeight:"700",color:blue}}>{poolFmt==="Triangular"?"Banco nos três lados":poolFmt==="Circular"?"Banco em volta (circular)":poolFmt==="Oitavada"?"Banco nas oito paredes":"Banco lateral (de ponta a ponta)"}</span>
             </label>
             {pool.bancoOn&&<>
               <div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}>
                 <Inp label="Largura do banco (m)" value={pool.bancoLarg||""} onChange={up("bancoLarg")} t={t} placeholder="0,45"/>
                 <Inp label="Prof. do banco (m)" value={pool.bancoProf||""} onChange={up("bancoProf")} t={t} placeholder="0,40"/>
-                {poolFmt!=="Triangular"&&<div>
+                {!["Triangular","Circular","Oitavada"].includes(poolFmt)&&<div>
                   <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>Lado (como aparece na planta)</div>
                   <div style={{display:"flex",gap:"6px"}}>
                     {[["cima","Em cima"],["baixo","Embaixo"]].map(([ld,rot])=><button key={ld} type="button" onClick={()=>setPool(p=>({...p,bancoLado:ld}))}
@@ -3403,7 +3433,7 @@ export default function App(){
                 </div>}
               </div>
               {(()=>{
-                if(poolFmt==="Triangular")return null;
+                if(["Triangular","Circular","Oitavada"].includes(poolFmt))return null;
                 const bcfg=bancoCfg(pool,poolFmt,parseFloat(String(pool.length||"").replace(",","."))||0,parseFloat(String(pool.width||"").replace(",","."))||0,parseFloat(String(pool.depth||"").replace(",","."))||0);
                 return <div style={{fontSize:"8.5px",color:bcfg?.aviso?"#b45309":t.textMuted,marginTop:"6px",lineHeight:1.45}}>
                   {bcfg?.aviso
@@ -3570,7 +3600,7 @@ export default function App(){
           {/* SUMMARY */}
           <div style={{marginTop:"14px",background:t.areaBg,borderRadius:"10px",padding:"14px"}}>
             <div style={{display:"flex",justifyContent:"center",gap:"12px",flexWrap:"wrap",alignItems:"center"}}>
-              <div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{pool.length}×{pool.width}×{pool.depth}m</div><div style={{fontSize:"8px",color:t.textSec}}>Piscina</div></div>
+              <div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{poolFmt==="Triangular"?`${pool.triA||"—"}/${pool.triB||"—"}/${pool.triC||"—"} × ${pool.depth||"—"}m`:poolFmt==="Circular"?`Ø${pool.diametro||"—"} × ${pool.depth||"—"}m`:`${pool.length}×${pool.width}×${pool.depth}m`}</div><div style={{fontSize:"8px",color:t.textSec}}>{poolFmt==="Triangular"?"Triângulo × prof.":poolFmt==="Circular"?"Diâmetro × prof.":"Piscina"}</div></div>
               {praiInfo&&<><div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/><div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:"#b45309"}}>{praiInfo.txt}</div><div style={{fontSize:"8px",color:t.textSec}}>Prainha</div></div></>}
               {bancoInfo&&<><div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/><div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:"#4338ca"}}>{bancoInfo.txt}</div><div style={{fontSize:"8px",color:t.textSec}}>Banco ({bancoInfo.lado})</div></div></>}
               <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
@@ -3589,7 +3619,10 @@ export default function App(){
 
           {/* ═══ PLANO DE CORTE — MANTA ARMADA 1,5 mm ═══
               Aparece só com a manta selecionada. O bolsão 0,7/0,8 segue por área. */}
-          {manta&&(()=>{
+          {ehManta&&poolFmt==="Circular"&&<div style={{marginTop:"8px",background:"#fef3c7",border:"1px solid #f59e0b",borderRadius:"6px",padding:"8px",fontSize:"9px",color:"#92400e",fontWeight:"600"}}>
+              ⚠ Plano de corte da manta no formato circular ainda não definido. Parede curva não sai em peça reta, e a regra (tira única contornando ou gomos) precisa ser combinada antes. Área, volume e o desenho já estão corretos; o que falta é a lista de peças.
+            </div>}
+            {manta&&(()=>{
             const m2=v=>Number(v).toFixed(2).replace(".",",");
             const linha={display:"flex",justifyContent:"space-between",gap:"10px",padding:"3px 0",fontSize:"11px"};
             return <div style={{marginTop:"14px",borderRadius:"10px",padding:"14px",background:t.sectionBg,border:`1.5px solid ${gold}66`}}>

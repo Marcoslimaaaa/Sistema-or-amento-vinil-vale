@@ -8,7 +8,8 @@
 // Toda face vertical entra em `par`, mesmo quando é interna (degrau da prainha).
 import { calcDesenho } from "./formas.js";
 import { bancoCfg, ajusteBanco } from "./banco.js";
-import { geometriaTriangular } from "./triangular.js";
+import { geometriaTriangular, geometriaComBanco } from "./triangular.js";
+import { contornoOitavada, medidasCirculo } from "./formatos.js";
 
 export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
   const pf2=v=>parseFloat(String(v??"").replace(",","."))||0;
@@ -55,6 +56,41 @@ export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
     par+=degrau;
     praiVol=Lf*W*D+praiC*W*pp;
   }
+  // ── CIRCULAR ─────────────────────────────────────────────────────────────
+  // Area, perimetro e volume saem da CONTA EXATA (pi r2), nao do poligono que
+  // o desenho usa: 48 gomos erram 0,29%, e numero de orcamento nao se aproxima
+  // quando existe a formula.
+  if(poolFmt==="Circular"){
+    const cir=medidasCirculo(pf2(pool?.diametro),{
+      bancoLarg:pool?.bancoOn?pf2(pool?.bancoLarg):0,
+      bancoProf:pool?.bancoOn?pf2(pool?.bancoProf):0,prof:D});
+    if(cir){
+      const chaoC=cir.fundo+cir.assento;
+      const parC=cir.espelho+cir.costas+cir.parede;
+      return{chao:chaoC.toFixed(1),par:parC.toFixed(1),sChao:"0.0",sPar:"0.0",
+        tot:(chaoC+parC).toFixed(1),vol:cir.volume.toFixed(1),perim:cir.perimetro.toFixed(1),
+        chaoTot:chaoC.toFixed(1),depthInfo:{avg:D,min:realDMin,max:realDMax,sloped:false},
+        banco:null,circular:cir,extraChao:"0.0",extraPar:"0.0",sqChao:"0.0",sqPar:"0.0",srChao:"0.0",srPar:"0.0"};
+    }
+  }
+
+  // ── OITAVADA COM BANCO ───────────────────────────────────────────────────
+  // Sem banco segue a conta antiga (retangulo menos os 4 cantos), para nao
+  // mexer em orcamento que ja existe. Com banco, a mesma conta do triangular
+  // sobre o contorno de 8 lados.
+  if(poolFmt==="Oitavada"&&pool?.bancoOn){
+    const cont=contornoOitavada(L,W,pf2(pool?.chanfro));
+    const gO=cont?geometriaComBanco({contorno:cont,prof:D,banco:{larg:pf2(pool?.bancoLarg),prof:pf2(pool?.bancoProf)}}):null;
+    if(gO&&!gO.erro&&gO.temBanco){
+      const chaoO=gO.areas.fundo+gO.areas.assento;
+      const parO=gO.areas.espelho+gO.areas.costas;
+      return{chao:chaoO.toFixed(1),par:parO.toFixed(1),sChao:"0.0",sPar:"0.0",
+        tot:(chaoO+parO).toFixed(1),vol:gO.volume.toFixed(1),perim:gO.perimetro.toFixed(1),
+        chaoTot:chaoO.toFixed(1),depthInfo:{avg:D,min:realDMin,max:realDMax,sloped:false},
+        banco:null,triangular:gO,extraChao:"0.0",extraPar:"0.0",sqChao:"0.0",sqPar:"0.0",srChao:"0.0",srPar:"0.0"};
+    }
+  }
+
   // ── TRIANGULAR ───────────────────────────────────────────────────────────
   // Formato proprio: o motor mede o triangulo e, quando tem banco nos tres
   // lados, separa fundo / assento / espelho / costas. Nada aqui depende de

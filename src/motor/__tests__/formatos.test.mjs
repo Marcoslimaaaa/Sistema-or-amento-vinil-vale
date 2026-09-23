@@ -1,0 +1,68 @@
+// Contornos de oitavada e circular, e a conta do círculo.
+// node src/motor/__tests__/formatos.test.mjs
+import { contornoOitavada, contornoCircular, medidasCirculo, GOMOS_CIRCULO } from "../formatos.js";
+import { geometriaComBanco, planoTriangular } from "../triangular.js";
+import { areaPoligono, perimetroPoligono, regioesBanco } from "../formas.js";
+import { calcA } from "../areas.js";
+
+let ok = 0, falhas = 0;
+const eq = (n, r, e) => { const p = JSON.stringify(r) === JSON.stringify(e); p ? ok++ : falhas++;
+  console.log(`  ${p ? "ok " : "FALHA"} ${n}${p ? "" : `\n       esperado ${JSON.stringify(e)}\n       veio     ${JSON.stringify(r)}`}`); };
+const perto = (n, r, e, tol = 0.02) => { const p = Math.abs(r - e) <= tol; p ? ok++ : falhas++;
+  console.log(`  ${p ? "ok " : "FALHA"} ${n}${p ? ` [${r.toFixed(2)}]` : `\n       esperado ${e} ± ${tol}, veio ${r}`}`); };
+
+console.log("\n— oitavada —");
+const oit = contornoOitavada(6, 3, 1);
+eq("oito lados", oit.length, 8);
+perto("área = retângulo menos os 4 cantos", areaPoligono(oit), 6 * 3 - 4 * 0.5, 0.01);
+perto("perímetro com as diagonais", perimetroPoligono(oit), 2 * 4 + 2 * 1 + 4 * Math.SQRT2, 0.01);
+eq("sem chanfro vira retângulo", contornoOitavada(6, 3, 0).length, 4);
+eq("chanfro maior que a piscina é limitado", contornoOitavada(6, 3, 99).length, 8);
+eq("medida inválida devolve null", contornoOitavada(0, 3, 1), null);
+
+const gOit = geometriaComBanco({ contorno: oit, prof: 1.4, banco: { larg: 0.5, prof: 0.5 } });
+perto("lâmina 16,00 m²", gOit.areas.lamina, 16.0);
+perto("fundo + assento = lâmina", gOit.areas.fundo + gOit.areas.assento, 16.0);
+perto("costas = perímetro × 0,50", gOit.areas.costas, perimetroPoligono(oit) * 0.5, 0.05);
+eq("o plano de corte sai pelas 8 paredes", planoTriangular({ contorno: oit, prof: 1.4, banco: { larg: 0.5, prof: 0.5 } }).paredes.qtdPecas, 16);
+
+console.log("\n— circular —");
+eq("48 gomos por padrão", contornoCircular(4).length, GOMOS_CIRCULO);
+eq("diâmetro zero não vira contorno", contornoCircular(0), null);
+const c = medidasCirculo(4, { bancoLarg: 0.5, bancoProf: 0.5, prof: 1.0 });
+perto("área πr²", c.area, Math.PI * 4, 0.01);
+perto("perímetro 2πr", c.perimetro, 2 * Math.PI * 2, 0.01);
+perto("fundo = círculo de 1,50 de raio", c.fundo, Math.PI * 1.5 * 1.5, 0.01);
+perto("assento = coroa", c.assento, Math.PI * (4 - 2.25), 0.01);
+perto("espelho = 2πri × 0,50", c.espelho, 2 * Math.PI * 1.5 * 0.5, 0.01);
+perto("costas = perímetro × 0,50", c.costas, 2 * Math.PI * 2 * 0.5, 0.01);
+perto("volume desconta o bloco do banco", c.volume, Math.PI * 4 * 1 - (Math.PI * 4 - Math.PI * 2.25) * 0.5, 0.02);
+eq("sem banco não há assento", medidasCirculo(4, { prof: 1 }).assento, 0);
+perto("sem banco a parede é o cilindro", medidasCirculo(4, { prof: 1 }).parede, 2 * Math.PI * 2, 0.01);
+
+// O polígono serve para desenhar; a conta exata é a de cima.
+const areaPoli = areaPoligono(contornoCircular(4));
+perto("o polígono de 48 gomos erra menos de 0,4%", (1 - areaPoli / c.area) * 100, 0.29, 0.05);
+eq("e o banco desenha nele", regioesBanco(contornoCircular(4), 0.5, 0.5).length, GOMOS_CIRCULO);
+
+console.log("\n— dentro do orçamento —");
+const arC = calcA({ diametro: "4", depth: "1.00", bancoOn: true, bancoLarg: "0.50", bancoProf: "0.50" }, { on: false }, "regular", [], "Circular", [], {}, null);
+perto("circular: chão 12,6", parseFloat(arC.chao), 12.6, 0.06);
+perto("circular: paredes 11,0", parseFloat(arC.par), 11.0, 0.06);
+perto("circular: volume 9,8", parseFloat(arC.vol), 9.8, 0.06);
+perto("circular: perímetro 12,6", parseFloat(arC.perim), 12.57, 0.06);
+eq("circular sem diâmetro não vira área fantasma", calcA({ depth: "1" }, { on: false }, "regular", [], "Circular", [], {}, null).circular === undefined, true);
+
+const oitCB = calcA({ length: "6", width: "3", depth: "1.40", chanfro: "1", bancoOn: true, bancoLarg: "0.50", bancoProf: "0.50" }, { on: false }, "regular", [], "Oitavada", [], {}, null);
+perto("oitavada com banco: chão 16,0", parseFloat(oitCB.chao), 16.0, 0.06);
+perto("oitavada com banco: paredes 18,9", parseFloat(oitCB.par), 18.9, 0.06);
+perto("oitavada com banco: volume 16,1", parseFloat(oitCB.vol), 16.1, 0.06);
+
+// A TRAVA: oitavada SEM banco tem de calcular igual ao de antes.
+const oitSB = calcA({ length: "6", width: "3", depth: "1.40", chanfro: "1" }, { on: false }, "regular", [], "Oitavada", [], {}, null);
+perto("oitavada sem banco: chão continua 16,0", parseFloat(oitSB.chao), 16.0, 0.06);
+perto("oitavada sem banco: paredes continuam 21,9", parseFloat(oitSB.par), 21.9, 0.06);
+perto("oitavada sem banco: volume continua 22,4", parseFloat(oitSB.vol), 22.4, 0.06);
+
+console.log(`\nformatos.test: ${ok} testes ok${falhas ? `, ${falhas} FALHA(S)` : ""}`);
+process.exit(falhas ? 1 : 0);
