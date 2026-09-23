@@ -5,7 +5,7 @@
 // SUBTRAÍDO (recorte) do corpo, com profundidade própria quando união.
 import polygonClipping from "polygon-clipping";
 
-export const PROFUNDIDADE_FORMA_DEFAULT = { prainha: 0.3, escada: 0.75, spa: 0.9, recorte: 0 };
+export const PROFUNDIDADE_FORMA_DEFAULT = { prainha: 0.3, escada: 0.75, spa: 0.9, recorte: 0, banco: 0.5 };
 
 // ── Geometria básica ──
 export function areaPoligono(p) {
@@ -107,6 +107,7 @@ export function contornoEfetivo(desenho) {
   const formas = desenho.formas || [];
   let atual = base;
   for (const f of formas) {
+    if (f.tipo === "banco") continue;   // banco é interno: não muda o contorno
     if (f.larguraM <= 0 || f.comprimentoM <= 0) continue;
     if (formaInterna(f, atual)) continue;
     const rect = retanguloForma(f);
@@ -144,12 +145,64 @@ function faixasDegrau(f, paraDentro, n) {
  * Regiões de profundidade: corpo (profundidadeM=null) + regiões rasas das
  * uniões (escada = um degrau por faixa). Recortes removem área de todas.
  */
+/**
+ * BANCO QUE CONTORNA A PISCINA — o anel entre o contorno e o recuo dele.
+ *
+ * Devolve UM TRAPÉZIO POR PAREDE, e não um anel com furo, por dois motivos
+ * práticos: polígono com furo não desenha em `<polygon>`, e é assim que a peça
+ * é cortada na obra (uma tira por lado). Cada trapézio liga a aresta de fora à
+ * aresta correspondente de dentro.
+ *
+ * Serve a qualquer formato: triângulo, retângulo ou desenho livre.
+ *
+ * @param {Array} contorno     polígono da piscina
+ * @param {number} larguraM    quanto o banco avança para dentro
+ * @param {number} profundidadeM  da BORDA até o assento (mesma convenção da prainha)
+ */
+export function regioesBanco(contorno, larguraM, profundidadeM) {
+  if (!(contorno?.length >= 3) || !(larguraM > 0)) return [];
+  const dentro = offsetPoligono(contorno, -larguraM);
+  // RECUO QUE PASSA DO PONTO: o offset não some — ele devolve um polígono
+  // FANTASMA (medido em 22/09/2026: no triângulo 4,10/3,10/2,80, recuar 1,20
+  // devolveu um "piso" de 0,64 m², com a mesma orientação e área menor, então
+  // nem sinal nem tamanho denunciam).
+  //
+  // A prova que funciona é a definição do recuo: todo ponto do piso tem de
+  // estar a pelo menos `larguraM` de TODAS as paredes. No fantasma, um vértice
+  // fica a 0,39 m da base.
+  if (!dentro || dentro.length !== contorno.length) return [];
+  const distPonto = (pt, a2, b2) => {
+    const dx = b2.x - a2.x, dy = b2.y - a2.y;
+    const len2 = dx * dx + dy * dy || 1e-9;
+    let t = ((pt.x - a2.x) * dx + (pt.y - a2.y) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(pt.x - (a2.x + t * dx), pt.y - (a2.y + t * dy));
+  };
+  const folga = Math.max(0.01, larguraM * 0.02);
+  const cabe = dentro.every(q => contorno.every((a2, i) =>
+    distPonto(q, a2, contorno[(i + 1) % contorno.length]) >= larguraM - folga));
+  if (!cabe || areaPoligono(dentro) < 1e-4) return [];
+  return contorno.map((a, i) => {
+    const b = contorno[(i + 1) % contorno.length];
+    const bi = dentro[(i + 1) % dentro.length];
+    const ai = dentro[i];
+    return { poligono: [a, b, bi, ai], profundidadeM, tipo: "banco", lado: i };
+  }).filter(r => areaPoligono(r.poligono) > 1e-6);
+}
+
 export function regioesProfundidade(desenho, profCorpo) {
   const base = desenho?.vertices || [];
   if (base.length < 3) return [];
   let regioes = [{ poligono: base, profundidadeM: null }];
   const formas = desenho.formas || [];
-  if (formas.length === 0) return regioes;
+  // BANCO: não é retângulo solto como as outras formas — é o anel que segue o
+  // contorno inteiro. Entra antes das demais, e o corpo continua sendo o corpo:
+  // o assento é uma região rasa por cima dele.
+  const banco = formas.find(f => f.tipo === "banco" && f.larguraM > 0);
+  if (banco) {
+    regioes.push(...regioesBanco(base, banco.larguraM, profundidadeForma(banco, profCorpo)));
+  }
+  if (formas.filter(f => f.tipo !== "banco").length === 0) return regioes;
 
   const removerDeTodas = rect => {
     regioes = regioes.flatMap(r => diferencaPoligonos(r.poligono, rect).map(pol => ({ ...r, poligono: pol })));
@@ -157,6 +210,7 @@ export function regioesProfundidade(desenho, profCorpo) {
   let efetivo = base;
 
   for (const f of formas) {
+    if (f.tipo === "banco") continue;   // já virou anel lá em cima
     if (f.larguraM <= 0 || f.comprimentoM <= 0) continue;
     const rect = retanguloForma(f);
     if (f.operacao === "subtracao") {

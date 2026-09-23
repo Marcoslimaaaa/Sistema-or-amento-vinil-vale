@@ -501,7 +501,7 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
       {(()=>{const fill=dark?"#1e3a5f":"#dbeafe";const stroke="#2563eb";
         if(efMap)return<>
           <polygon points={efPoly.map(p=>{const q=efMap(p);return`${q.x},${q.y}`}).join(" ")} fill={fill} stroke={stroke} strokeWidth="2" strokeLinejoin="round"/>
-          {efRegs.map((r,i)=>{const c=r.poligono.reduce((s,p)=>({x:s.x+p.x/r.poligono.length,y:s.y+p.y/r.poligono.length}),{x:0,y:0});const cq=efMap(c);return<g key={`reg${i}`}><polygon points={r.poligono.map(p=>{const q=efMap(p);return`${q.x},${q.y}`}).join(" ")} fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#3b82f6" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.85"/>{r.tipo!=="escada"&&<text x={cq.x} y={cq.y+2} textAnchor="middle" fontSize="5.5" fill={dark?"#93c5fd":"#1d4ed8"} fontWeight="700">{r.tipo==="prainha"?"PRAINHA":r.tipo==="spa"?"SPA":""} {r.profundidadeM}m</text>}</g>})}
+          {efRegs.map((r,i)=>{const c=r.poligono.reduce((s,p)=>({x:s.x+p.x/r.poligono.length,y:s.y+p.y/r.poligono.length}),{x:0,y:0});const cq=efMap(c);return<g key={`reg${i}`}><polygon points={r.poligono.map(p=>{const q=efMap(p);return`${q.x},${q.y}`}).join(" ")} fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#3b82f6" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.85"/>{r.tipo!=="escada"&&<text x={cq.x} y={cq.y+2} textAnchor="middle" fontSize="5.5" fill={dark?"#93c5fd":"#1d4ed8"} fontWeight="700">{r.tipo==="prainha"?"PRAINHA":r.tipo==="spa"?"SPA":r.tipo==="banco"?"BANCO":""} {r.profundidadeM}m</text>}</g>})}
         </>;
         if(poolFmt==="Formato L")return<polygon points={lPts} fill={fill} stroke={stroke} strokeWidth="2"/>;
         if(poolFmt==="Oval"||poolFmt==="Feijão")return<ellipse cx={ox+pw/2} cy={oy+ph/2} rx={pw/2} ry={ph/2} fill={fill} stroke={stroke} strokeWidth="2"/>;
@@ -2727,7 +2727,15 @@ export default function App(){
     if(poolFmt!=="Triangular")return null;
     const n=v=>parseFloat(String(v??"").replace(",","."))||0;
     const v=verticesTriangulo(n(pool.triA),n(pool.triB),n(pool.triC));
-    return v?{vertices:v,formas:[]}:null;
+    if(!v)return null;
+    // O BANCO VIRA FORMA do desenho: assim a planta, a isometrica e o 3D o
+    // desenham pelo mesmo caminho das outras regioes rasas (prainha, spa),
+    // sem cada renderizador aprender o que e banco.
+    const bl=n(pool.bancoLarg),bp=n(pool.bancoProf);
+    const formas=pool.bancoOn&&bl>0&&bp>0
+      ?[{id:"banco",tipo:"banco",larguraM:bl,comprimentoM:bl,profundidadeM:bp}]
+      :[];
+    return {vertices:v,formas};
   })();
   const desenhoBase=desenhoTri||desenho;
   const desenhoV=flipH||flipV?espelharDesenho(desenhoBase,flipH,flipV):desenhoBase;

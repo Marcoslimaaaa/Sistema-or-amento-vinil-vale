@@ -6,6 +6,7 @@
 // conferida com o Marcos peça por peça.
 import { trianguloValido, verticesTriangulo, geometriaTriangular, planoTriangular } from "../triangular.js";
 import { calcA } from "../areas.js";
+import { regioesBanco, regioesProfundidade, areaPoligono } from "../formas.js";
 
 let ok = 0, falhas = 0;
 const eq = (nome, real, esperado) => {
@@ -105,6 +106,23 @@ perto("sem banco: volume cheio", parseFloat(arSem.vol), 4.34, 0.06);
 // Medida impossivel NAO pode virar orcamento com area fantasma.
 const arRuim = calcA({ ...poolTri, triC: "0,20" }, { on: false }, "regular", [], "Triangular", [], {}, null);
 eq("lados impossiveis nao viram area de triangulo", arRuim.triangular === undefined, true);
+
+console.log("\n— o banco desenhado (região de profundidade) —");
+const vTri = verticesTriangulo(4.10, 3.10, 2.80);
+const anel = regioesBanco(vTri, 0.50, 0.50);
+eq("um trapezio por parede", anel.length, 3);
+perto("a soma dos assentos bate com a area calculada", anel.reduce((s2, r) => s2 + areaPoligono(r.poligono), 0), 3.56, 0.02);
+eq("cada trapezio leva a profundidade do assento", [...new Set(anel.map((r) => r.profundidadeM))], [0.5]);
+eq("e sai marcado como banco", anel[0].tipo, "banco");
+eq("banco que nao cabe nao vira desenho", regioesBanco(vTri, 1.2, 0.5).length, 0);
+eq("sem largura nao ha banco", regioesBanco(vTri, 0, 0.5).length, 0);
+
+// Pelo caminho que a planta, a isometrica e o 3D usam:
+const regs = regioesProfundidade({ vertices: vTri, formas: [{ id: "banco", tipo: "banco", larguraM: 0.5, comprimentoM: 0.5, profundidadeM: 0.5 }] }, 1.0);
+eq("corpo + 3 assentos", regs.length, 4);
+eq("o corpo continua sem profundidade propria", regs[0].profundidadeM, null);
+perto("o piso do corpo continua a lamina inteira", areaPoligono(regs[0].poligono), 4.34, 0.02);
+eq("o banco nao muda o contorno", regs[0].poligono.length, 3);
 
 console.log(`\ntriangular.test: ${ok} testes ok${falhas ? `, ${falhas} FALHA(S)` : ""}`);
 process.exit(falhas ? 1 : 0);

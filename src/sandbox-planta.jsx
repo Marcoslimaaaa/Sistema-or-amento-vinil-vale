@@ -6,6 +6,7 @@ import ReactDOM from "react-dom/client";
 import { PlantaView } from "./App.jsx";
 import { MODELOS } from "./data/modelos.js";
 import { espelharDesenho, contornoEfetivo, regioesProfundidade } from "./motor/formas.js";
+import { verticesTriangulo } from "./motor/triangular.js";
 
 const ROT_PRAINHA = { esquerda: 0, cima: 90, direita: 180, baixo: 270 };
 const giraPos = (p, rot) => {
@@ -52,7 +53,7 @@ const bbox = d => { const v = d?.vertices || []; if (v.length < 3) return null; 
 const lePrainha = (d, f) => { const bb = bbox(d); if (!f || !bb) return { lado: "baixo" }; const horiz = (f.larguraM || 0) >= (f.comprimentoM || 0); if (horiz) return { lado: Math.abs(f.cyM - bb.maxY) <= Math.abs(f.cyM - bb.minY) ? "baixo" : "cima" }; return { lado: Math.abs(f.cxM - bb.maxX) <= Math.abs(f.cxM - bb.minX) ? "direita" : "esquerda" }; };
 
 const t = { text: "#0f172a", textSec: "#475569", textMuted: "#64748b", card: "#fff", cardBorder: "#e2e8f0", sectionBg: "#f8fafc", stampBg: "#e2e8f0", inputBg: "#fff", inputBorder: "#cbd5e1" };
-const FMTS = ["Retangular", "Formato L", "Oval", "Oitavada", "Com prainha", "Personalizado"];
+const FMTS = ["Retangular", "Formato L", "Oval", "Oitavada", "Com prainha", "Triangular", "Personalizado"];
 
 function App() {
   const [poolFmt, setPoolFmt] = useState("Retangular");
@@ -72,7 +73,18 @@ function App() {
     ? { ...base, formas: [...base.formas, { id: "p1", tipo: "prainha", operacao: "uniao", rotacaoGraus: 0, larguraM: 3, comprimentoM: 5.2, cxM: 10, cyM: 2, profundidadeM: 0.3 }] }
     : base;
   const ladoPrainha = desenho ? (achaPrainha(desenho) ? lePrainha(desenho, achaPrainha(desenho)).lado : null) : (poolFmt === "Com prainha" ? "esquerda" : null);
-  const desenhoV = desenho && (flipH || flipV) ? espelharDesenho(desenho, flipH, flipV) : desenho;
+  // TRIANGULAR: mesmo caminho do app — o formato vira contorno, e o banco vira
+  // forma do tipo "banco" (anel que segue as tres paredes).
+  const desenhoTri = poolFmt === "Triangular"
+    ? (() => {
+        const v = verticesTriangulo(4.10, 3.10, 2.80);
+        if (!v) return null;
+        const bl = parseFloat(banco.larg) || 0, bp = parseFloat(banco.lamina) || 0;
+        return { vertices: v, formas: banco.on && bl > 0 && bp > 0 ? [{ id: "banco", tipo: "banco", larguraM: bl, comprimentoM: bl, profundidadeM: bp }] : [] };
+      })()
+    : null;
+  const desenhoBase = desenhoTri || desenho;
+  const desenhoV = desenhoBase && (flipH || flipV) ? espelharDesenho(desenhoBase, flipH, flipV) : desenhoBase;
 
   const ar = { total: "0", chao: "0", paredes: "0", perim: "0", vol: "0" };
   const bt = (on) => ({ padding: "5px 11px", fontSize: "12px", fontWeight: 700, borderRadius: 6, cursor: "pointer", border: "1.5px solid " + (on ? "#0055a4" : "#cbd5e1"), background: on ? "#0055a4" : "#fff", color: on ? "#fff" : "#475569" });
