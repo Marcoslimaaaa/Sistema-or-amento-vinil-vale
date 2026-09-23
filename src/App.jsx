@@ -9,6 +9,7 @@ import { calcA } from "./motor/areas.js";
 import { bancoCfg, textoBanco, FORMATOS_COM_BANCO } from "./motor/banco.js";
 import { geometriaTriangular, planoTriangular, verticesTriangulo } from "./motor/triangular.js";
 import { contornoOitavada, contornoCircular, medidasCirculo } from "./motor/formatos.js";
+import { planoCircular } from "./motor/circular.js";
 import { planoManta, facesRetangulo, facesComPrainha, facesComBanco, facesDoContorno, cortarChaoContorno } from "./motor/manta.js";
 import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho, encostarNoContorno } from "./motor/formas.js";
 import { ramalSistema, totaisHidraulica, ROTULO_SIS, SEM_TUBO, BARRA_M } from "./motor/hidraulica.js";
@@ -1314,7 +1315,12 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
         :planoTriangular({contorno:contornoOitavada(L,W,n2(pool.chanfro)),prof:D,banco});
       return pt.erro?null:pt;
     }
-    if(d.poolFmt==="Circular")return null;
+    if(d.poolFmt==="Circular"){
+      const n2=v=>parseFloat(String(v??"").replace(",","."))||0;
+      const pc=planoCircular({diametro:n2(pool.diametro),prof:D,
+        banco:pool.bancoOn?{larg:n2(pool.bancoLarg),prof:n2(pool.bancoProf)}:null});
+      return pc.erro?null:pc;
+    }
     const bcM=bancoCfg(pool,d.poolFmt,L,W,D);
     const faces=praiC>0&&praiC<L
       ?facesComPrainha(L,W,D,praiC,Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)),
@@ -2723,10 +2729,14 @@ export default function App(){
         :planoTriangular({contorno:contornoOitavada(L,W,n2(pool.chanfro)),prof:D,banco});
       return pt.erro?null:pt;
     }
-    // CIRCULAR: parede curva nao sai em peca reta, e a regra de corte disso o
-    // Marcos ainda nao ditou (tira unica contornando x gomos). Devolver um
-    // plano inventado seria pior que nao devolver nenhum — a tela avisa.
-    if(poolFmt==="Circular")return null;
+    // CIRCULAR na regra do Marcos (23/09): parede e uma TIRA contornando ate
+    // fechar, e o plano horizontal sai do QUADRADO que envolve.
+    if(poolFmt==="Circular"){
+      const n2=v=>parseFloat(String(v??"").replace(",","."))||0;
+      const pc=planoCircular({diametro:n2(pool.diametro),prof:D,
+        banco:pool.bancoOn?{larg:n2(pool.bancoLarg),prof:n2(pool.bancoProf)}:null});
+      return pc.erro?null:pc;
+    }
     const bcM=bancoCfg(pool,poolFmt,L,W,D);
     const faces=praiC>0&&praiC<L
       ?facesComPrainha(L,W,D,praiC,Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)),
@@ -3619,10 +3629,7 @@ export default function App(){
 
           {/* ═══ PLANO DE CORTE — MANTA ARMADA 1,5 mm ═══
               Aparece só com a manta selecionada. O bolsão 0,7/0,8 segue por área. */}
-          {ehManta&&poolFmt==="Circular"&&<div style={{marginTop:"8px",background:"#fef3c7",border:"1px solid #f59e0b",borderRadius:"6px",padding:"8px",fontSize:"9px",color:"#92400e",fontWeight:"600"}}>
-              ⚠ Plano de corte da manta no formato circular ainda não definido. Parede curva não sai em peça reta, e a regra (tira única contornando ou gomos) precisa ser combinada antes. Área, volume e o desenho já estão corretos; o que falta é a lista de peças.
-            </div>}
-            {manta&&(()=>{
+          {manta&&(()=>{
             const m2=v=>Number(v).toFixed(2).replace(".",",");
             const linha={display:"flex",justifyContent:"space-between",gap:"10px",padding:"3px 0",fontSize:"11px"};
             return <div style={{marginTop:"14px",borderRadius:"10px",padding:"14px",background:t.sectionBg,border:`1.5px solid ${gold}66`}}>

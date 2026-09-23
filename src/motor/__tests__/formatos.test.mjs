@@ -4,6 +4,7 @@ import { contornoOitavada, contornoCircular, medidasCirculo, GOMOS_CIRCULO } fro
 import { geometriaComBanco, planoTriangular } from "../triangular.js";
 import { areaPoligono, perimetroPoligono, regioesBanco } from "../formas.js";
 import { calcA } from "../areas.js";
+import { planoCircular } from "../circular.js";
 
 let ok = 0, falhas = 0;
 const eq = (n, r, e) => { const p = JSON.stringify(r) === JSON.stringify(e); p ? ok++ : falhas++;
@@ -63,6 +64,25 @@ const oitSB = calcA({ length: "6", width: "3", depth: "1.40", chanfro: "1" }, { 
 perto("oitavada sem banco: chão continua 16,0", parseFloat(oitSB.chao), 16.0, 0.06);
 perto("oitavada sem banco: paredes continuam 21,9", parseFloat(oitSB.par), 21.9, 0.06);
 perto("oitavada sem banco: volume continua 22,4", parseFloat(oitSB.vol), 22.4, 0.06);
+
+console.log("\n— plano de corte da redonda (regra do Marcos, 23/09) —");
+const pc = planoCircular({ diametro: 4, prof: 1.0, banco: { larg: 0.5, prof: 0.5 } });
+eq("parede sai em tira contornando, 2 peças (costas + espelho)", pc.paredes.qtdPecas, 2);
+perto("a tira das costas mede o perímetro + fechamento", pc.paredes.pecas[0].comp, 2 * Math.PI * 2 + 0.05, 0.02);
+perto("e a altura leva as duas dobras", pc.paredes.pecas[0].altura, 0.5 + 0.1, 0.01);
+eq("o plano horizontal sai do QUADRADO que envolve", pc.chao.partes[0].nome, "Chão + assento (quadrado que envolve)");
+perto("quadrado de 4,00 → 3 faixas de 4,00", pc.chao.partes[0].faixas, 3, 0.01);
+eq("costas e espelho saem na mesma passada", pc.passadas[0].pecas.length, 2);
+perto("24,62 m lineares", pc.metrosLineares, 24.62, 0.05);
+eq("1 bobina", pc.pedido.qtd, 1);
+perto("superfície real 23,56 m²", pc.areaUtil, 12.57 - 5.50 + 5.50 + 4.71 + 6.28, 0.05);
+eq("banco maior que o raio vira erro", typeof planoCircular({ diametro: 4, prof: 1, banco: { larg: 2.5, prof: 0.5 } }).erro, "string");
+eq("diâmetro zero vira erro", typeof planoCircular({ diametro: 0, prof: 1 }).erro, "string");
+
+const semB = planoCircular({ diametro: 4, prof: 1.2 });
+eq("sem banco: uma tira de parede só", semB.paredes.qtdPecas, 1);
+perto("sem banco: altura = prof + dobras", semB.paredes.pecas[0].altura, 1.2 + 0.1, 0.01);
+eq("sem banco: o chão é o quadrado do diâmetro", semB.chao.partes.length, 1);
 
 console.log(`\nformatos.test: ${ok} testes ok${falhas ? `, ${falhas} FALHA(S)` : ""}`);
 process.exit(falhas ? 1 : 0);
