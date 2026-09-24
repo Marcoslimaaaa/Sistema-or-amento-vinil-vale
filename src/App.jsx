@@ -79,6 +79,7 @@ import RevisaoEtapas from "./components/crm/RevisaoEtapas";
 import { classificarBase } from "./services/etapaAuto.js";
 import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
 import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, registrarTokenProvider, marcarOrcamentoEnviado, desfazerOrcamentoEnviado, pausarFollowup, CANAL } from "./services/wa.js";
+import { parseMoney } from "./services/dinheiro.js";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
 const FB_CFG = {
@@ -1151,8 +1152,8 @@ const mkCI=(tipo)=>{
 const mkG=t=>{if(t==="revestimento")return[{id:2,it:"Mão de obra/Soldas",y:3,on:true},{id:3,it:"Vinil (fabricação)",y:3,on:true}];if(t==="reforma")return[{id:2,it:"Mão de obra/Soldas",y:3,on:true},{id:3,it:"Vinil (fabricação)",y:3,on:true},{id:4,it:"Kit Filtrante",y:1,on:true}];return[{id:1,it:"Alvenaria",y:5,on:true},{id:2,it:"Mão de obra/Soldas",y:3,on:true},{id:3,it:"Vinil (fabricação)",y:3,on:true},{id:4,it:"Kit Filtrante",y:1,on:true}]};
 const IPAY={pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
 const fmt=v=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(v);
-// Dinheiro digitado no padrão BR: ponto = milhar, vírgula = decimal ("12.500,50" → 12500.5)
-const parseMoney=v=>parseFloat(String(v??"").replace(/\./g,"").replace(",","."))||0;
+// parseMoney mora em services/dinheiro.js: lê o padrão BR digitado E o número
+// de JS que os orçamentos antigos gravaram — confundir os dois multiplicava o total.
 
 // ═══ AREA CALCULATION ═══ (motor em src/motor/areas.js — testado em areas.test.mjs)
 
@@ -1343,7 +1344,7 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
     if(i.un==="solda")return mantaQ?mantaQ.solda.total:0;
     return i.q||0;
   };
-  const total=parseMoney(d.totOv)||inc.reduce((s,i)=>s+effQ(i)*(i.c||0)*(1+(i.m||0)/100),0)+(parseFloat(d.mo)||0);
+  const total=parseMoney(d.totOv)||inc.reduce((s,i)=>s+effQ(i)*(i.c||0)*(1+(i.m||0)/100),0)+parseMoney(d.mo);
   const today=new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"});
   const pix=total*(1-(pay.pixD||0)/100),btc=total*(1-(pay.btcD||0)/100);
   const ent=total*(pay.entPct||50)/100,bal=total*(pay.balPct||50)/100,inst=total/(pay.noFee||1);
@@ -2805,7 +2806,9 @@ export default function App(){
   };
   const matC=inc.reduce((s,i)=>s+effQ(i)*(i.c||0),0);
   const matS=inc.reduce((s,i)=>s+effQ(i)*(i.c||0)*(1+(i.m||0)/100),0);
-  const tCalc=matS+(parseFloat(mo)||0);
+  // Mão de obra no padrão BR ("3.500,00"). O campo só aceitava dígitos e
+  // "3500,00" virava 350000 — o total saía 100 vezes maior.
+  const tCalc=matS+parseMoney(mo);
   const total=parseMoney(totOv)||tCalc;
 
   const ui=(id,f,v)=>setItems(p=>p.map(i=>i.id===id?{...i,[f]:v}:i));
@@ -3767,7 +3770,7 @@ export default function App(){
         {/* PAGAMENTO */}
         {tab==="pagamento"&&<Card t={t}><ST icon="💰">Valor Final</ST>
           <div style={g2}>
-            <div style={{background:"#fefce8",borderRadius:"8px",padding:"12px",border:"1.5px solid #fde68a"}}><div style={{fontSize:"9px",fontWeight:"700",color:"#92400e",marginBottom:"4px"}}>🔨 MÃO DE OBRA</div><div style={{display:"flex",alignItems:"center",gap:"3px"}}><span style={{fontSize:"12px",color:"#92400e"}}>R$</span><input value={mo} onChange={e=>setMO(e.target.value.replace(/[^\d]/g,""))} style={{flex:1,padding:"5px",border:"1.5px solid #fde68a",borderRadius:"5px",fontSize:"16px",fontWeight:"700",textAlign:"center",outline:"none",background:"#fffbeb",color:"#92400e"}}/></div></div>
+            <div style={{background:"#fefce8",borderRadius:"8px",padding:"12px",border:"1.5px solid #fde68a"}}><div style={{fontSize:"9px",fontWeight:"700",color:"#92400e",marginBottom:"4px"}}>🔨 MÃO DE OBRA</div><div style={{display:"flex",alignItems:"center",gap:"3px"}}><span style={{fontSize:"12px",color:"#92400e"}}>R$</span><input value={mo} onChange={e=>setMO(e.target.value.replace(/[^\d.,]/g,""))} style={{flex:1,padding:"5px",border:"1.5px solid #fde68a",borderRadius:"5px",fontSize:"16px",fontWeight:"700",textAlign:"center",outline:"none",background:"#fffbeb",color:"#92400e"}}/></div></div>
             <div style={{background:`linear-gradient(135deg,${blue},#003d7a)`,borderRadius:"8px",padding:"12px",color:"#fff",textAlign:"center"}}><div style={{fontSize:"8px",textTransform:"uppercase",letterSpacing:"1px",opacity:.8}}>Total Calculado</div><div style={{fontSize:"22px",fontWeight:"800"}}>{fmt(tCalc)}</div><div style={{fontSize:"8px",opacity:.6}}>Material + M.O.</div></div>
           </div>
           <div style={{background:"#faf5ff",borderRadius:"8px",padding:"10px",border:"1.5px solid #e9d5ff",marginTop:"12px",marginBottom:"14px"}}><div style={{fontSize:"9px",fontWeight:"700",color:"#7e22ce",marginBottom:"4px"}}>✏️ VALOR FINAL (sobrescrever)</div><div style={{display:"flex",alignItems:"center",gap:"4px"}}><span style={{fontSize:"12px",color:"#7e22ce"}}>R$</span><input value={totOv} onChange={e=>setTO(e.target.value.replace(/[^\d.,]/g,""))} placeholder={String(Math.round(tCalc))} style={{flex:1,padding:"6px",border:"1.5px solid #e9d5ff",borderRadius:"5px",fontSize:"20px",fontWeight:"800",textAlign:"center",outline:"none",color:"#7e22ce",background:"#faf5ff"}}/></div><div style={{fontSize:"8px",color:t.textMuted,textAlign:"center",marginTop:"3px"}}>Vazio = calculado</div></div>
