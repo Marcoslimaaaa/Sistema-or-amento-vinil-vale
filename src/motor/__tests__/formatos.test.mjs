@@ -54,6 +54,31 @@ perto("circular: volume 9,8", parseFloat(arC.vol), 9.8, 0.06);
 perto("circular: perímetro 12,6", parseFloat(arC.perim), 12.57, 0.06);
 eq("circular sem diâmetro não vira área fantasma", calcA({ depth: "1" }, { on: false }, "regular", [], "Circular", [], {}, null).circular === undefined, true);
 
+// O teste de cima passava com o bug vivo: sem comprimento e largura o retângulo
+// dá zero de qualquer jeito. O editor de verdade NASCE com 10,00 × 4,00
+// (App.jsx) e circular/triangular só escondem esses campos. Medido em 24/09:
+// circular sem diâmetro cobrava 79,2 m²; triângulo com banco grande, 68,0 m².
+console.log("\n— medida que não fecha não cobra o retângulo escondido —");
+const EDITOR = { length: "10.00", width: "4.00", depth: "1.40", diametro: "", triA: "", triB: "", triC: "" };
+const arCirSem = calcA({ ...EDITOR }, { on: false }, "regular", [], "Circular", [], {}, null);
+eq("circular sem diâmetro: 0 m², não 79,2", arCirSem.tot, "0.0");
+eq("e diz o que falta", arCirSem.invalido, "Falta o DIÂMETRO da piscina redonda");
+const arTriSem = calcA({ ...EDITOR }, { on: false }, "regular", [], "Triangular", [], {}, null);
+eq("triângulo sem lados: 0 m²", arTriSem.tot, "0.0");
+eq("e pede os três lados", arTriSem.invalido, "Faltam os TRÊS LADOS do triângulo");
+const arTriTorto = calcA({ ...EDITOR, triA: "1", triB: "1", triC: "5" }, { on: false }, "regular", [], "Triangular", [], {}, null);
+eq("lados que não fecham: 0 m², não 68,0", arTriTorto.tot, "0.0");
+eq("e manda conferir a medida", arTriTorto.invalido, "Esses três lados não fecham um triângulo — confira a medida");
+const arTriBanco = calcA({ ...EDITOR, depth: "1.00", triA: "4.10", triB: "3.10", triC: "2.80", bancoOn: true, bancoLarg: "1.20", bancoProf: "0.50" }, { on: false }, "regular", [], "Triangular", [], {}, null);
+eq("banco maior que o raio inscrito: 0 m², não 68,0", arTriBanco.tot, "0.0");
+eq("e repete o erro do motor", /não cabe neste triângulo/.test(arTriBanco.invalido), true);
+// A TRAVA do outro lado: medida válida continua igual.
+const arTriOk = calcA({ ...EDITOR, depth: "1.00", triA: "4.10", triB: "3.10", triC: "2.80" }, { on: false }, "regular", [], "Triangular", [], {}, null);
+eq("triângulo válido não ganha aviso", arTriOk.invalido, undefined);
+eq("e continua 14,3 m²", arTriOk.tot, "14.3");
+eq("circular válida não ganha aviso", calcA({ ...EDITOR, diametro: "4" }, { on: false }, "regular", [], "Circular", [], {}, null).invalido, undefined);
+eq("retangular nunca é marcado", calcA({ ...EDITOR }, { on: false }, "regular", [], "Retangular", [], {}, null).invalido, undefined);
+
 const oitCB = calcA({ length: "6", width: "3", depth: "1.40", chanfro: "1", bancoOn: true, bancoLarg: "0.50", bancoProf: "0.50" }, { on: false }, "regular", [], "Oitavada", [], {}, null);
 perto("oitavada com banco: chão 16,0", parseFloat(oitCB.chao), 16.0, 0.06);
 perto("oitavada com banco: paredes 18,9", parseFloat(oitCB.par), 18.9, 0.06);

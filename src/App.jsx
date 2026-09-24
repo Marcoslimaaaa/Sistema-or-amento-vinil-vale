@@ -1386,6 +1386,9 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
   };
 
   const gerarPDF=async()=>{
+    // Medida que não fecha zera a área (motor/areas.js): um PDF assim sairia
+    // sem o vinil no preço. Melhor não sair.
+    if(ar.invalido){setPdfStatus("❌ "+ar.invalido);setTimeout(()=>setPdfStatus(""),6000);return}
     setPdfStatus("Gerando PDF...");
     try{
       const el=document.getElementById("pq");if(!el){setPdfStatus("Erro");return}
@@ -1501,6 +1504,7 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
         </div>
       </div>
       <div style={{textAlign:"center",fontSize:"9.5px",color:"#64748b",marginBottom:"10px",background:"#fff",padding:"8px 14px",borderRadius:"8px",border:"1px solid #e2e8f0"}}>💡 <b>Celular:</b> toca em "Baixar PDF" → compartilha ou salva diretamente o PDF</div>
+      {ar.invalido&&<div style={{textAlign:"center",fontSize:"11px",fontWeight:"700",color:"#b91c1c",marginBottom:"10px",background:"#fef2f2",padding:"8px 14px",borderRadius:"8px",border:"1px solid #fecaca"}}>⚠ {ar.invalido} — o PDF fica bloqueado até corrigir a medida na aba Piscina.</div>}
 
       <div id="pq" style={{fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif",color:"#1a1a2e",fontSize:"10px",lineHeight:"1.5",maxWidth:"780px",margin:"0 auto",background:"#fff",borderRadius:"8px",boxShadow:"0 4px 20px rgba(0,0,0,.1)",overflow:"hidden"}}>
         {/* Header */}
@@ -2822,10 +2826,19 @@ export default function App(){
   const save=()=>{
     const errs={};
     if(!client.name||client.name.trim()==="")errs.clientName="Nome obrigatório";
-    if(!(parseFloat(pool.length)>0))errs.length="Informe o comprimento";
-    if(!(parseFloat(pool.width)>0))errs.width="Informe a largura";
+    // Circular e triangular ESCONDEM comprimento e largura. Cobrar esses dois
+    // acusava erro num campo que a pessoa não vê e deixava passar a medida que
+    // manda de verdade (diâmetro, os três lados).
+    const escondeCL=poolFmt==="Circular"||poolFmt==="Triangular";
+    if(!escondeCL&&!(parseFloat(pool.length)>0))errs.length="Informe o comprimento";
+    if(!escondeCL&&!(parseFloat(pool.width)>0))errs.width="Informe a largura";
     if(!(parseFloat(pool.depth)>0))errs.depth="Informe a profundidade";
+    if(poolFmt==="Circular"&&!(parseFloat(pool.diametro)>0))errs.diametro="Informe o diâmetro";
     if(Object.keys(errs).length>0){setFieldErrors(errs);setFbMsg("Preencha os campos obrigatórios");setTimeout(()=>setFbMsg(""),3000);return;}
+    // Medida que não fecha (lados impossíveis, banco maior do que cabe): o
+    // cálculo zera em vez de cobrar o retângulo escondido — e não se salva
+    // orçamento com área zero.
+    if(ar.invalido){setFbMsg("⚠ "+ar.invalido);setTimeout(()=>setFbMsg(""),5000);return;}
     setFieldErrors({});
     const d=gData();
     // Rascunho do Vini que virou orcamento: registra se foi aproveitado como
@@ -3376,7 +3389,7 @@ export default function App(){
             // CIRCULAR: quem descreve e o DIAMETRO; comprimento e largura sao
             // o proprio diametro e ficam fora da tela para ninguem digitar dois
             // numeros que tem de ser iguais.
-            ?<div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Diâmetro (m) *" value={pool.diametro||""} onChange={up("diametro")} t={t} placeholder="4,00"/><Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
+            ?<div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}><Inp label="Diâmetro (m) *" value={pool.diametro||""} onChange={up("diametro")} t={t} placeholder="4,00" error={fieldErrors.diametro}/><Inp label="Prof. (m) *" value={pool.depth} onChange={up("depth")} t={t} error={fieldErrors.depth}/><Inp label="Raso (m)" value={pool.depthMin||""} onChange={up("depthMin")} t={t}/><Inp label="Fundo (m)" value={pool.depthMax||""} onChange={up("depthMax")} t={t}/></div>
             :poolFmt==="Triangular"
             // TRIANGULAR: comprimento e largura nao querem dizer nada aqui —
             // quem descreve a piscina sao os tres lados, no quadro abaixo. A
@@ -3610,6 +3623,12 @@ export default function App(){
           {stamp===""&&<div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"8px",padding:"12px",border:`1px solid ${t.cardBorder}`}}><div style={{fontSize:"11px",fontWeight:"700",color:blue,marginBottom:"8px"}}>🎨 Estampas ACQUALINER</div>{STAMPS.map((cat,ci2)=><div key={ci2} style={{marginBottom:"6px"}}><div style={{fontSize:"10px",fontWeight:"700",color:t.text,marginBottom:"3px"}}>{cat.c}</div><div style={{display:"flex",gap:"3px",flexWrap:"wrap"}}>{cat.i.map((s,si)=><button key={si} onClick={()=>setSt(s)} style={{padding:"3px 8px",borderRadius:"12px",border:"1.5px solid #c7d2fe",background:t.stampBg,color:blue,fontSize:"9px",fontWeight:"600",cursor:"pointer"}}>{s}</button>)}</div></div>)}</div>}
           {stamp&&<div style={{marginTop:"10px",background:t.stampBg,borderRadius:"8px",padding:"8px 10px",display:"flex",alignItems:"center",justifyContent:"space-between"}}><div><span style={{fontSize:"10px",color:t.textSec}}>Estampa:</span> <b style={{color:blue,fontSize:"13px"}}>{stamp}</b></div><Btn onClick={()=>setSt("")} style={{fontSize:"9px",padding:"3px 6px"}}>✕</Btn></div>}
 
+          {/* Medida que não fecha: a área zera (motor/areas.js) em vez de cobrar
+              o retângulo escondido. O aviso diz o que falta e por que o salvar
+              e o PDF estão travados. */}
+          {ar.invalido&&<div style={{marginTop:"14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:"8px",padding:"9px 12px",fontSize:"11px",fontWeight:"700",color:"#b91c1c",lineHeight:1.45}}>
+            ⚠ {ar.invalido}. A área fica zerada e o orçamento não salva nem gera PDF até corrigir a medida.
+          </div>}
           {/* SUMMARY */}
           <div style={{marginTop:"14px",background:t.areaBg,borderRadius:"10px",padding:"14px"}}>
             <div style={{display:"flex",justifyContent:"center",gap:"12px",flexWrap:"wrap",alignItems:"center"}}>

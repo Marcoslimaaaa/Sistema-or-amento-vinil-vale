@@ -56,6 +56,17 @@ export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
     par+=degrau;
     praiVol=Lf*W*D+praiC*W*pp;
   }
+  // ── MEDIDA QUE NAO FECHA ─────────────────────────────────────────────────
+  // Circular e triangular escondem comprimento e largura da tela, mas o estado
+  // do editor continua com eles (nasce 10,00 x 4,00). Quando o diametro falta
+  // ou os lados nao fecham, a conta caia no retangulo la de baixo e cobrava
+  // uma piscina que nao existe: circular sem diametro saia com 79,2 m², um
+  // triangulo com banco grande demais com 68,0 m² (medido em 24/09). Agora
+  // devolve zero e diz por que — o editor trava o salvar e o PDF em cima disso.
+  const invalido=(motivo)=>({chao:"0.0",par:"0.0",sChao:"0.0",sPar:"0.0",tot:"0.0",vol:"0.0",perim:"0.0",chaoTot:"0.0",
+    depthInfo:{avg:D,min:realDMin,max:realDMax,sloped:false},banco:null,invalido:motivo,
+    extraChao:"0.0",extraPar:"0.0",sqChao:"0.0",sqPar:"0.0",srChao:"0.0",srPar:"0.0"});
+
   // ── CIRCULAR ─────────────────────────────────────────────────────────────
   // Area, perimetro e volume saem da CONTA EXATA (pi r2), nao do poligono que
   // o desenho usa: 48 gomos erram 0,29%, e numero de orcamento nao se aproxima
@@ -72,6 +83,7 @@ export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
         chaoTot:chaoC.toFixed(1),depthInfo:{avg:D,min:realDMin,max:realDMax,sloped:false},
         banco:null,circular:cir,extraChao:"0.0",extraPar:"0.0",sqChao:"0.0",sqPar:"0.0",srChao:"0.0",srPar:"0.0"};
     }
+    return invalido("Falta o DIÂMETRO da piscina redonda");
   }
 
   // ── OITAVADA COM BANCO ───────────────────────────────────────────────────
@@ -107,6 +119,11 @@ export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
         chaoTot:chaoT.toFixed(1),depthInfo:depthInfoT,banco:null,triangular:gT,
         extraChao:"0.0",extraPar:"0.0",sqChao:"0.0",sqPar:"0.0",srChao:"0.0",srPar:"0.0"};
     }
+    if(gT?.erro)return invalido(gT.erro);
+    const lados=[pool?.triA,pool?.triB,pool?.triC].map(pf2);
+    return invalido(lados.every(v=>v>0)
+      ?"Esses três lados não fecham um triângulo — confira a medida"
+      :"Faltam os TRÊS LADOS do triângulo");
   }
 
   // Desenho livre (modelos/editor): áreas e perímetro REAIS do formato desenhado
