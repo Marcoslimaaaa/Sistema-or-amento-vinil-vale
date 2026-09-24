@@ -78,7 +78,7 @@ import { classificarBase } from "./services/etapaAuto.js";
 import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
 import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, registrarTokenProvider, marcarOrcamentoEnviado, desfazerOrcamentoEnviado, pausarFollowup, CANAL } from "./services/wa.js";
 import { parseMoney } from "./services/dinheiro.js";
-import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento, precoMudou } from "./motor/orcamento.js";
+import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento, precoMudou, resumoMedidas } from "./motor/orcamento.js";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
 const FB_CFG = {
@@ -2732,12 +2732,12 @@ export default function App(){
     };
     if(editingId){
       const existing=hist.find(q=>q.id===editingId);
-      const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:poolFmt==="Triangular"?`${pool.triA}/${pool.triB}/${pool.triC}x${pool.depth}`:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};
+      const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:resumoMedidas(poolFmt,pool),type:svcType,stamp};
       const cloudOk=fbReady&&fb.db&&user&&user.uid!=="local"&&navigator.onLine;
       const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);setFbMsg(cloudOk?"Atualizado!":"💾 Atualizado no aparelho — sincroniza ao conectar");setTimeout(()=>setFbMsg(""),cloudOk?2000:4000);
     }else{
       const cloudOk=fbReady&&fb.db&&user&&user.uid!=="local"&&navigator.onLine;
-      const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:poolFmt==="Triangular"?`${pool.triA}/${pool.triB}/${pool.triC}x${pool.depth}`:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);fecharRascunho(item.id);setFbMsg(cloudOk?"Salvo!":"💾 Salvo no aparelho — sincroniza ao conectar");setTimeout(()=>setFbMsg(""),cloudOk?2000:4000);
+      const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:resumoMedidas(poolFmt,pool),type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);fecharRascunho(item.id);setFbMsg(cloudOk?"Salvo!":"💾 Salvo no aparelho — sincroniza ao conectar");setTimeout(()=>setFbMsg(""),cloudOk?2000:4000);
     }
   };
   // Avisa o finanças-pessoal para sincronizar as contas a receber (fire-and-forget).
@@ -3022,7 +3022,7 @@ export default function App(){
 <div class="hdr"><h1>VINIL VALE</h1><div style="font-size:11px;margin-top:4px">Revestimentos e Capas para Piscinas</div><div style="font-size:10px;opacity:.7;margin-top:2px">CNPJ: ${escHtml(CO.cnpj)} · ${escHtml(CO.ph1)} / ${escHtml(CO.ph2)}</div></div>
 <div style="font-size:11px;text-align:right;color:#666;margin-bottom:8px">Proposta nº ${escHtml(d?.propNum||"—")} · Válido por 15 dias</div>
 <div class="info"><b>Cliente:</b> ${escHtml(c.name||"—")}<br><b>Tel:</b> ${escHtml(c.phone||"—")} · <b>Email:</b> ${escHtml(c.email||"—")}<br><b>End:</b> ${escHtml(c.address||"—")} – ${escHtml(c.city||"—")}</div>
-<div class="info"><b>Piscina:</b> ${escHtml(p.length||0)}×${escHtml(p.width||0)}×${escHtml(p.depth||0)}m · ${escHtml(d?.poolFmt||"")}<br><b>Vinil:</b> ${escHtml(vinilDesc(d?.vinilT))}${d?.stamp?` · <b>Estampa:</b> ${escHtml(d.stamp)}`:""}</div>
+<div class="info"><b>Piscina:</b> ${escHtml(resumoMedidas(d?.poolFmt,{length:p.length||0,width:p.width||0,depth:p.depth||0,triA:p.triA,triB:p.triB,triC:p.triC,diametro:p.diametro},"×"))}m · ${escHtml(d?.poolFmt||"")}<br><b>Vinil:</b> ${escHtml(vinilDesc(d?.vinilT))}${d?.stamp?` · <b>Estampa:</b> ${escHtml(d.stamp)}`:""}</div>
 <div style="font-size:14px;font-weight:700;margin:14px 0 8px">Serviços Inclusos</div>
 <table class="tbl"><tr><th>Item</th><th>Obs</th><th>Qtd</th></tr>${inc.map(i=>`<tr><td><b>${escHtml(i.n)}</b></td><td style="color:#666;font-style:italic">${escHtml(i.nt||"")}</td><td>${i.q>1?i.q+"x":"1"}</td></tr>`).join("")}</table>
 <div class="tot">${fmt(tot)}</div>
@@ -3164,7 +3164,7 @@ export default function App(){
 
 
 
-  if(view==="quote")return <>{avisos}<QP d={gData()} aviso={avisoPreco&&avisoPreco.id===editingId?avisoPreco:null} autoPositions={autoPositions} onBack={()=>setView("editor")} onEntregue={(origem)=>{if(editingId)marcarEntregueNoFunil(editingId,origem)}} onSave={()=>{setAvisoPreco(null);const d=gData();if(editingId){const existing=hist.find(q=>q.id===editingId);const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:poolFmt==="Triangular"?`${pool.triA}/${pool.triB}/${pool.triC}x${pool.depth}`:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);}else{const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:poolFmt==="Triangular"?`${pool.triA}/${pool.triB}/${pool.triC}x${pool.depth}`:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);}}}/></>;
+  if(view==="quote")return <>{avisos}<QP d={gData()} aviso={avisoPreco&&avisoPreco.id===editingId?avisoPreco:null} autoPositions={autoPositions} onBack={()=>setView("editor")} onEntregue={(origem)=>{if(editingId)marcarEntregueNoFunil(editingId,origem)}} onSave={()=>{setAvisoPreco(null);const d=gData();if(editingId){const existing=hist.find(q=>q.id===editingId);const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:resumoMedidas(poolFmt,pool),type:svcType,stamp};const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);}else{const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:resumoMedidas(poolFmt,pool),type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);}}}/></>;
 
   const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};// use className="vv-g2" for responsive
 

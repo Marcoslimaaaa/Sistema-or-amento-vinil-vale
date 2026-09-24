@@ -181,6 +181,22 @@ export function precoMudou(q, armada) {
 }
 
 /**
+ * As medidas da piscina numa linha, do jeito que cada formato é descrito.
+ *
+ * Circular e triangular não mostram comprimento × largura na tela, mas o
+ * estado do editor continua com eles (nasce 10,00 × 4,00). O resumo gravado
+ * em `ps` (lista de Salvos e mensagem de WhatsApp) e o PDF simples do pipeline
+ * saíam com essas medidas escondidas: uma redonda de 4 m ia para o cliente
+ * como "10.00x4.00x1.40".
+ */
+export function resumoMedidas(poolFmt, pool, sep = "x") {
+  const p = pool || {};
+  if (poolFmt === "Triangular") return `${p.triA}/${p.triB}/${p.triC}${sep}${p.depth}`;
+  if (poolFmt === "Circular") return `Ø${p.diametro}${sep}${p.depth}`;
+  return `${p.length}${sep}${p.width}${sep}${p.depth}`;
+}
+
+/**
  * Valores das condições de pagamento a partir do total.
  *
  * Zero é valor de verdade: "entrada 0% + saldo 100%" existe na base. O PDF

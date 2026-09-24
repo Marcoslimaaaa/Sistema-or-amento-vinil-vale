@@ -1,6 +1,6 @@
 // Preço do orçamento — a conta única do editor e do PDF.
 // node src/motor/__tests__/orcamento.test.mjs
-import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento, spaDaManta, totalDeHoje, precoMudou } from "../orcamento.js";
+import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento, spaDaManta, totalDeHoje, precoMudou, resumoMedidas } from "../orcamento.js";
 import { calcA } from "../areas.js";
 
 let ok = 0, falhas = 0;
@@ -85,6 +85,13 @@ eq("valor final gravado segura o preço", precoMudou({ tot: "18734.486", data: {
 const dManta = { ...dSalvo, vinilT: "1,5mm", items: [{ id: 1, c: 100, m: 0, on: true, un: "m²" }] };
 const mManta = precoMudou({ tot: "4320", data: dManta }, true); // 43,2 m² de superfície × 100
 eq("manta salva pela superfície: avisa que hoje sai pela manta cortada", mManta !== null && mManta.agora > mManta.salvo, true);
+
+console.log("\n— medidas no resumo (lista, WhatsApp, PDF simples) —");
+const EDITOR = { length: "10.00", width: "4.00", depth: "1.40", triA: "4.10", triB: "3.10", triC: "2.80", diametro: "4" };
+eq("retangular continua como sempre foi", resumoMedidas("Retangular", EDITOR), "10.00x4.00x1.40");
+eq("triangular continua pelos três lados", resumoMedidas("Triangular", EDITOR), "4.10/3.10/2.80x1.40");
+eq("circular sai pelo diâmetro, não pelo 10x4 escondido", resumoMedidas("Circular", EDITOR), "Ø4x1.40");
+eq("separador do PDF", resumoMedidas("Circular", EDITOR, "×"), "Ø4×1.40");
 
 console.log(`\norcamento.test: ${ok} testes ok${falhas ? `, ${falhas} FALHA(S)` : ""}`);
 process.exit(falhas ? 1 : 0);
