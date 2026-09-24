@@ -7,10 +7,8 @@ import FormaEditor, { MiniForma } from "./FormaEditor.jsx";
 import { MODELOS } from "./data/modelos.js";
 import { calcA } from "./motor/areas.js";
 import { bancoCfg, textoBanco, FORMATOS_COM_BANCO } from "./motor/banco.js";
-import { geometriaTriangular, planoTriangular, verticesTriangulo } from "./motor/triangular.js";
+import { geometriaTriangular, verticesTriangulo } from "./motor/triangular.js";
 import { contornoOitavada, contornoCircular, medidasCirculo } from "./motor/formatos.js";
-import { planoCircular } from "./motor/circular.js";
-import { planoManta, facesRetangulo, facesComPrainha, facesComBanco, facesDoContorno, cortarChaoContorno } from "./motor/manta.js";
 import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho, encostarNoContorno } from "./motor/formas.js";
 import { ramalSistema, totaisHidraulica, ROTULO_SIS, SEM_TUBO, BARRA_M } from "./motor/hidraulica.js";
 import { retanguloPoli, circuloPoli, contornoComSpa, pontoNoContorno, caixaSpaNorm, bicosSpaNorm } from "./motor/spa.js";
@@ -80,6 +78,7 @@ import { classificarBase } from "./services/etapaAuto.js";
 import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
 import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, registrarTokenProvider, marcarOrcamentoEnviado, desfazerOrcamentoEnviado, pausarFollowup, CANAL } from "./services/wa.js";
 import { parseMoney } from "./services/dinheiro.js";
+import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento } from "./motor/orcamento.js";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
 const FB_CFG = {
@@ -1258,22 +1257,8 @@ const Btn=({children,onClick,style:sx})=><button onClick={onClick} style={{paddi
 const DarkToggle=({dark,onToggle})=><button onClick={onToggle} aria-label={dark?"Mudar para tema claro":"Mudar para tema escuro"} style={{width:"38px",height:"22px",borderRadius:"11px",border:"none",background:dark?"#2c4368":"#cbd5e1",cursor:"pointer",position:"relative",transition:"background .3s"}}><div style={{width:"18px",height:"18px",borderRadius:"50%",background:dark?"#0b1524":"#fff",position:"absolute",top:"2px",left:dark?"18px":"2px",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>{dark?<Moon size={11} color="#2dd4bf"/>:<Sun size={11} color="#e8b100"/>}</div></button>;
 
 // ═══ PDF PREVIEW ═══
-// Spa externo no plano de corte da MANTA: até aqui o plano usava só comp×larg
-// da piscina e o spa não saía da bobina — a manta vinha igual com e sem spa.
-// O motor já sabe cortar anexo encostado (motor/manta.js, anexoExterno): a face
-// que encosta não é parede, é linha de solda. Quando o spa é tanque SEPARADO
-// essa face existe dos dois lados, então a divisória entra como parede extra.
-const spaDaManta=(spa,L,W,D)=>{
-  const n=v=>parseFloat(String(v??"").replace(",","."))||0;
-  const sL=n(spa?.length),sW=n(spa?.width),sD=n(spa?.depth);
-  if(!(spa?.on&&sL>0&&sW>0&&sD>0))return{anexos:[],facesExtra:[]};
-  const lado=(spa.side==="left"||spa.side==="right")?W:L;
-  const cont=Math.min(sL,lado||sL);
-  return{
-    anexos:[{nome:"Spa",comp:cont,larg:sW,prof:sD,encaixe:"lado"}],
-    facesExtra:spa.integrado===true?[]:[{nome:"Divisória do spa",comp:cont,prof:sD}],
-  };
-};
+// O plano de corte da manta, as quantidades e o total moram em
+// motor/orcamento.js — a mesma conta para o editor e para este PDF.
 
 const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
   const inc=(d.items||[]).filter(i=>i.on);
@@ -1282,72 +1267,16 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
   const pay=d.pay||{pixD:5,entPct:50,balPct:50,noFee:5,wFee:12,btcD:15};
   const ar=calcA(pool,spa,d.wMode||"regular",d.walls||[],d.poolFmt,d.extras||[],d.spaType,d.desenho);
   // Manta armada não se resume a chão + paredes: o detalhamento técnico tem de
-  // mostrar o plano de corte, senão o PDF sai com a lógica do bolsão.
-  const mantaQ=(()=>{
-    if(!vinilOpt(d.vinilT).armada)return null;
-    const n=v=>parseFloat(String(v??"").replace(",","."))||0;
-    const L=n(pool.length),W=n(pool.width),D=ar.depthInfo?.avg||n(pool.depth);
-    if(!(L>0&&W>0&&D>0))return null;
-    const praiC=d.poolFmt==="Com prainha"?n(pool.prainhaComp):0;
-    const praiP=n(pool.prainhaProf);
-    const cont=d.desenho&&(d.desenho.vertices||[]).length>=3?contornoEfetivo(d.desenho):null;
-    if(cont&&cont.length>=3){
-      const ch=cortarChaoContorno(cont,undefined,"Chão · desenho");
-      const spC=spaDaManta(spa,L,W,D);
-      const base=planoManta({comp:L,larg:W,prof:D,perimetro:parseFloat(ar.perim)||0,
-        areaReal:parseFloat(ar.tot)||0,faces:[...facesDoContorno(cont,D),...spC.facesExtra],
-        anexos:spC.anexos});
-      const dif=ch.metrosLineares-base.chao.metrosLineares;
-      return{...base,chao:{partes:[ch],metrosLineares:ch.metrosLineares,emendas:ch.emendas,soldaLinear:ch.soldaLinear},
-        metrosLineares:+(base.metrosLineares+dif).toFixed(2),
-        areaCobravel:+((base.metrosLineares+dif)*1.55).toFixed(2)};
-    }
-    // BANCO LATERAL muda a lista de paredes: o degrau corre no sentido do
-    // comprimento, entao a lateral do banco vira espelho + testeira do banco e
-    // as testeiras saem com recorte. Prainha manda mais alto porque o plano
-    // dela ja existe e as duas juntas ainda nao foram levantadas na obra.
-    // TRIANGULAR tem plano proprio: paredes e chao nao saem de comprimento x
-    // largura, e o ninho (costas + espelho do mesmo lado) muda a bobina.
-    if(d.poolFmt==="Triangular"||(d.poolFmt==="Oitavada"&&pool.bancoOn)){
-      const n2=v=>parseFloat(String(v??"").replace(",","."))||0;
-      const banco=pool.bancoOn?{larg:n2(pool.bancoLarg),prof:n2(pool.bancoProf)}:null;
-      const pt=d.poolFmt==="Triangular"
-        ?planoTriangular({a:n2(pool.triA),b:n2(pool.triB),c:n2(pool.triC),prof:D,banco})
-        :planoTriangular({contorno:contornoOitavada(L,W,n2(pool.chanfro)),prof:D,banco});
-      return pt.erro?null:pt;
-    }
-    if(d.poolFmt==="Circular"){
-      const n2=v=>parseFloat(String(v??"").replace(",","."))||0;
-      const pc=planoCircular({diametro:n2(pool.diametro),prof:D,
-        banco:pool.bancoOn?{larg:n2(pool.bancoLarg),prof:n2(pool.bancoProf)}:null});
-      return pc.erro?null:pc;
-    }
-    const bcM=bancoCfg(pool,d.poolFmt,L,W,D);
-    const faces=praiC>0&&praiC<L
-      ?facesComPrainha(L,W,D,praiC,Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)),
-        {prainhaCorrida:(d.wMode||"regular")!=="irregular"})
-      :(bcM&&bcM.medida
-        ?facesComBanco(L,W,D,bcM.larg,bcM.prof)
-        :facesRetangulo(L,W,D));
-    const sp=spaDaManta(spa,L,W,D);
-    return planoManta({comp:L,larg:W,prof:D,perimetro:parseFloat(ar.perim)||0,
-      areaReal:parseFloat(ar.tot)||0,praiComp:praiC,faces:[...faces,...sp.facesExtra],
-      anexos:sp.anexos});
-  })();
-  // Com manta armada o m² cobrado é o do PLANO DE CORTE, não a superfície da
-  // piscina: a solda, as dobras e a largura de bobina perdida são material que
-  // sai da bobina e vai para a obra. A ponta da bobina fica de fora.
-  const effQ=(i)=>{
-    if(i.un==="m²")return mantaQ?mantaQ.areaCobravel:(parseFloat(ar.tot)||0);
-    if(i.un==="chao")return mantaQ?+(mantaQ.chao.metrosLineares*1.55).toFixed(2):(parseFloat(ar.chaoTot)||0);
-    if(i.un==="ml")return parseFloat(ar.perim)||0;
-    if(i.un==="solda")return mantaQ?mantaQ.solda.total:0;
-    return i.q||0;
-  };
-  const total=parseMoney(d.totOv)||inc.reduce((s,i)=>s+effQ(i)*(i.c||0)*(1+(i.m||0)/100),0)+parseMoney(d.mo);
+  // mostrar o plano de corte, senão o PDF sai com a lógica do bolsão. Plano,
+  // quantidades e total vêm de motor/orcamento.js — a MESMA conta do editor,
+  // inclusive o "aproveitar a tira", que agora é gravado no orçamento.
+  const mantaQ=vinilOpt(d.vinilT).armada
+    ?planoMantaDoOrcamento({pool,poolFmt:d.poolFmt,spa,wMode:d.wMode||"regular",desenho:d.desenho},ar,{aproveitarSobra:!!d.mantaAproveita})
+    :null;
+  const {total}=totalDoOrcamento({items:d.items,ar,manta:mantaQ,mo:d.mo,totOv:d.totOv});
   const today=new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"});
-  const pix=total*(1-(pay.pixD||0)/100),btc=total*(1-(pay.btcD||0)/100);
-  const ent=total*(pay.entPct||50)/100,bal=total*(pay.balPct||50)/100,inst=total/(pay.noFee||1);
+  // Zero é valor: "entrada 0% + saldo 100%" existe na base (ver condicoesPagamento).
+  const {pix,btc,ent,bal,inst}=condicoesPagamento(total,pay);
 
   const [pdfStatus,setPdfStatus]=useState("");
   const [enviadoStatus,setEnviadoStatus]=useState("");
@@ -2700,60 +2629,11 @@ export default function App(){
 
   // ═══ MANTA ARMADA 1,5 mm ═══
   // Só a manta é orçada por plano de corte de bobina. O vinil 0,7/0,8 (bolsão)
-  // segue por área e não passa por aqui.
+  // segue por área e não passa por aqui. A conta mora em motor/orcamento.js, a
+  // mesma que o PDF usa — antes eram duas cópias, e a do PDF ignorava o
+  // "aproveitar a tira".
   const ehManta=vinilOpt(vinilT).armada;
-  const manta=(()=>{
-    if(!ehManta)return null;
-    const n=v=>parseFloat(String(v??"").replace(",","."))||0;
-    const L=n(pool.length),W=n(pool.width);
-    const D=ar.depthInfo?.avg||n(pool.depth);
-    if(!(L>0&&W>0&&D>0))return null;
-    const praiC=poolFmt==="Com prainha"?n(pool.prainhaComp):0;
-    const praiP=n(pool.prainhaProf);
-    // desenho livre / formato irregular: as faixas seguem o contorno real
-    const contorno=desenho&&(desenho.vertices||[]).length>=3?contornoEfetivo(desenho):null;
-    if(contorno&&contorno.length>=3){
-      const chao=cortarChaoContorno(contorno,undefined,"Chão · desenho");
-      const paredes=facesDoContorno(contorno,D);
-      const spC=spaDaManta(spa,L,W,D);
-      const base=planoManta({comp:L,larg:W,prof:D,perimetro:parseFloat(ar.perim)||0,
-        areaReal:parseFloat(ar.tot)||0,faces:[...paredes,...spC.facesExtra],
-        anexos:spC.anexos,aproveitarSobra:mantaAproveita});
-      // troca o chão retangular pelo chão que acompanha o desenho
-      const diff=chao.metrosLineares-base.chao.metrosLineares;
-      return{...base,chao:{partes:[chao],metrosLineares:chao.metrosLineares,
-        emendas:chao.emendas,soldaLinear:chao.soldaLinear},
-        metrosLineares:+(base.metrosLineares+diff).toFixed(2),
-        areaCobravel:+((base.metrosLineares+diff)*1.55).toFixed(2),contorno:true};
-    }
-    if(poolFmt==="Triangular"||(poolFmt==="Oitavada"&&pool.bancoOn)){
-      const n2=v=>parseFloat(String(v??"").replace(",","."))||0;
-      const banco=pool.bancoOn?{larg:n2(pool.bancoLarg),prof:n2(pool.bancoProf)}:null;
-      const pt=poolFmt==="Triangular"
-        ?planoTriangular({a:n2(pool.triA),b:n2(pool.triB),c:n2(pool.triC),prof:D,banco})
-        :planoTriangular({contorno:contornoOitavada(L,W,n2(pool.chanfro)),prof:D,banco});
-      return pt.erro?null:pt;
-    }
-    // CIRCULAR na regra do Marcos (23/09): parede e uma TIRA contornando ate
-    // fechar, e o plano horizontal sai do QUADRADO que envolve.
-    if(poolFmt==="Circular"){
-      const n2=v=>parseFloat(String(v??"").replace(",","."))||0;
-      const pc=planoCircular({diametro:n2(pool.diametro),prof:D,
-        banco:pool.bancoOn?{larg:n2(pool.bancoLarg),prof:n2(pool.bancoProf)}:null});
-      return pc.erro?null:pc;
-    }
-    const bcM=bancoCfg(pool,poolFmt,L,W,D);
-    const faces=praiC>0&&praiC<L
-      ?facesComPrainha(L,W,D,praiC,Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)),
-        {prainhaCorrida:wMode!=="irregular"})
-      :(bcM&&bcM.medida
-        ?facesComBanco(L,W,D,bcM.larg,bcM.prof)
-        :facesRetangulo(L,W,D));
-    const sp=spaDaManta(spa,L,W,D);
-    return planoManta({comp:L,larg:W,prof:D,perimetro:parseFloat(ar.perim)||0,
-      areaReal:parseFloat(ar.tot)||0,praiComp:praiC,faces:[...faces,...sp.facesExtra],
-      anexos:sp.anexos,aproveitarSobra:mantaAproveita});
-  })();
+  const manta=ehManta?planoMantaDoOrcamento({pool,poolFmt,spa,wMode,desenho},ar,{aproveitarSobra:mantaAproveita}):null;
 
   // Versões espelhadas passadas às vistas (planta/isométrica/3D). O desenho salvo,
   // o editor de forma e o cálculo de área continuam no referencial original —
@@ -2799,21 +2679,9 @@ export default function App(){
   const spaTypeV=flipH||flipV?{...spaType,qCanto:espelhaCanto(spaType.qCanto,flipH,flipV),rCanto:espelhaCanto(spaType.rCanto,flipH,flipV)}:spaType;
   const lowStockCount=Object.entries(stk).filter(([,s])=>s.qty>0&&s.qty<=(s.minQty||2)).length;
 
-  // Manta armada: o m² vem do plano de corte (ver motor/manta.js). Vinil 0,7/0,8
-  // segue pela superfície da piscina, como sempre.
-  const effQ=(i)=>{
-    if(i.un==="m²")return manta?manta.areaCobravel:(parseFloat(ar.tot)||0); // area total m²
-    if(i.un==="chao")return manta?+(manta.chao.metrosLineares*1.55).toFixed(2):(parseFloat(ar.chaoTot)||0); // area chao
-    if(i.un==="ml")return parseFloat(ar.perim)||0; // perimetro linear
-    if(i.un==="solda")return manta?manta.solda.total:0; // metro de solda (só manta armada)
-    return i.q||0; // unidade
-  };
-  const matC=inc.reduce((s,i)=>s+effQ(i)*(i.c||0),0);
-  const matS=inc.reduce((s,i)=>s+effQ(i)*(i.c||0)*(1+(i.m||0)/100),0);
-  // Mão de obra no padrão BR ("3.500,00"). O campo só aceitava dígitos e
-  // "3500,00" virava 350000 — o total saía 100 vezes maior.
-  const tCalc=matS+parseMoney(mo);
-  const total=parseMoney(totOv)||tCalc;
+  // Quantidade e preço saem de motor/orcamento.js — a MESMA conta do PDF.
+  const effQ=(i)=>quantidadeEfetiva(i,ar,manta);
+  const {custo:matC,venda:matS,calculado:tCalc,total}=totalDoOrcamento({items,ar,manta,mo,totOv});
 
   const ui=(id,f,v)=>setItems(p=>p.map(i=>i.id===id?{...i,[f]:v}:i));
   const ti=id=>setItems(p=>p.map(i=>i.id===id?{...i,on:!i.on}:i));
@@ -2822,7 +2690,7 @@ export default function App(){
   const addM=()=>setItems(p=>[...p,{id:Date.now(),n:"Novo item",q:1,c:0,m:gM,nt:"",on:true,un:"un"}]);
   const apM=()=>{setItems(p=>p.map(i=>({...i,m:gM})));setFbMsg("Margem aplicada!");setTimeout(()=>setFbMsg(""),1500)};
 
-  const gData=()=>({client,pool,items,guar,ci,pay,totOv:totOv,vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,includeIso,disps,customPos,isoView,invertSide,flipH,flipV,devHeights,raloQuenteParede,desenho});
+  const gData=()=>({client,pool,items,guar,ci,pay,totOv:totOv,vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,includeIso,disps,customPos,isoView,invertSide,flipH,flipV,devHeights,raloQuenteParede,desenho,mantaAproveita});
   const save=()=>{
     const errs={};
     if(!client.name||client.name.trim()==="")errs.clientName="Nome obrigatório";
@@ -2879,7 +2747,7 @@ export default function App(){
   };
   const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){autoStockOut(item);syncFinancas(item);}setFbMsg("✅ Cliente fechado!");setTimeout(()=>setFbMsg(""),3000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)syncFinancas(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
-  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
+  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setMantaAproveita(!!d.mantaAproveita);setShowFormaEd(false);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
   // ═══ RASCUNHO DO VINI ═══
   // Abre no editor o que o bot preencheu pela conversa. O tipo de servico
   // refaz itens, garantia, condicoes e prazo pelo mesmo caminho do botao de
@@ -2894,7 +2762,7 @@ export default function App(){
     setCl(e.client);
     setPool(p=>({...p,...e.pool}));
     if(e.poolFmt)setPF(e.poolFmt);
-    setDesenho(null);setWM("regular");setWalls([]);setExtras([]);
+    setDesenho(null);setWM("regular");setWalls([]);setExtras([]);setMantaAproveita(false);
     setEditingId(null);setTab("cliente");
     setRascunhoAtivo({id:r.id,aplicado:{svcType:e.svcType,poolFmt:e.poolFmt,client:e.client,pool:{...e.pool}}});
     setFbMsg("Rascunho do Vini carregado — confira antes de salvar");setTimeout(()=>setFbMsg(""),3500);
@@ -2950,7 +2818,7 @@ export default function App(){
       salvarRascunho({data,editingId,tab});
     },800);
     return()=>clearTimeout(id);
-  },[client,pool,items,guar,ci,pay,totOv,vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,includeIso,disps,customPos,isoView,invertSide,flipH,flipV,devHeights,raloQuenteParede,desenho,editingId,tab]);
+  },[client,pool,items,guar,ci,pay,totOv,vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,includeIso,disps,customPos,isoView,invertSide,flipH,flipV,devHeights,raloQuenteParede,desenho,mantaAproveita,editingId,tab]);
 
   // Arquivo do app não veio do servidor: salva na hora, marcando que a volta é
   // automática, e só então oferece o recarregamento.
@@ -2978,7 +2846,7 @@ export default function App(){
   const atualizarApp=()=>{window.location.reload()};
   const avisos=<Avisos chunkQuebrado={chunkQuebrado} onAtualizar={atualizarApp} rascunho={view==="editor"?rascunho:null} onRecuperar={()=>recuperarRascunho(rascunho)} onDescartar={descartarRascunho}/>;
 
-  const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
+  const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setMantaAproveita(!!d.mantaAproveita);setShowFormaEd(false);setEditingId(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
   // Excluir apaga do aparelho E da nuvem, sem lixeira. O 🗑 fica colado no
   // "Clonar" e, no celular, um toque errado perdia o orçamento do cliente para
   // sempre — era a única ação destrutiva do sistema sem pergunta (zerar o
