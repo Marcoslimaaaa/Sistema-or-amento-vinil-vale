@@ -3570,7 +3570,7 @@ export default function App(){
                     <span style={{color:t.textSec}}>{p.nome}{p.corrida?<span style={{color:"#b45309",fontWeight:"700"}}> ↩ vincada</span>:""}{p.recorte?<span style={{color:"#4338ca",fontWeight:"700"}}> ✂ recorte {m2(p.recorte.larg)}×{m2(p.recorte.alt)}</span>:""}</span>
                     <b style={{color:t.text,whiteSpace:"nowrap"}}>{m2(p.comp)} × {m2(p.altura)}</b>
                   </div>)}
-                  <div style={{fontSize:"9px",color:t.textMuted,marginTop:"3px"}}>{m2(manta.paredes.metrosLineares)} m lineares</div>
+                  <div style={{fontSize:"9px",color:t.textMuted,marginTop:"3px"}}>{m2(manta.paredes.metrosLineares)} m lineares{manta.passadas?.length?" (peça por peça)":""}</div>
                 </div>
                 <div>
                   <div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".5px",marginBottom:"5px"}}>Chão</div>
@@ -3582,9 +3582,39 @@ export default function App(){
                     {p.contorno&&<div style={{fontSize:"9px",color:t.textMuted,paddingLeft:"6px"}}>faixas: {p.pecas.map(f=>m2(f.comp)).join(" · ")}</div>}
                     <div style={{fontSize:"9px",color:t.textMuted,paddingLeft:"6px"}}>{p.sentido}, {p.emendas} emenda{p.emendas===1?"":"s"}</div>
                   </div>)}
-                  <div style={{fontSize:"9px",color:t.textMuted,marginTop:"3px"}}>{m2(manta.chao.metrosLineares)} m lineares</div>
+                  <div style={{fontSize:"9px",color:t.textMuted,marginTop:"3px"}}>{m2(manta.chao.metrosLineares)} m lineares{manta.passadas?.length?" (peça por peça)":""}</div>
                 </div>
               </div>
+
+              {/* PASSADAS NA BOBINA — a soma delas é que vira os "Lineares".
+                  As listas de cima somam peça por peça e, quando duas peças saem
+                  lado a lado na MESMA passada (triângulo, redonda, oitavada com
+                  banco), não fecham com o total: na hidro 4,10/3,10/2,80 a tela
+                  mostrava 14,84 + 11,77 = 26,61 e o total 17,22, sem dizer por
+                  quê (pergunta do Marcos, 24/09). O retangular corta uma peça
+                  por passada e não tem este bloco. */}
+              {manta.passadas?.length>0&&(()=>{
+                const larg={};
+                manta.paredes.pecas.forEach(p=>{larg[p.nome]={w:p.altura}});
+                manta.chao.partes.forEach(p=>{larg[p.nome]=p.faixas>1?{faixas:p.faixas,comp:p.compFaixa}:{w:p.alvo}});
+                const semJuntar=+(manta.paredes.metrosLineares+manta.chao.metrosLineares).toFixed(2);
+                return <div style={{marginTop:"12px",paddingTop:"10px",borderTop:`1px solid ${t.cardBorder}`}}>
+                  <div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".5px",marginBottom:"5px"}}>Passadas na bobina — {manta.passadas.length}</div>
+                  {manta.passadas.map((ps,i)=>{
+                    const ws=ps.pecas.map(n=>larg[n]||{});
+                    const detalhe=ps.pecas.length>1&&ws.every(x=>x.w>0)
+                      ?`lado a lado: ${ws.map(x=>m2(x.w)).join(" + ")} de 1,55`
+                      :(ws.length===1&&ws[0].faixas?`${ws[0].faixas} faixas de ${m2(ws[0].comp)}`:null);
+                    return <div key={i} style={linha}>
+                      <span style={{color:t.textSec}}>{i+1}. {ps.pecas.join(" + ")}{detalhe&&<span style={{color:t.textMuted,fontSize:"9.5px"}}> · {detalhe}</span>}</span>
+                      <b style={{color:t.text,whiteSpace:"nowrap"}}>{m2(ps.comp)} m</b>
+                    </div>;
+                  })}
+                  <div style={{fontSize:"9px",color:t.textMuted,marginTop:"3px",lineHeight:1.45}}>
+                    Soma das passadas: <b style={{color:t.text}}>{m2(manta.metrosLineares)} m</b> — é o que sai da bobina.{semJuntar>manta.metrosLineares+0.004?` Cortando cada peça sozinha seriam ${m2(semJuntar)} m: o que cabe junto na largura de 1,55 sai na mesma passada.`:""}
+                  </div>
+                </div>;
+              })()}
 
               <div style={{display:"flex",gap:"10px",flexWrap:"wrap",marginTop:"12px",paddingTop:"10px",borderTop:`1px solid ${t.cardBorder}`}}>
                 <div style={{textAlign:"center",background:gold,borderRadius:"8px",padding:"5px 14px"}}>
