@@ -37,8 +37,8 @@ function notificar(titulo, corpo, tag) {
     const n = new Notification(titulo, {
       body: corpo,
       tag,               // mesma tag substitui a anterior em vez de empilhar
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
     });
     n.onclick = () => { window.focus(); n.close(); };
     return n;
