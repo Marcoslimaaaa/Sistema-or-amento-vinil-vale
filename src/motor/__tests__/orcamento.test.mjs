@@ -1,6 +1,6 @@
 // Preço do orçamento — a conta única do editor e do PDF.
 // node src/motor/__tests__/orcamento.test.mjs
-import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento, spaDaManta, totalDeHoje, precoMudou, resumoMedidas } from "../orcamento.js";
+import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento, spaDaManta, totalDeHoje, precoMudou, resumoMedidas, medidasParaEstoque } from "../orcamento.js";
 import { calcA } from "../areas.js";
 
 let ok = 0, falhas = 0;
@@ -85,6 +85,27 @@ eq("valor final gravado segura o preço", precoMudou({ tot: "18734.486", data: {
 const dManta = { ...dSalvo, vinilT: "1,5mm", items: [{ id: 1, c: 100, m: 0, on: true, un: "m²" }] };
 const mManta = precoMudou({ tot: "4320", data: dManta }, true); // 43,2 m² de superfície × 100
 eq("manta salva pela superfície: avisa que hoje sai pela manta cortada", mManta !== null && mManta.agora > mManta.salvo, true);
+
+console.log("\n— manta armada com medida que não fecha —");
+// Na manta o preço sai do PLANO de corte. Se o plano existisse com a área
+// inválida, o total da manta não zeraria junto.
+const poolRedBanco = { length: "10.00", width: "4.00", depth: "1.00", diametro: "4", bancoOn: true, bancoLarg: "0.50", bancoProf: "1.20" };
+const arRedBanco = calcA(poolRedBanco, SPA_OFF, "regular", [], "Circular", [], {}, null);
+eq("área inválida (assento no fundo)", typeof arRedBanco.invalido, "string");
+eq("então também não há plano de corte", planoMantaDoOrcamento({ pool: poolRedBanco, poolFmt: "Circular", spa: SPA_OFF }, arRedBanco), null);
+const poolRedOk = { ...poolRedBanco, bancoProf: "0.50" };
+eq("com o banco certo o plano volta", planoMantaDoOrcamento({ pool: poolRedOk, poolFmt: "Circular", spa: SPA_OFF }, calcA(poolRedOk, SPA_OFF, "regular", [], "Circular", [], {}, null)) !== null, true);
+
+console.log("\n— baixa de estoque: a mesma área do orçamento —");
+// O caso real: só raso e fundo preenchidos, profundidade vazia. A conta antiga
+// (C × L × profundidade) zerava as paredes: sugeria ~50 m² antes dos 10%.
+const soRasoFundo = { pool: { length: "10.00", width: "5.00", depth: "", depthMin: "1.00", depthMax: "1.90" }, poolFmt: "Retangular" };
+const eRF = medidasParaEstoque(soRasoFundo);
+perto("raso/fundo: 93,7 m² de vinil, não 50", eRF.areaTotal, 93.7, 0.06);
+eq("e há o que sugerir", eRF.semMedida, null);
+perto("redonda Ø4 × 1,40 pelo diâmetro (30,2 m²), não pelo 10 × 4 escondido (79,2)", medidasParaEstoque({ pool: { length: "10.00", width: "4.00", depth: "1.40", diametro: "4" }, poolFmt: "Circular" }).areaTotal, 30.2, 0.06);
+eq("redonda sem diâmetro: pede conferência", medidasParaEstoque({ pool: { length: "10.00", width: "4.00", depth: "1.00", diametro: "" }, poolFmt: "Circular" }).semMedida, "Falta o DIÂMETRO da piscina redonda");
+eq("registro manual (piscina zerada): pede conferência", medidasParaEstoque({ pool: { length: 0, width: 0, depth: 0 }, items: [] }).semMedida, "Orçamento sem medida da piscina");
 
 console.log("\n— medidas no resumo (lista, WhatsApp, PDF simples) —");
 const EDITOR = { length: "10.00", width: "4.00", depth: "1.40", triA: "4.10", triB: "3.10", triC: "2.80", diametro: "4" };

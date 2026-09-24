@@ -14,7 +14,7 @@
 // Vale para MANTA ARMADA. O bolsão convencional o Marcos ainda vai conferir.
 
 import { MANTA, cortarPeca, cortarChao, encaixarBobinas } from "./manta.js";
-import { medidasCirculo } from "./formatos.js";
+import { medidasCirculo, erroBancoRedondo } from "./formatos.js";
 
 const arred = (v, c = 2) => Math.round(v * 10 ** c) / 10 ** c;
 
@@ -28,9 +28,11 @@ export function planoCircular({ diametro, prof, banco = null, assento = "quadrad
     prof,
   });
   if (!m) return { erro: "Diâmetro inválido." };
-  if (banco && banco.larg >= m.raio) {
-    return { erro: `Banco de ${banco.larg.toFixed(2).replace(".", ",")} m não cabe: o raio é ${m.raio.toFixed(2).replace(".", ",")} m.` };
-  }
+  // A mesma régua do cálculo de área (formatos.js): banco largo demais OU com
+  // o assento no fundo é erro — antes o fundo demais saía como redonda sem
+  // banco, sem aviso.
+  const erroBanco = banco ? erroBancoRedondo(diametro, banco.larg, banco.prof, prof) : null;
+  if (erroBanco) return { erro: erroBanco };
 
   // ── PAREDES: tira contornando, com a solda no fechamento ─────────────────
   const faces = m.temBanco

@@ -53,6 +53,10 @@ export function spaDaManta(spa, L, W, D) {
  * @returns {object|null} o plano, ou null quando não há medida para cortar
  */
 export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar, { aproveitarSobra = false } = {}) {
+  // Medida que não fecha (motor/areas.js zerou a área e disse por quê): sem
+  // plano de corte também. Na manta armada o preço sai do PLANO, não da área —
+  // se o plano seguisse existindo, o total não zeraria junto com a área.
+  if (ar?.invalido) return null;
   pool = pool || {};
   const L = num(pool.length), W = num(pool.width);
   const D = ar?.depthInfo?.avg || num(pool.depth);
@@ -194,6 +198,30 @@ export function resumoMedidas(poolFmt, pool, sep = "x") {
   if (poolFmt === "Triangular") return `${p.triA}/${p.triB}/${p.triC}${sep}${p.depth}`;
   if (poolFmt === "Circular") return `Ø${p.diametro}${sep}${p.depth}`;
   return `${p.length}${sep}${p.width}${sep}${p.depth}`;
+}
+
+/**
+ * Área e perímetro que a BAIXA DE ESTOQUE usa ao fechar — a mesma conta do
+ * orçamento (calcA), não um retângulo comprimento × largura × profundidade.
+ *
+ * Medido em 24/09 em 204 orçamentos: 66 mudam de sugestão. Com só raso e fundo
+ * preenchidos (profundidade vazia), a conta antiga zerava as paredes — dois
+ * orçamentos fechados sugeriam 56 m² de vinil para uma piscina que leva 104.
+ * Spa, prainha, banco, desenho livre, redonda e triângulo nunca entravam.
+ *
+ * @returns {{areaTotal:number, areaChao:number, perim:number, semMedida:string|null}}
+ *   `semMedida` diz por que não dá para sugerir quantidade (medida que não fecha)
+ */
+export function medidasParaEstoque(d) {
+  const ar = calcA(d?.pool || {}, d?.spa || { on: false }, d?.wMode || "regular", d?.walls || [],
+    d?.poolFmt, d?.extras || [], d?.spaType, d?.desenho);
+  const areaTotal = parseFloat(ar.tot) || 0;
+  return {
+    areaTotal,
+    areaChao: parseFloat(ar.chaoTot) || 0,
+    perim: parseFloat(ar.perim) || 0,
+    semMedida: ar.invalido || (areaTotal > 0 ? null : "Orçamento sem medida da piscina"),
+  };
 }
 
 /**

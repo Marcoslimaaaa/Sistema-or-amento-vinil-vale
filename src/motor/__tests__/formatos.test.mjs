@@ -1,7 +1,7 @@
 // Contornos de oitavada e circular, e a conta do círculo.
 // node src/motor/__tests__/formatos.test.mjs
-import { contornoOitavada, contornoCircular, medidasCirculo, GOMOS_CIRCULO } from "../formatos.js";
-import { geometriaComBanco, planoTriangular } from "../triangular.js";
+import { contornoOitavada, contornoCircular, medidasCirculo, GOMOS_CIRCULO, bancoMaximoRedondo, erroBancoRedondo } from "../formatos.js";
+import { geometriaComBanco, geometriaTriangular, planoTriangular } from "../triangular.js";
 import { areaPoligono, perimetroPoligono, regioesBanco } from "../formas.js";
 import { calcA } from "../areas.js";
 import { planoCircular } from "../circular.js";
@@ -108,6 +108,56 @@ const semB = planoCircular({ diametro: 4, prof: 1.2 });
 eq("sem banco: uma tira de parede só", semB.paredes.qtdPecas, 1);
 perto("sem banco: altura = prof + dobras", semB.paredes.pecas[0].altura, 1.2 + 0.1, 0.01);
 eq("sem banco: o chão é o quadrado do diâmetro", semB.chao.partes.length, 1);
+
+// ─── BANCO QUE NÃO CABE (24/09) ───────────────────────────────────────────
+// Antes: redonda e oitavada descartavam o banco em silêncio e cobravam a
+// piscina sem ele; banco com o assento no fundo sumia nos três formatos; e a
+// oitavada aceitava banco mais largo que a metade da piscina, com "piso" que
+// não existe. Banco com as medidas vazias continua só ilustrativo.
+console.log("\n— banco que não cabe: redonda —");
+const R4 = { length: "10.00", width: "4.00", depth: "1.00", diametro: "4" };
+const cR = (p) => calcA({ ...R4, ...p }, { on: false }, "regular", [], "Circular", [], {}, null);
+eq("banco máximo da Ø4: 1,94 m (sobra 0,01 m² de piso)", bancoMaximoRedondo(4), 1.94);
+eq("1,94 cabe", erroBancoRedondo(4, 1.94, 0.5, 1), null);
+eq("1,95 não cabe", typeof erroBancoRedondo(4, 1.95, 0.5, 1), "string");
+const rLargo = cR({ bancoOn: true, bancoLarg: "2.10", bancoProf: "0.50" });
+eq("banco de 2,10: área zero, não a redonda sem banco", rLargo.tot, "0.0");
+eq("e diz até onde cabe", /acima de 1,94 m/.test(rLargo.invalido), true);
+const rFundo = cR({ bancoOn: true, bancoLarg: "0.50", bancoProf: "1.20" });
+eq("assento a 1,20 numa de 1,00: área zero", rFundo.tot, "0.0");
+eq("e diz que o assento ficaria no fundo", /ficaria no fundo/.test(rFundo.invalido), true);
+eq("banco ligado sem medida segue ilustrativo", cR({ bancoOn: true, bancoLarg: "", bancoProf: "" }).tot, cR({}).tot);
+eq("banco que cabe não muda (0,50 × 0,50)", cR({ bancoOn: true, bancoLarg: "0.50", bancoProf: "0.50" }).invalido, undefined);
+eq("o plano de corte recusa o assento no fundo também", /ficaria no fundo/.test(planoCircular({ diametro: 4, prof: 1, banco: { larg: 0.5, prof: 1.2 } }).erro), true);
+
+console.log("\n— banco que não cabe: oitavada (piso fantasma) —");
+const O63 = { length: "6", width: "3", depth: "1.40", chanfro: "1" };
+const cO = (p) => calcA({ ...O63, ...p }, { on: false }, "regular", [], "Oitavada", [], {}, null);
+const oit63 = contornoOitavada(6, 3, 1);
+// área ÷ semiperímetro dava 2,04 m numa piscina de 3 m de largura
+perto("banco máximo da 6 × 3 é 1,24 m, não 2,04", geometriaComBanco({ contorno: oit63, prof: 1.4 }).bancoMaximo, 1.24);
+for (const b of ["1.55", "2.00"]) {
+  const r = cO({ bancoOn: true, bancoLarg: b, bancoProf: "0.50" });
+  eq(`banco de ${b.replace(".", ",")}: recusa em vez de piso fantasma`, r.tot, "0.0");
+}
+const oLargo = cO({ bancoOn: true, bancoLarg: "1.40", bancoProf: "0.50" });
+eq("a mensagem fala da piscina, não de triângulo", /nesta piscina/.test(oLargo.invalido) && !/triângulo/.test(oLargo.invalido), true);
+eq("assento no fundo também recusa", /ficaria no fundo/.test(cO({ bancoOn: true, bancoLarg: "0.50", bancoProf: "1.60" }).invalido), true);
+eq("banco ligado sem medida: conta da oitavada sem banco", cO({ bancoOn: true, bancoLarg: "", bancoProf: "" }).tot, cO({}).tot);
+// A conta e a planta passam a responder a mesma pergunta do mesmo jeito.
+const concordam = [0.5, 1.0, 1.2, 1.3, 1.4, 1.6, 2.0].every(b => {
+  const conta = !cO({ bancoOn: true, bancoLarg: String(b), bancoProf: "0.50" }).invalido;
+  const planta = regioesBanco(oit63, b, 0.5).length > 0;
+  return conta === planta;
+});
+eq("conta e planta concordam de 0,50 a 2,00 m", concordam, true);
+
+console.log("\n— banco que não cabe: triângulo —");
+const T = { length: "10.00", width: "4.00", depth: "1.00", triA: "4.10", triB: "3.10", triC: "2.80" };
+const tFundo = calcA({ ...T, bancoOn: true, bancoLarg: "0.50", bancoProf: "1.20" }, { on: false }, "regular", [], "Triangular", [], {}, null);
+eq("assento no fundo: área zero (antes sumia o banco em silêncio)", tFundo.tot, "0.0");
+eq("e diz por quê", /ficaria no fundo/.test(tFundo.invalido), true);
+eq("o triângulo continua falando de triângulo", /neste triângulo: acima de 0,86 m os três bancos/.test(geometriaTriangular({ a: 4.1, b: 3.1, c: 2.8, prof: 1, banco: { larg: 1.2, prof: 0.5 } }).erro), true);
 
 console.log(`\nformatos.test: ${ok} testes ok${falhas ? `, ${falhas} FALHA(S)` : ""}`);
 process.exit(falhas ? 1 : 0);

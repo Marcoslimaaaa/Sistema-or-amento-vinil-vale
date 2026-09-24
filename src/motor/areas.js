@@ -9,7 +9,7 @@
 import { calcDesenho } from "./formas.js";
 import { bancoCfg, ajusteBanco } from "./banco.js";
 import { geometriaTriangular, geometriaComBanco } from "./triangular.js";
-import { contornoOitavada, medidasCirculo } from "./formatos.js";
+import { contornoOitavada, medidasCirculo, erroBancoRedondo } from "./formatos.js";
 
 export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
   const pf2=v=>parseFloat(String(v??"").replace(",","."))||0;
@@ -72,9 +72,13 @@ export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
   // o desenho usa: 48 gomos erram 0,29%, e numero de orcamento nao se aproxima
   // quando existe a formula.
   if(poolFmt==="Circular"){
-    const cir=medidasCirculo(pf2(pool?.diametro),{
-      bancoLarg:pool?.bancoOn?pf2(pool?.bancoLarg):0,
-      bancoProf:pool?.bancoOn?pf2(pool?.bancoProf):0,prof:D});
+    const bLarg=pool?.bancoOn?pf2(pool?.bancoLarg):0,bProf=pool?.bancoOn?pf2(pool?.bancoProf):0;
+    // Banco que nao cabe (largo demais, ou assento no fundo): o medidasCirculo
+    // descartava em silencio e cobrava a redonda sem banco. Agora e erro com
+    // o motivo, igual ao triangulo.
+    const erroB=erroBancoRedondo(pf2(pool?.diametro),bLarg,bProf,D);
+    if(erroB)return invalido(erroB);
+    const cir=medidasCirculo(pf2(pool?.diametro),{bancoLarg:bLarg,bancoProf:bProf,prof:D});
     if(cir){
       const chaoC=cir.fundo+cir.assento;
       const parC=cir.espelho+cir.costas+cir.parede;
@@ -101,6 +105,10 @@ export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
         chaoTot:chaoO.toFixed(1),depthInfo:{avg:D,min:realDMin,max:realDMax,sloped:false},
         banco:null,triangular:gO,extraChao:"0.0",extraPar:"0.0",sqChao:"0.0",sqPar:"0.0",srChao:"0.0",srPar:"0.0"};
     }
+    // Banco que nao cabe: antes caia na conta da oitavada SEM banco, sem aviso
+    // (e, com o assento no fundo, a planta ainda desenhava o banco — medido
+    // em 24/09: 8 faixas).
+    if(gO?.erro)return invalido(gO.erro);
   }
 
   // ── TRIANGULAR ───────────────────────────────────────────────────────────

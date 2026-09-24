@@ -7,8 +7,8 @@ import FormaEditor, { MiniForma } from "./FormaEditor.jsx";
 import { MODELOS } from "./data/modelos.js";
 import { calcA } from "./motor/areas.js";
 import { bancoCfg, textoBanco, FORMATOS_COM_BANCO } from "./motor/banco.js";
-import { geometriaTriangular, verticesTriangulo } from "./motor/triangular.js";
-import { contornoOitavada, contornoCircular, medidasCirculo } from "./motor/formatos.js";
+import { geometriaTriangular, geometriaComBanco, verticesTriangulo } from "./motor/triangular.js";
+import { contornoOitavada, contornoCircular, medidasCirculo, bancoMaximoRedondo, erroBancoRedondo } from "./motor/formatos.js";
 import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho, encostarNoContorno } from "./motor/formas.js";
 import { ramalSistema, totaisHidraulica, ROTULO_SIS, SEM_TUBO, BARRA_M } from "./motor/hidraulica.js";
 import { retanguloPoli, circuloPoli, contornoComSpa, pontoNoContorno, caixaSpaNorm, bicosSpaNorm } from "./motor/spa.js";
@@ -78,7 +78,7 @@ import { classificarBase } from "./services/etapaAuto.js";
 import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
 import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, registrarTokenProvider, marcarOrcamentoEnviado, desfazerOrcamentoEnviado, pausarFollowup, CANAL } from "./services/wa.js";
 import { parseMoney } from "./services/dinheiro.js";
-import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento, precoMudou, resumoMedidas } from "./motor/orcamento.js";
+import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento, precoMudou, resumoMedidas, medidasParaEstoque } from "./motor/orcamento.js";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
 const FB_CFG = {
@@ -2496,10 +2496,11 @@ export default function App(){
   const autoStockOut=(q)=>{
     const d=q.data;if(!d||!d.items)return;
     const inc=d.items.filter(i=>i.on);
-    const pool=d.pool||{};
-    const L=parseFloat(pool.length)||0;const W=parseFloat(pool.width)||0;const D=parseFloat(pool.depth)||0;
-    const areaChao=L*W;const areaParede=2*(L+W)*D;const areaTotal=areaChao+areaParede;
-    const perim=2*(L+W);
+    // Área e perímetro da MESMA conta do orçamento (motor/orcamento.js) — antes
+    // era um retângulo C × L × profundidade, que zerava as paredes de quem só
+    // preencheu raso/fundo e ignorava spa, prainha, banco e formato.
+    // `semMedida`: medida que não fecha — pedir conferência, não sugerir zero.
+    const {areaTotal,areaChao,perim,semMedida}=medidasParaEstoque(d);
     const stamp=d.stamp||"";const vinilT=d.vinilT||"0,7mm";
     const thick=vinilT.includes("0,8")?"8":"7";
     const stkItems=[];
@@ -2509,6 +2510,8 @@ export default function App(){
       // Manta armada não tem estoque próprio no catálogo: sai da baixa sem
       // entrar na lista de "não encontrado", que é ruído.
       if(nm.includes("Manta Armada"))return;
+      // Vinil, manta e perfil saem da área/perímetro: sem medida, conferir.
+      if(semMedida&&(nm.includes("Vinil ACQUALINER")||nm.includes("Manta")||nm.includes("Perfil"))){unmatched.push({name:nm,reason:semMedida});return;}
       if(nm.includes("Vinil ACQUALINER")){
         const stampClean=stamp.replace(/\s+/g," ").trim();
         // Manta armada 1,5mm não tem estoque próprio no catálogo — não desconta vinil 0,7/0,8
@@ -2662,7 +2665,10 @@ export default function App(){
     // desenham pelo mesmo caminho das outras regioes rasas (prainha, spa),
     // sem cada renderizador aprender o que e banco.
     const bl=n(pool.bancoLarg),bp=n(pool.bancoProf);
-    const formas=pool.bancoOn&&bl>0&&bp>0
+    // Banco que não cabe NÃO vira desenho: a conta já recusou (ar.invalido) e,
+    // com o assento no fundo, a planta desenhava um anel de banco abaixo do
+    // piso (medido em 24/09: 48 faixas na redonda de 4 m).
+    const formas=pool.bancoOn&&bl>0&&bp>0&&!ar.invalido
       ?[{id:"banco",tipo:"banco",larguraM:bl,comprimentoM:bl,profundidadeM:bp}]
       :[];
     return {vertices:v,formas};
@@ -3351,7 +3357,24 @@ export default function App(){
                 </div>}
               </div>
               {(()=>{
-                if(["Triangular","Circular","Oitavada"].includes(poolFmt))return null;
+                // REDONDA e OITAVADA: diz até onde o banco cabe e, se não couber,
+                // o porquê — antes o banco sumia da conta sem aviso nenhum. (O
+                // triângulo já mostra isso no quadro dos lados.)
+                if(poolFmt==="Circular"||poolFmt==="Oitavada"){
+                  const n=v=>parseFloat(String(v??"").replace(",","."))||0;
+                  const D=ar.depthInfo?.avg||n(pool.depth),bl=n(pool.bancoLarg),bp=n(pool.bancoProf);
+                  const cont=poolFmt==="Oitavada"?contornoOitavada(n(pool.length),n(pool.width),n(pool.chanfro)):null;
+                  const erro=poolFmt==="Circular"
+                    ?erroBancoRedondo(n(pool.diametro),bl,bp,D)
+                    :(cont?geometriaComBanco({contorno:cont,prof:D,banco:{larg:bl,prof:bp}})?.erro:null)||null;
+                  const max=poolFmt==="Circular"
+                    ?bancoMaximoRedondo(n(pool.diametro))
+                    :(cont?geometriaComBanco({contorno:cont,prof:D})?.bancoMaximo:0)||0;
+                  return <div style={{fontSize:"8.5px",color:erro?"#b45309":t.textMuted,marginTop:"6px",lineHeight:1.45}}>
+                    {erro?`⚠ ${erro}`:`Profundidade = da BORDA da piscina até o assento. ${max>0?`O banco cabe até ${max.toFixed(2).replace(".",",")} m de largura. `:""}Deixe vazio para o banco ficar só ilustrativo, sem entrar no cálculo.`}
+                  </div>;
+                }
+                if(poolFmt==="Triangular")return null;
                 const bcfg=bancoCfg(pool,poolFmt,parseFloat(String(pool.length||"").replace(",","."))||0,parseFloat(String(pool.width||"").replace(",","."))||0,parseFloat(String(pool.depth||"").replace(",","."))||0);
                 return <div style={{fontSize:"8.5px",color:bcfg?.aviso?"#b45309":t.textMuted,marginTop:"6px",lineHeight:1.45}}>
                   {bcfg?.aviso

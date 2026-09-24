@@ -195,18 +195,27 @@ export function encostarNoContorno(pos, contornoNorm) {
   return saida;
 }
 
-export function regioesBanco(contorno, larguraM, profundidadeM) {
-  if (!(contorno?.length >= 3) || !(larguraM > 0)) return [];
+/**
+ * O piso que sobra ao recuar todas as paredes em `larguraM` — ou null quando
+ * o recuo não cabe.
+ *
+ * RECUO QUE PASSA DO PONTO: o offset não some — ele devolve um polígono
+ * FANTASMA (medido em 22/09/2026: no triângulo 4,10/3,10/2,80, recuar 1,20
+ * devolveu um "piso" de 0,64 m², com a mesma orientação e área menor, então
+ * nem sinal nem tamanho denunciam).
+ *
+ * A prova que funciona é a definição do recuo: todo ponto do piso tem de
+ * estar a pelo menos `larguraM` de TODAS as paredes. No fantasma, um vértice
+ * fica a 0,39 m da base.
+ *
+ * Serve ao DESENHO (regioesBanco) e à CONTA do banco em polígono qualquer
+ * (triangular.js): antes só o desenho fazia esta prova, e numa oitavada de
+ * 6 × 3 a conta aceitava banco de 2,00 m com 2,06 m² de piso inexistente.
+ */
+export function pisoRecuado(contorno, larguraM) {
+  if (!(contorno?.length >= 3) || !(larguraM > 0)) return null;
   const dentro = offsetPoligono(contorno, -larguraM);
-  // RECUO QUE PASSA DO PONTO: o offset não some — ele devolve um polígono
-  // FANTASMA (medido em 22/09/2026: no triângulo 4,10/3,10/2,80, recuar 1,20
-  // devolveu um "piso" de 0,64 m², com a mesma orientação e área menor, então
-  // nem sinal nem tamanho denunciam).
-  //
-  // A prova que funciona é a definição do recuo: todo ponto do piso tem de
-  // estar a pelo menos `larguraM` de TODAS as paredes. No fantasma, um vértice
-  // fica a 0,39 m da base.
-  if (!dentro || dentro.length !== contorno.length) return [];
+  if (!dentro || dentro.length !== contorno.length) return null;
   const distPonto = (pt, a2, b2) => {
     const dx = b2.x - a2.x, dy = b2.y - a2.y;
     const len2 = dx * dx + dy * dy || 1e-9;
@@ -217,7 +226,13 @@ export function regioesBanco(contorno, larguraM, profundidadeM) {
   const folga = Math.max(0.01, larguraM * 0.02);
   const cabe = dentro.every(q => contorno.every((a2, i) =>
     distPonto(q, a2, contorno[(i + 1) % contorno.length]) >= larguraM - folga));
-  if (!cabe || areaPoligono(dentro) < 1e-4) return [];
+  if (!cabe || areaPoligono(dentro) < 1e-4) return null;
+  return dentro;
+}
+
+export function regioesBanco(contorno, larguraM, profundidadeM) {
+  const dentro = pisoRecuado(contorno, larguraM);
+  if (!dentro) return [];
   return contorno.map((a, i) => {
     const b = contorno[(i + 1) % contorno.length];
     const bi = dentro[(i + 1) % dentro.length];

@@ -22,11 +22,29 @@
 //
 // Tudo em METROS. Sem pixel, sem React.
 
-import { offsetPoligono } from "./formas.js";
+import { offsetPoligono, pisoRecuado } from "./formas.js";
 import { MANTA, cortarPeca, cortarChao, encaixarBobinas } from "./manta.js";
 
 const arred = (v, c = 2) => Math.round(v * 10 ** c) / 10 ** c;
 const pf = (v) => parseFloat(String(v ?? "").replace(",", ".")) || 0;
+// Piso mínimo para o banco ainda ser banco (m²).
+const PISO_MINIMO = 0.01;
+
+/**
+ * Maior banco que ainda passa na prova do recuo (pisoRecuado + piso mínimo),
+ * arredondado para baixo. Bisseção entre 0 e área ÷ semiperímetro, que é teto
+ * em polígono convexo. Cada recuo custa ~0,01 ms; os 24 passos, ~0,2 ms.
+ */
+function maiorRecuo(poly, teto) {
+  if (!(teto > 0)) return 0;
+  const cabe = (x) => { const p = pisoRecuado(poly, x); return !!p && area(p) >= PISO_MINIMO; };
+  let lo = 0, hi = teto;
+  for (let i = 0; i < 24; i++) {
+    const meio = (lo + hi) / 2;
+    if (cabe(meio)) lo = meio; else hi = meio;
+  }
+  return Math.floor(lo * 100) / 100;
+}
 
 /** Os três lados fecham um triângulo? (desigualdade triangular) */
 export function trianguloValido(a, b, c) {
@@ -82,6 +100,18 @@ function medir(tri, D, banco) {
   if (!(tri?.length >= 3)) return null;
   const bl = banco ? pf(banco.larg) : 0;
   const bp = banco ? pf(banco.prof) : 0;
+  const n2 = (v) => v.toFixed(2).replace(".", ",");
+  // `medir` serve ao triângulo E a qualquer contorno (a oitavada entra por aqui
+  // com 8 lados). A mensagem dizia "neste triângulo ... os três bancos" para a
+  // oitavada também.
+  const ehTriangulo = tri.length === 3;
+  // BANCO MAIS FUNDO QUE A PISCINA: com as duas medidas digitadas, o assento
+  // ficaria no fundo ou abaixo dele. Antes o banco era descartado em silêncio
+  // e a conta saía como piscina sem banco — sem aviso nenhum na tela.
+  // (Sem profundidade da piscina quem avisa é a tela, não aqui.)
+  if (bl > 0 && bp > 0 && D > 0 && bp >= D) {
+    return { erro: `Banco com o assento a ${n2(bp)} m da borda numa piscina de ${n2(D)} m de profundidade: o assento ficaria no fundo. Confira a profundidade do banco.` };
+  }
   const temBanco = bl > 0 && bp > 0 && bp < D;
 
   const externos = lados(tri);
@@ -94,12 +124,27 @@ function medir(tri, D, banco) {
   // de 0,64 m² em vez de devolver nada — o orçamento sairia com piso que não
   // existe.
   const raioInscrito = area(tri) / (externos.reduce((s, L) => s + L, 0) / 2);
-  if (temBanco && bl >= raioInscrito) {
-    return { erro: `Banco de ${bl.toFixed(2).replace(".", ",")} m não cabe neste triângulo: acima de ${(Math.floor(raioInscrito * 100) / 100).toFixed(2).replace(".", ",")} m os três bancos se encontram e não sobra piso.` };
-  }
-  const dentro = temBanco ? offsetPoligono(tri, -bl) : tri;
-  if (temBanco && (!dentro || dentro.length < 3 || area(dentro) < 0.01)) {
-    return { erro: `Banco de ${bl.toFixed(2).replace(".", ",")} m não deixou piso utilizável.` };
+  // EM POLÍGONO QUALQUER (a oitavada), área ÷ semiperímetro NÃO é o limite —
+  // isso só vale para triângulo. Numa oitavada de 6 × 3 dá 2,04 m, numa
+  // piscina de 3 m de largura: medido em 24/09, bancos de 1,55 a 2,00 m viravam
+  // um piso de 0,31 a 2,06 m² que não existe, enquanto a planta já recusava
+  // desenhá-los. Ali a prova é o recuo de verdade (pisoRecuado, formas.js) — a
+  // mesma que a planta usa. O triângulo segue exatamente como era.
+  const bancoMaximo = ehTriangulo ? Math.floor(raioInscrito * 100) / 100 : maiorRecuo(tri, raioInscrito);
+  let dentro = tri;
+  if (temBanco && ehTriangulo) {
+    if (bl >= raioInscrito) {
+      return { erro: `Banco de ${n2(bl)} m não cabe neste triângulo: acima de ${n2(bancoMaximo)} m os três bancos se encontram e não sobra piso.` };
+    }
+    dentro = offsetPoligono(tri, -bl);
+    if (!dentro || dentro.length < 3 || area(dentro) < PISO_MINIMO) {
+      return { erro: `Banco de ${n2(bl)} m não deixou piso utilizável.` };
+    }
+  } else if (temBanco) {
+    dentro = pisoRecuado(tri, bl);
+    if (!dentro || area(dentro) < PISO_MINIMO) {
+      return { erro: `Banco de ${n2(bl)} m não cabe nesta piscina: acima de ${n2(bancoMaximo)} m os bancos das paredes se encontram.` };
+    }
   }
   const internos = temBanco ? lados(dentro) : externos;
   const alturaEspelho = temBanco ? arred(D - bp) : 0;
@@ -128,7 +173,7 @@ function medir(tri, D, banco) {
       total: arred(aFundo + aAssento + aEspelho + aCostas + aParede),
     },
     perimetro: arred(externos.reduce((s, L) => s + L, 0)),
-    bancoMaximo: arred(Math.floor(raioInscrito * 100) / 100),
+    bancoMaximo: arred(bancoMaximo),
     // o banco desloca água: o bloco ocupa a área do assento pela sua altura
     volume: arred(area(tri) * D - aAssento * alturaEspelho),
   };

@@ -45,6 +45,37 @@ export function contornoCircular(diametro, gomos = GOMOS_CIRCULO) {
   });
 }
 
+// Piso mínimo para o banco ainda ser banco — o mesmo limite do triângulo
+// (triangular.js: "não deixou piso utilizável").
+const PISO_MINIMO = 0.01; // m²
+
+/** Largura máxima de banco que ainda deixa piso nesta redonda (arredondada para baixo). */
+export function bancoMaximoRedondo(diametro) {
+  const r = (diametro || 0) / 2;
+  if (!(r > 0)) return 0;
+  return Math.max(0, Math.floor((r - Math.sqrt(PISO_MINIMO / Math.PI)) * 100) / 100);
+}
+
+/**
+ * O banco cabe nesta redonda? Devolve a mensagem de erro, ou null.
+ *
+ * `medidasCirculo` descarta o banco EM SILÊNCIO quando ele não cabe e a conta
+ * sai como piscina sem banco. Quem precisa avisar pergunta aqui antes.
+ * Banco sem as duas medidas é só desenho — não é erro, igual nos outros formatos.
+ */
+export function erroBancoRedondo(diametro, bancoLarg, bancoProf, prof) {
+  const r = (diametro || 0) / 2;
+  if (!(r > 0) || !(bancoLarg > 0) || !(bancoProf > 0)) return null;
+  const n = (v) => v.toFixed(2).replace(".", ",");
+  if (prof > 0 && bancoProf >= prof) {
+    return `Banco com o assento a ${n(bancoProf)} m da borda numa piscina de ${n(prof)} m de profundidade: o assento ficaria no fundo. Confira a profundidade do banco.`;
+  }
+  if (bancoLarg >= r || Math.PI * (r - bancoLarg) ** 2 < PISO_MINIMO) {
+    return `Banco de ${n(bancoLarg)} m não cabe nesta redonda de ${n(diametro)} m: acima de ${n(bancoMaximoRedondo(diametro))} m os bancos se encontram no meio e não sobra piso.`;
+  }
+  return null;
+}
+
 /** Área e perímetro EXATOS do círculo — o polígono é só para desenhar. */
 export function medidasCirculo(diametro, { bancoLarg = 0, bancoProf = 0, prof = 0 } = {}) {
   const r = (diametro || 0) / 2;
