@@ -9,6 +9,55 @@
 //
 // Tudo em METROS, com a origem no canto de cima à esquerda da caixa.
 
+import { verticesTriangulo } from "./triangular.js";
+
+/**
+ * O contorno que as VISTAS desenham — planta, isométrica, 3D e a planta do
+ * PDF — para os formatos que não são desenho livre: triângulo, redonda e
+ * oitavada com banco. Cada renderizador já sabe desenhar contorno qualquer
+ * (o caminho do desenho livre), e o banco entra como forma, igual prainha e spa.
+ *
+ * POR QUE MORA AQUI
+ * Isto vivia dentro do editor. A tela do PDF desenhava com `d.desenho`, que é
+ * vazio nesses formatos, e caía no retângulo 10 × 4 escondido do editor — foi
+ * o que o Marcos viu no PDF da triangular em 24/09. Uma função só para os dois.
+ *
+ * A OITAVADA só entra com banco: sem banco ela já desenha do jeito nativo e
+ * não há por que mexer em orçamento que existe.
+ *
+ * @param {object} [opts] { bancoCabe } — false quando a conta recusou o banco:
+ *   banco que não cabe não vira desenho
+ * @returns {null|{vertices, formas}}
+ */
+export function desenhoDoFormato(pool, poolFmt, { bancoCabe = true } = {}) {
+  const p = pool || {};
+  const n = (v) => parseFloat(String(v ?? "").replace(",", ".")) || 0;
+  const v = poolFmt === "Triangular" ? verticesTriangulo(n(p.triA), n(p.triB), n(p.triC))
+    : poolFmt === "Circular" ? contornoCircular(n(p.diametro))
+    : (poolFmt === "Oitavada" && p.bancoOn) ? contornoOitavada(n(p.length), n(p.width), n(p.chanfro))
+    : null;
+  if (!v) return null;
+  const bl = n(p.bancoLarg), bp = n(p.bancoProf);
+  const formas = p.bancoOn && bl > 0 && bp > 0 && bancoCabe
+    ? [{ id: "banco", tipo: "banco", larguraM: bl, comprimentoM: bl, profundidadeM: bp }]
+    : [];
+  return { vertices: v, formas };
+}
+
+/**
+ * A piscina que as vistas recebem. Com contorno próprio, comprimento e largura
+ * passam a ser os da CAIXA do contorno: o contorno é mapeado centrado e os
+ * bicos em fração de comprimento × largura — com as duas caixas diferentes, o
+ * bico certo aparecia fora da água (planta de 22/09/2026).
+ */
+export function piscinaDaVista(pool, desenhoFormato) {
+  if (!desenhoFormato) return pool;
+  const xs = desenhoFormato.vertices.map((q) => q.x), ys = desenhoFormato.vertices.map((q) => q.y);
+  // 2 casas: a medida vai para a tela, e "2.115633994361116m" não é medida.
+  const r2 = (v) => String(Math.round(v * 100) / 100);
+  return { ...pool, length: r2(Math.max(...xs) - Math.min(...xs)), width: r2(Math.max(...ys) - Math.min(...ys)) };
+}
+
 /**
  * Oitavada: retângulo com os quatro cantos cortados em 45°.
  * `chanfro` é o quanto se corta em cada direção a partir do canto.

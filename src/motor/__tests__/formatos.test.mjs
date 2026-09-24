@@ -1,6 +1,6 @@
 // Contornos de oitavada e circular, e a conta do círculo.
 // node src/motor/__tests__/formatos.test.mjs
-import { contornoOitavada, contornoCircular, medidasCirculo, GOMOS_CIRCULO, bancoMaximoRedondo, erroBancoRedondo } from "../formatos.js";
+import { contornoOitavada, contornoCircular, medidasCirculo, GOMOS_CIRCULO, bancoMaximoRedondo, erroBancoRedondo, desenhoDoFormato, piscinaDaVista } from "../formatos.js";
 import { geometriaComBanco, geometriaTriangular, planoTriangular } from "../triangular.js";
 import { areaPoligono, perimetroPoligono, regioesBanco } from "../formas.js";
 import { calcA } from "../areas.js";
@@ -158,6 +158,25 @@ const tFundo = calcA({ ...T, bancoOn: true, bancoLarg: "0.50", bancoProf: "1.20"
 eq("assento no fundo: área zero (antes sumia o banco em silêncio)", tFundo.tot, "0.0");
 eq("e diz por quê", /ficaria no fundo/.test(tFundo.invalido), true);
 eq("o triângulo continua falando de triângulo", /neste triângulo: acima de 0,86 m os três bancos/.test(geometriaTriangular({ a: 4.1, b: 3.1, c: 2.8, prof: 1, banco: { larg: 1.2, prof: 0.5 } }).erro), true);
+
+// ─── O QUE AS VISTAS DESENHAM (24/09) ─────────────────────────────────────
+// A tela do PDF desenhava com `d.desenho` (vazio nesses formatos) e caía no
+// retângulo 10 × 4 escondido do editor. Editor e PDF passam a chamar a mesma
+// função.
+console.log("\n— contorno das vistas: editor e PDF —");
+const EDT = { length: "10.00", width: "4.00", depth: "1.00", chanfro: "1", triA: "4.10", triB: "3.10", triC: "2.80", diametro: "4", bancoOn: false, bancoLarg: "", bancoProf: "" };
+eq("triangular desenha o triângulo", desenhoDoFormato(EDT, "Triangular").vertices.length, 3);
+eq("redonda desenha o círculo em gomos", desenhoDoFormato(EDT, "Circular").vertices.length, GOMOS_CIRCULO);
+eq("retangular segue no desenho nativo", desenhoDoFormato(EDT, "Retangular"), null);
+eq("oitavada SEM banco segue no desenho nativo", desenhoDoFormato(EDT, "Oitavada"), null);
+const oitB = desenhoDoFormato({ ...EDT, length: "6", width: "3", bancoOn: true, bancoLarg: "0.50", bancoProf: "0.50" }, "Oitavada");
+eq("oitavada COM banco vira contorno de 8 lados", oitB.vertices.length, 8);
+eq("e o banco vai junto como forma", oitB.formas.map(f => f.tipo), ["banco"]);
+eq("banco que a conta recusou não é desenhado", desenhoDoFormato({ ...EDT, bancoOn: true, bancoLarg: "0.50", bancoProf: "1.20" }, "Circular", { bancoCabe: false }).formas, []);
+eq("sem medida não há contorno (e a vista não inventa)", desenhoDoFormato({ ...EDT, diametro: "" }, "Circular"), null);
+const vistaTri = piscinaDaVista(EDT, desenhoDoFormato(EDT, "Triangular"));
+eq("a caixa da vista é a do triângulo: 4,10 × 2,12", [vistaTri.length, vistaTri.width], ["4.1", "2.12"]);
+eq("sem contorno próprio a piscina passa igual", piscinaDaVista(EDT, null), EDT);
 
 console.log(`\nformatos.test: ${ok} testes ok${falhas ? `, ${falhas} FALHA(S)` : ""}`);
 process.exit(falhas ? 1 : 0);

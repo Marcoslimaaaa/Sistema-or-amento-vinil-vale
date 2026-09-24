@@ -7,8 +7,8 @@ import FormaEditor, { MiniForma } from "./FormaEditor.jsx";
 import { MODELOS } from "./data/modelos.js";
 import { calcA } from "./motor/areas.js";
 import { bancoCfg, textoBanco, FORMATOS_COM_BANCO } from "./motor/banco.js";
-import { geometriaTriangular, geometriaComBanco, verticesTriangulo } from "./motor/triangular.js";
-import { contornoOitavada, contornoCircular, medidasCirculo, bancoMaximoRedondo, erroBancoRedondo } from "./motor/formatos.js";
+import { geometriaTriangular, geometriaComBanco } from "./motor/triangular.js";
+import { contornoOitavada, medidasCirculo, bancoMaximoRedondo, erroBancoRedondo, desenhoDoFormato, piscinaDaVista } from "./motor/formatos.js";
 import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho, encostarNoContorno } from "./motor/formas.js";
 import { ramalSistema, totaisHidraulica, ROTULO_SIS, SEM_TUBO, BARRA_M } from "./motor/hidraulica.js";
 import { retanguloPoli, circuloPoli, contornoComSpa, pontoNoContorno, caixaSpaNorm, bicosSpaNorm } from "./motor/spa.js";
@@ -1468,13 +1468,22 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue,aviso})=>{
 
           <Sec title="Detalhamento Técnico"><div style={{background:`linear-gradient(135deg,${lBg},#e8edf5)`,borderRadius:"10px",padding:"14px",border:"1px solid #dce3ee"}}>
             <div style={{display:"flex",gap:"12px",alignItems:"center",justifyContent:"center",flexWrap:"wrap",marginBottom:"6px"}}>
-              {[...(d.poolFmt==="Triangular"
-                ?[{v:(pool.triA||"—")+"m",l:"Lado A"},{v:(pool.triB||"—")+"m",l:"Lado B"},{v:(pool.triC||"—")+"m",l:"Lado C"},{v:pool.depth+"m",l:"Prof."}]
-                :[{v:pool.length+"m",l:"Comp."},{v:pool.width+"m",l:"Larg."},{v:pool.depth+"m",l:"Prof."}]),
+              {(()=>{
+                // Só raso e fundo preenchidos (24 orçamentos em aberto em 24/09): o
+                // PDF mostrava "m" sozinho em Prof. Aí vai raso–fundo.
+                const prof=String(pool.depth??"").trim()?pool.depth+"m"
+                  :(parseFloat(pool.depthMin)>0&&parseFloat(pool.depthMax)>0?`${pool.depthMin}–${pool.depthMax}m`:"—");
+                // A redonda é descrita pelo DIÂMETRO: comprimento e largura ficam
+                // escondidos no editor (nascem 10,00 × 4,00) e saíam no PDF.
+                return [...(d.poolFmt==="Triangular"
+                ?[{v:(pool.triA||"—")+"m",l:"Lado A"},{v:(pool.triB||"—")+"m",l:"Lado B"},{v:(pool.triC||"—")+"m",l:"Lado C"},{v:prof,l:"Prof."}]
+                :d.poolFmt==="Circular"
+                ?[{v:"Ø"+(pool.diametro||"—")+"m",l:"Diâmetro"},{v:prof,l:"Prof."}]
+                :[{v:pool.length+"m",l:"Comp."},{v:pool.width+"m",l:"Larg."},{v:prof,l:"Prof."}]),
                 // com manta armada o número que importa é a manta cortada, não a
                 // área da piscina — o material vem de bobina, não de bolsão
                 mantaQ?{v:mantaQ.areaCobravel.toFixed(2).replace(".",",")+"m²",l:"Manta cortada"}:{v:ar.tot+"m²",l:"Área Total"},
-                {v:ar.perim+"m",l:"Perímetro"},{v:ar.vol+"m³",l:"Volume"}].map((p,i)=><div key={i} style={{textAlign:"center",minWidth:"50px"}}><div style={{fontSize:"16px",fontWeight:"800",color:i===3?navy:blue}}>{p.v}</div><div style={{fontSize:"6.5px",textTransform:"uppercase",letterSpacing:".5px",color:"#777",fontWeight:"600"}}>{p.l}</div></div>)}
+                {v:ar.perim+"m",l:"Perímetro"},{v:ar.vol+"m³",l:"Volume"}].map((p,i)=><div key={i} style={{textAlign:"center",minWidth:"50px"}}><div style={{fontSize:"16px",fontWeight:"800",color:(p.l==="Área Total"||p.l==="Manta cortada")?navy:blue}}>{p.v}</div><div style={{fontSize:"6.5px",textTransform:"uppercase",letterSpacing:".5px",color:"#777",fontWeight:"600"}}>{p.l}</div></div>)})()}
             </div>
             <div style={{display:"flex",justifyContent:"center",gap:"8px",flexWrap:"wrap",fontSize:"8.5px"}}>
               <span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Formato:</b> {d.poolFmt}{d.poolFmt==="Com Spa"&&d.spaType?` (${[d.spaType.quadrado&&"Quadrado",d.spaType.redondo&&"Redondo"].filter(Boolean).join(" + ")||"—"})`:""}</span>
@@ -1535,16 +1544,22 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue,aviso})=>{
           const dFlipH=!!d.flipH,dFlipV=!!d.flipV;
           const dSpaType0=d.spaType||{redondo:false,quadrado:true};
           const dSpaType=(dFlipH||dFlipV)?{...dSpaType0,qCanto:espelhaCanto(dSpaType0.qCanto,dFlipH,dFlipV),rCanto:espelhaCanto(dSpaType0.rCanto,dFlipH,dFlipV)}:dSpaType0;
-          const dDesenho=(dFlipH||dFlipV)?espelharDesenho(d.desenho||null,dFlipH,dFlipV):(d.desenho||null);
+          // Contorno do formato (triângulo, redonda, oitavada com banco): a MESMA
+          // conta do editor (motor/formatos.js). Sem isto a planta do PDF saía
+          // com o retângulo 10 × 4 escondido — visto pelo Marcos em 24/09.
+          const dTri=desenhoDoFormato(d.pool||{},d.poolFmt,{bancoCabe:!ar.invalido});
+          const dBase=dTri||d.desenho||null;
+          const dDesenho=(dFlipH||dFlipV)?espelharDesenho(dBase,dFlipH,dFlipV):dBase;
+          const dPool=piscinaDaVista(d.pool||pool,dTri);
           const dLadoPrainha=ladoDaPrainha(d.desenho||null,d.poolFmt||"Retangular",d.extras||[]);
           return <div data-pdf-section="planta" style={{padding:"14px 28px",borderTop:"2px solid #e2e8f0"}}>
           <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"4px"}}><div style={{width:"3px",height:"14px",background:gold,borderRadius:"2px"}}/><div style={{fontSize:"11px",fontWeight:"700",color:navy,textTransform:"uppercase",letterSpacing:".5px"}}>Planta Hidráulica</div></div>
           <div style={{fontSize:"8px",color:"#999",fontStyle:"italic",marginBottom:"10px",marginLeft:"9px"}}>* Planta meramente ilustrativa, podendo sofrer alterações na execução.</div>
-          {inc2d&&<PlantaView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||DISPS_PADRAO} customPos={d.customPos||{}} setCustomPos={()=>{}} dragging={null} setDragging={()=>{}} dark={false} poolFmt={d.poolFmt||"Retangular"} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc",stampBg:"#e2e8f0"}} invertSide={d.invertSide||false} wMode={d.wMode||"regular"} walls={d.walls||[]} spaType={dSpaType} extras={d.extras||[]} desenho={dDesenho} flipH={dFlipH} flipV={dFlipV} ladoPrainha={dLadoPrainha} raloQuenteParede={!!d.raloQuenteParede} devHeights={d.devHeights||{}}/>}
+          {inc2d&&<PlantaView pool={dPool} spa={d.spa||spa} disps={d.disps||DISPS_PADRAO} customPos={d.customPos||{}} setCustomPos={()=>{}} dragging={null} setDragging={()=>{}} dark={false} poolFmt={d.poolFmt||"Retangular"} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc",stampBg:"#e2e8f0"}} invertSide={d.invertSide||false} wMode={d.wMode||"regular"} walls={d.walls||[]} spaType={dSpaType} extras={d.extras||[]} desenho={dDesenho} flipH={dFlipH} flipV={dFlipV} ladoPrainha={dLadoPrainha} raloQuenteParede={!!d.raloQuenteParede} devHeights={d.devHeights||{}}/>}
           {incIso&&<>
             {inc2d&&<div style={{fontSize:"9px",fontWeight:"600",color:"#718096",marginTop:"12px",marginBottom:"4px",textAlign:"center"}}>Vista Isométrica</div>}
             <div style={{width:inc2d?"62%":"78%",margin:"0 auto"}}>
-              <IsometricView pool={d.pool||pool} spa={d.spa||spa} disps={d.disps||DISPS_PADRAO} dark={false} t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc"}} poolFmt={d.poolFmt||"Retangular"} clientName={d.client?.name||""} autoPositions={autoPositions} customPos={d.customPos||{}} invertSide={d.invertSide||false} devHeights={d.devHeights||{}} spaType={dSpaType} extras={d.extras||[]} desenho={dDesenho} flipH={dFlipH} flipV={dFlipV} ladoPrainha={dLadoPrainha} raloQuenteParede={!!d.raloQuenteParede}/>
+              <IsometricView pool={dPool} spa={d.spa||spa} disps={d.disps||DISPS_PADRAO} dark={false} t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc"}} poolFmt={d.poolFmt||"Retangular"} clientName={d.client?.name||""} autoPositions={autoPositions} customPos={d.customPos||{}} invertSide={d.invertSide||false} devHeights={d.devHeights||{}} spaType={dSpaType} extras={d.extras||[]} desenho={dDesenho} flipH={dFlipH} flipV={dFlipV} ladoPrainha={dLadoPrainha} raloQuenteParede={!!d.raloQuenteParede}/>
             </div>
           </>}
         </div>;})()}
@@ -2647,45 +2662,16 @@ export default function App(){
   // o editor de forma e o cálculo de área continuam no referencial original —
   // espelho é isometria, não muda área, perímetro nem volume.
   const ladoPrainha=ladoDaPrainha(desenho,poolFmt,extras);
-  // TRIANGULAR: em vez de um formato novo em cada renderizador, o triangulo
-  // vira um CONTORNO, e a planta, o 3D, a isometrica e a hidraulica ja sabem
-  // desenhar contorno qualquer (caminho do desenho livre). O banco entra na
-  // fase 2, como regiao de profundidade.
-  const desenhoTri=(()=>{
-    const n=v=>parseFloat(String(v??"").replace(",","."))||0;
-    // Contorno proprio por formato. A OITAVADA so entra aqui quando tem banco:
-    // sem banco ela ja desenha do jeito nativo e nao ha motivo para mexer em
-    // orcamento que existe.
-    const v=poolFmt==="Triangular"?verticesTriangulo(n(pool.triA),n(pool.triB),n(pool.triC))
-      :poolFmt==="Circular"?contornoCircular(n(pool.diametro))
-      :(poolFmt==="Oitavada"&&pool.bancoOn)?contornoOitavada(n(pool.length),n(pool.width),n(pool.chanfro))
-      :null;
-    if(!v)return null;
-    // O BANCO VIRA FORMA do desenho: assim a planta, a isometrica e o 3D o
-    // desenham pelo mesmo caminho das outras regioes rasas (prainha, spa),
-    // sem cada renderizador aprender o que e banco.
-    const bl=n(pool.bancoLarg),bp=n(pool.bancoProf);
-    // Banco que não cabe NÃO vira desenho: a conta já recusou (ar.invalido) e,
-    // com o assento no fundo, a planta desenhava um anel de banco abaixo do
-    // piso (medido em 24/09: 48 faixas na redonda de 4 m).
-    const formas=pool.bancoOn&&bl>0&&bp>0&&!ar.invalido
-      ?[{id:"banco",tipo:"banco",larguraM:bl,comprimentoM:bl,profundidadeM:bp}]
-      :[];
-    return {vertices:v,formas};
-  })();
+  // TRIANGULAR, REDONDA e OITAVADA COM BANCO: em vez de um formato novo em cada
+  // renderizador, a piscina vira um CONTORNO (com o banco como forma), e a
+  // planta, o 3D, a isométrica e a hidráulica já sabem desenhar contorno
+  // qualquer. A conta mora em motor/formatos.js e é a MESMA da tela do PDF —
+  // antes só o editor a fazia, e o PDF desenhava o retângulo 10 × 4 escondido.
+  // Banco que não cabe (ar.invalido) não vira desenho.
+  const desenhoTri=desenhoDoFormato(pool,poolFmt,{bancoCabe:!ar.invalido});
   const desenhoBase=desenhoTri||desenho;
-  // A CAIXA DA PISCINA TEM DE SER A DO TRIANGULO. O contorno e desenhado por um
-  // mapeamento proprio (efMap, uniforme e centrado) e os bicos por fracao da
-  // caixa comprimento x largura. Com as duas diferentes, o bico certo aparece
-  // fora da agua — foi o que a planta mostrou em 22/09/2026. Igualando a caixa,
-  // os dois mapeamentos viram um so.
-  const poolV=(()=>{
-    if(!desenhoTri)return pool;
-    const xs=desenhoTri.vertices.map(p=>p.x),ys=desenhoTri.vertices.map(p=>p.y);
-    // 2 casas: a medida vai para a tela e "2.115633994361116m" nao e medida.
-    const r2=v=>String(Math.round(v*100)/100);
-    return {...pool,length:r2(Math.max(...xs)-Math.min(...xs)),width:r2(Math.max(...ys)-Math.min(...ys))};
-  })();
+  // A caixa da piscina acompanha o contorno (ver piscinaDaVista).
+  const poolV=piscinaDaVista(pool,desenhoTri);
   const desenhoV=flipH||flipV?espelharDesenho(desenhoBase,flipH,flipV):desenhoBase;
   const spaTypeV=flipH||flipV?{...spaType,qCanto:espelhaCanto(spaType.qCanto,flipH,flipV),rCanto:espelhaCanto(spaType.rCanto,flipH,flipV)}:spaType;
   const lowStockCount=Object.entries(stk).filter(([,s])=>s.qty>0&&s.qty<=(s.minQty||2)).length;
