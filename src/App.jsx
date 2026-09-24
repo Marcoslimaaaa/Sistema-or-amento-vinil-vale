@@ -2979,7 +2979,15 @@ export default function App(){
   const avisos=<Avisos chunkQuebrado={chunkQuebrado} onAtualizar={atualizarApp} rascunho={view==="editor"?rascunho:null} onRecuperar={()=>recuperarRascunho(rascunho)} onDescartar={descartarRascunho}/>;
 
   const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setShowFormaEd(false);setEditingId(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
-  const delQ=id=>{const nh=hist.filter(q=>q.id!==id);setHist(nh);saveLS(nh);delFS(id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500)};
+  // Excluir apaga do aparelho E da nuvem, sem lixeira. O 🗑 fica colado no
+  // "Clonar" e, no celular, um toque errado perdia o orçamento do cliente para
+  // sempre — era a única ação destrutiva do sistema sem pergunta (zerar o
+  // estoque já perguntava).
+  const delQ=q=>{
+    const quem=q.cN||"cliente sem nome",valor=parseFloat(q.tot)||0;
+    if(!window.confirm(`Excluir o orçamento de ${quem}${valor?` (${fmt(valor)})`:""}?\n\nEle some deste aparelho e da nuvem, e não dá para desfazer.`))return;
+    const nh=hist.filter(h=>h.id!==q.id);setHist(nh);saveLS(nh);delFS(q.id);setFbMsg("Excluído!");setTimeout(()=>setFbMsg(""),1500);
+  };
   const movePipe=(id,stage)=>{
     if(stage==="perdido"){const q=hist.find(h=>h.id===id);if(q){setLostReasonModal({q,days:getDaysSince(q.id),auto:false});return;}}
     // stageSince marca a entrada na etapa — base do "Xd nesta etapa" no card e
@@ -3863,7 +3871,7 @@ export default function App(){
                   <Btn onClick={()=>toBack(q.id)} style={{fontSize:"8px",padding:"3px 5px",background:"#f59e0b",color:"#fff",border:"none"}}>↩ Lead</Btn></>}
                   <Btn onClick={()=>load(q)} style={{fontSize:"8px",padding:"3px 5px",background:blue,color:"#fff",border:"none"}}>Abrir</Btn>
                   <Btn onClick={()=>cloneQ(q)} style={{fontSize:"8px",padding:"3px 5px",background:"#8b5cf6",color:"#fff",border:"none"}}>Clonar</Btn>
-                  <button onClick={e=>{e.stopPropagation();delQ(q.id)}} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>🗑</button>
+                  <button title="Excluir orçamento" onClick={e=>{e.stopPropagation();delQ(q)}} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>🗑</button>
                 </div>
               </div>;
             })}
