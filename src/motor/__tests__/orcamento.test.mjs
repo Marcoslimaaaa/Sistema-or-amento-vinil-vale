@@ -1,6 +1,6 @@
 // Preço do orçamento — a conta única do editor e do PDF.
 // node src/motor/__tests__/orcamento.test.mjs
-import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento, spaDaManta } from "../orcamento.js";
+import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento, spaDaManta, totalDeHoje, precoMudou } from "../orcamento.js";
 import { calcA } from "../areas.js";
 
 let ok = 0, falhas = 0;
@@ -68,6 +68,23 @@ eq("entrada + saldo = total", c0.ent + c0.bal, 5555.1);
 const cv = condicoesPagamento(1000, undefined);
 eq("sem condições: entrada padrão de 50%", cv.ent, 500);
 eq("sem parcelas não divide por zero", condicoesPagamento(1000, { noFee: 0 }).inst, 1000);
+
+console.log("\n— preço que mudou desde que foi salvo —");
+const dSalvo = { pool: { length: "6", width: "3", depth: "1.40" }, poolFmt: "Retangular", items: itens, mo: "", totOv: "" };
+const hoje = totalDeHoje(dSalvo, false);
+perto("totalDeHoje = a mesma conta do editor", hoje, t1.total);
+eq("salvo pelo mesmo valor: nada a avisar", precoMudou({ tot: String(hoje), data: dSalvo }, false), null);
+eq("diferença de centavos não é aviso", precoMudou({ tot: String(hoje + 0.4), data: dSalvo }, false), null);
+const mudou = precoMudou({ tot: "3000", data: dSalvo }, false);
+eq("salvo por outro valor: avisa com os dois números", [mudou.salvo, Math.round(mudou.agora * 100) / 100], [3000, Math.round(hoje * 100) / 100]);
+eq("registro manual (sem cálculo) não avisa", precoMudou({ tot: "10590", manual: true, data: { items: [] } }, false), null);
+eq("sem tot gravado não avisa", precoMudou({ data: dSalvo }, false), null);
+// Com valor final digitado o total não depende do motor: não há o que mudar.
+eq("valor final gravado segura o preço", precoMudou({ tot: "18734.486", data: { ...dSalvo, totOv: "18734.486" } }, false), null);
+// Manta armada: a regra de cobrança mudou (manta cortada, não superfície).
+const dManta = { ...dSalvo, vinilT: "1,5mm", items: [{ id: 1, c: 100, m: 0, on: true, un: "m²" }] };
+const mManta = precoMudou({ tot: "4320", data: dManta }, true); // 43,2 m² de superfície × 100
+eq("manta salva pela superfície: avisa que hoje sai pela manta cortada", mManta !== null && mManta.agora > mManta.salvo, true);
 
 console.log(`\norcamento.test: ${ok} testes ok${falhas ? `, ${falhas} FALHA(S)` : ""}`);
 process.exit(falhas ? 1 : 0);

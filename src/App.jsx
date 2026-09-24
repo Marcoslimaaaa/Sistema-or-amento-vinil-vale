@@ -78,7 +78,7 @@ import { classificarBase } from "./services/etapaAuto.js";
 import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
 import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, registrarTokenProvider, marcarOrcamentoEnviado, desfazerOrcamentoEnviado, pausarFollowup, CANAL } from "./services/wa.js";
 import { parseMoney } from "./services/dinheiro.js";
-import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento } from "./motor/orcamento.js";
+import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento, precoMudou } from "./motor/orcamento.js";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
 const FB_CFG = {
@@ -1260,7 +1260,7 @@ const DarkToggle=({dark,onToggle})=><button onClick={onToggle} aria-label={dark?
 // O plano de corte da manta, as quantidades e o total moram em
 // motor/orcamento.js — a mesma conta para o editor e para este PDF.
 
-const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
+const QP=({d,onBack,onSave,autoPositions,onEntregue,aviso})=>{
   const inc=(d.items||[]).filter(i=>i.on);
   const pool=d.pool||{length:"0",width:"0",depth:"0"};
   const spa=d.spa||{on:false,length:"0",width:"0",depth:"0"};
@@ -1434,6 +1434,7 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue})=>{
       </div>
       <div style={{textAlign:"center",fontSize:"9.5px",color:"#64748b",marginBottom:"10px",background:"#fff",padding:"8px 14px",borderRadius:"8px",border:"1px solid #e2e8f0"}}>💡 <b>Celular:</b> toca em "Baixar PDF" → compartilha ou salva diretamente o PDF</div>
       {ar.invalido&&<div style={{textAlign:"center",fontSize:"11px",fontWeight:"700",color:"#b91c1c",marginBottom:"10px",background:"#fef2f2",padding:"8px 14px",borderRadius:"8px",border:"1px solid #fecaca"}}>⚠ {ar.invalido} — o PDF fica bloqueado até corrigir a medida na aba Piscina.</div>}
+      {aviso&&<div style={{textAlign:"center",fontSize:"11px",fontWeight:"700",color:"#92400e",marginBottom:"10px",background:"#fffbeb",padding:"8px 14px",borderRadius:"8px",border:"1px solid #f59e0b"}}>⚠ Este orçamento foi salvo por {fmt(aviso.salvo)} — este PDF sai com {fmt(total)}, pela conta de hoje. Para manter o valor salvo, volte ao editor.</div>}
 
       <div id="pq" style={{fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif",color:"#1a1a2e",fontSize:"10px",lineHeight:"1.5",maxWidth:"780px",margin:"0 auto",background:"#fff",borderRadius:"8px",boxShadow:"0 4px 20px rgba(0,0,0,.1)",overflow:"hidden"}}>
         {/* Header */}
@@ -1758,6 +1759,9 @@ export default function App(){
   const [pay,setPay]=useState(IPAY);
   const [mo,setMO]=useState("");
   const [totOv,setTO]=useState("");
+  // Preço que mudou desde que o orçamento foi salvo ({id,salvo,agora}). Só
+  // avisa — quem decide se mantém o valor antigo é o Marcos (motor/orcamento.js).
+  const [avisoPreco,setAvisoPreco]=useState(null);
   const [hist,setHist]=useState(()=>{try{const s=localStorage.getItem("vv_hist");return s?JSON.parse(s):[];}catch{return[]}});
   const [histLoaded,setHL]=useState(false);
   const [user,setUser]=useState(null);
@@ -2707,7 +2711,7 @@ export default function App(){
     // cálculo zera em vez de cobrar o retângulo escondido — e não se salva
     // orçamento com área zero.
     if(ar.invalido){setFbMsg("⚠ "+ar.invalido);setTimeout(()=>setFbMsg(""),5000);return;}
-    setFieldErrors({});
+    setFieldErrors({});setAvisoPreco(null);
     const d=gData();
     // Rascunho do Vini que virou orcamento: registra se foi aproveitado como
     // veio ou se precisou de correcao. E a regua do plano — se o Marcos
@@ -2747,7 +2751,7 @@ export default function App(){
   };
   const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){autoStockOut(item);syncFinancas(item);}setFbMsg("✅ Cliente fechado!");setTimeout(()=>setFbMsg(""),3000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)syncFinancas(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
-  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setMantaAproveita(!!d.mantaAproveita);setShowFormaEd(false);setEditingId(q.id);setTab("cliente");setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
+  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setMantaAproveita(!!d.mantaAproveita);setShowFormaEd(false);setEditingId(q.id);setTab("cliente");setAvisoPreco((()=>{const m=precoMudou(q,!!vinilOpt(d.vinilT).armada);return m?{id:q.id,...m}:null})());setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
   // ═══ RASCUNHO DO VINI ═══
   // Abre no editor o que o bot preencheu pela conversa. O tipo de servico
   // refaz itens, garantia, condicoes e prazo pelo mesmo caminho do botao de
@@ -2763,7 +2767,7 @@ export default function App(){
     setPool(p=>({...p,...e.pool}));
     if(e.poolFmt)setPF(e.poolFmt);
     setDesenho(null);setWM("regular");setWalls([]);setExtras([]);setMantaAproveita(false);
-    setEditingId(null);setTab("cliente");
+    setEditingId(null);setAvisoPreco(null);setTab("cliente");
     setRascunhoAtivo({id:r.id,aplicado:{svcType:e.svcType,poolFmt:e.poolFmt,client:e.client,pool:{...e.pool}}});
     setFbMsg("Rascunho do Vini carregado — confira antes de salvar");setTimeout(()=>setFbMsg(""),3500);
   };
@@ -2846,7 +2850,7 @@ export default function App(){
   const atualizarApp=()=>{window.location.reload()};
   const avisos=<Avisos chunkQuebrado={chunkQuebrado} onAtualizar={atualizarApp} rascunho={view==="editor"?rascunho:null} onRecuperar={()=>recuperarRascunho(rascunho)} onDescartar={descartarRascunho}/>;
 
-  const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setMantaAproveita(!!d.mantaAproveita);setShowFormaEd(false);setEditingId(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
+  const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setMantaAproveita(!!d.mantaAproveita);setShowFormaEd(false);setEditingId(null);setAvisoPreco(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
   // Excluir apaga do aparelho E da nuvem, sem lixeira. O 🗑 fica colado no
   // "Clonar" e, no celular, um toque errado perdia o orçamento do cliente para
   // sempre — era a única ação destrutiva do sistema sem pergunta (zerar o
@@ -3160,7 +3164,7 @@ export default function App(){
 
 
 
-  if(view==="quote")return <>{avisos}<QP d={gData()} autoPositions={autoPositions} onBack={()=>setView("editor")} onEntregue={(origem)=>{if(editingId)marcarEntregueNoFunil(editingId,origem)}} onSave={()=>{const d=gData();if(editingId){const existing=hist.find(q=>q.id===editingId);const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:poolFmt==="Triangular"?`${pool.triA}/${pool.triB}/${pool.triC}x${pool.depth}`:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);}else{const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:poolFmt==="Triangular"?`${pool.triA}/${pool.triB}/${pool.triC}x${pool.depth}`:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);}}}/></>;
+  if(view==="quote")return <>{avisos}<QP d={gData()} aviso={avisoPreco&&avisoPreco.id===editingId?avisoPreco:null} autoPositions={autoPositions} onBack={()=>setView("editor")} onEntregue={(origem)=>{if(editingId)marcarEntregueNoFunil(editingId,origem)}} onSave={()=>{setAvisoPreco(null);const d=gData();if(editingId){const existing=hist.find(q=>q.id===editingId);const updated={...existing,data:d,cN:client.name,cC:client.city,tot:String(total),ps:poolFmt==="Triangular"?`${pool.triA}/${pool.triB}/${pool.triC}x${pool.depth}`:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp};const nh=hist.map(q=>q.id===editingId?updated:q);setHist(nh);saveLS(nh);saveFS(updated);}else{const item={id:Date.now(),date:new Date().toLocaleDateString("pt-BR"),data:d,cN:client.name,cC:client.city,tot:String(total),ps:poolFmt==="Triangular"?`${pool.triA}/${pool.triB}/${pool.triC}x${pool.depth}`:`${pool.length}x${pool.width}x${pool.depth}`,type:svcType,stamp,status:"lead"};const nh=[item,...hist];setHist(nh);saveLS(nh);saveFS(item);setEditingId(item.id);}}}/></>;
 
   const g2={display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"};// use className="vv-g2" for responsive
 
@@ -3189,7 +3193,7 @@ export default function App(){
 
         {/* Service type */}
         <div style={{padding:"12px 12px 8px",display:"flex",flexDirection:"column",gap:"4px"}}>
-          {SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(aplicarItensVinil(mkItems(sv.id),!!vinilOpt(vinilT).armada));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20");setEditingId(null);setSidebarOpen(false);}} style={{padding:"8px 12px",borderRadius:"6px",border:"none",background:svcType===sv.id?"rgba(45,212,191,.13)":"transparent",color:svcType===sv.id?aguaBright:"rgba(255,255,255,.75)",fontSize:"11.5px",fontWeight:svcType===sv.id?"700":"400",fontFamily:"inherit",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:"8px"}}><sv.lucide size={14}/> {sv.label}</button>)}
+          {SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(aplicarItensVinil(mkItems(sv.id),!!vinilOpt(vinilT).armada));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20");setEditingId(null);setAvisoPreco(null);setSidebarOpen(false);}} style={{padding:"8px 12px",borderRadius:"6px",border:"none",background:svcType===sv.id?"rgba(45,212,191,.13)":"transparent",color:svcType===sv.id?aguaBright:"rgba(255,255,255,.75)",fontSize:"11.5px",fontWeight:svcType===sv.id?"700":"400",fontFamily:"inherit",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:"8px"}}><sv.lucide size={14}/> {sv.label}</button>)}
         </div>
 
         {/* Nav items */}
@@ -3232,6 +3236,17 @@ export default function App(){
 
         {/* CONTENT */}
         <div className={"vv-content"+(EDITOR_TABS.includes(tab)?" pad-taxi":"")+(tab==="whatsapp"?" vv-wide":"")}>
+        {/* PREÇO QUE MUDOU desde que o orçamento foi salvo (motor/orcamento.js,
+            precoMudou). Não mexe em número nenhum sozinho: mostra os dois e
+            deixa escolher — "Manter" grava o salvo no valor final. */}
+        {EDITOR_TABS.includes(tab)&&avisoPreco&&avisoPreco.id===editingId&&<div style={{background:"#fffbeb",border:"1px solid #f59e0b",borderRadius:"8px",padding:"10px 12px",marginBottom:"12px",fontSize:"11.5px",color:"#78350f",lineHeight:1.5}}>
+          <div>⚠ Este orçamento foi salvo por <b>{fmt(avisoPreco.salvo)}</b>. Com a conta de hoje ele dá <b>{fmt(avisoPreco.agora)}</b> ({avisoPreco.agora>avisoPreco.salvo?"+":"−"}{fmt(Math.abs(avisoPreco.agora-avisoPreco.salvo))}).</div>
+          <div style={{fontSize:"10.5px",marginTop:"2px"}}>Se o cliente já recebeu o PDF, mantenha o valor salvo — senão o próximo PDF sai com outro preço.</div>
+          <div style={{display:"flex",gap:"6px",marginTop:"8px",flexWrap:"wrap"}}>
+            <button onClick={()=>{setTO(avisoPreco.salvo.toFixed(2).replace(".",","));setAvisoPreco(null);setFbMsg("Valor salvo mantido no orçamento");setTimeout(()=>setFbMsg(""),2500)}} style={{padding:"6px 12px",borderRadius:"6px",border:"none",background:"#b45309",color:"#fff",fontSize:"11px",fontWeight:"700",cursor:"pointer",fontFamily:"inherit"}}>Manter {fmt(avisoPreco.salvo)}</button>
+            <button onClick={()=>setAvisoPreco(null)} style={{padding:"6px 12px",borderRadius:"6px",border:"1px solid #f59e0b",background:"transparent",color:"#78350f",fontSize:"11px",fontWeight:"700",cursor:"pointer",fontFamily:"inherit"}}>Usar o valor de hoje</button>
+          </div>
+        </div>}
         {/* STEPPER do orçamento */}
         {EDITOR_TABS.includes(tab)&&<div className="vv-stepper">
           {NAV[0].items.map((n,i)=><button key={n.id} className={"vv-step"+(tab===n.id?" active":"")} onClick={()=>setTab(n.id)}>{i+1}. {n.label}</button>)}

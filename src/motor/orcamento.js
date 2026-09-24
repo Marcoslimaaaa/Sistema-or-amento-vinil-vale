@@ -20,6 +20,7 @@ import { bancoCfg } from "./banco.js";
 import { planoTriangular } from "./triangular.js";
 import { contornoOitavada } from "./formatos.js";
 import { planoCircular } from "./circular.js";
+import { calcA } from "./areas.js";
 import { parseMoney } from "../services/dinheiro.js";
 
 const num = (v) => parseFloat(String(v ?? "").replace(",", ".")) || 0;
@@ -140,6 +141,43 @@ export function totalDoOrcamento({ items, ar, manta, mo, totOv }) {
   const venda = inc.reduce((s, i) => s + q(i) * (i.c || 0) * (1 + (i.m || 0) / 100), 0);
   const calculado = venda + parseMoney(mo);
   return { custo, venda, calculado, total: parseMoney(totOv) || calculado };
+}
+
+/**
+ * O total que um orçamento GRAVADO dá hoje, com o motor atual — o mesmo
+ * caminho do PDF. `armada` vem de quem conhece o catálogo de vinil (App.jsx).
+ */
+export function totalDeHoje(d, armada) {
+  const pool = d.pool || { length: "0", width: "0", depth: "0" };
+  const spa = d.spa || { on: false, length: "0", width: "0", depth: "0" };
+  const ar = calcA(pool, spa, d.wMode || "regular", d.walls || [], d.poolFmt, d.extras || [], d.spaType, d.desenho);
+  const manta = armada
+    ? planoMantaDoOrcamento({ pool, poolFmt: d.poolFmt, spa, wMode: d.wMode || "regular", desenho: d.desenho }, ar, { aproveitarSobra: !!d.mantaAproveita })
+    : null;
+  return totalDoOrcamento({ items: d.items, ar, manta, mo: d.mo, totOv: d.totOv }).total;
+}
+
+/**
+ * O preço deste orçamento mudou desde que foi salvo?
+ *
+ * POR QUE EXISTE
+ * Orçamento salvo não congela o preço: reabrir recalcula com o motor de hoje.
+ * Medido em 24/09 renderizando o PDF dos 208 orçamentos: 12 dariam outro valor
+ * se o PDF fosse gerado de novo (de −R$ 82 a +R$ 6.179) — 8 deles de manta
+ * armada de agosto, porque a manta passou a ser cobrada pelo que sai da bobina
+ * e não pela superfície. Sete estão em orçamento ou negociação. Quem já mandou
+ * PDF para o cliente não pode ver o número mudar sozinho — mas a regra nova
+ * pode estar certa para quem ainda vai receber. Então não se decide aqui: só
+ * se avisa.
+ *
+ * @returns {{salvo:number, agora:number}|null}  null quando não há o que avisar
+ */
+export function precoMudou(q, armada) {
+  if (!q?.data?.items || q.manual) return null; // registro manual não tem cálculo
+  const salvo = parseFloat(q.tot) || 0;
+  if (!(salvo > 0)) return null;
+  const agora = totalDeHoje(q.data, armada);
+  return Math.abs(agora - salvo) >= 1 ? { salvo, agora } : null;
 }
 
 /**
