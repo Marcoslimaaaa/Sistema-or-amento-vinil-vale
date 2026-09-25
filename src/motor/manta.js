@@ -446,7 +446,7 @@ export function facesComPrainha(comp, larg, prof, praiComp, praiProf, opcoes = {
     { nome: "Lateral 1 · fundo", comp: fundo, prof },
     { nome: "Lateral 2 · fundo", comp: fundo, prof },
     { nome: "Testeira funda", comp: larg, prof },
-    { nome: "Degrau da prainha", comp: larg, prof: prof - praiProf },
+    { nome: "Espelho da prainha", comp: larg, prof: prof - praiProf },
     { nome: "Lateral 1 · prainha", comp: praiComp, prof: praiProf, grupo: corrida },
     { nome: "Testeira rasa", comp: larg, prof: praiProf, grupo: corrida },
     { nome: "Lateral 2 · prainha", comp: praiComp, prof: praiProf, grupo: corrida },

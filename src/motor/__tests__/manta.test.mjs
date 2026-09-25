@@ -80,7 +80,7 @@ console.log("\ncortarParedes — 6,00 × 3,50 × 1,40 com prainha de 1,00 a 0,50
   ok("5 peças, com a prainha em corrida", p.qtdPecas===5, p.qtdPecas, 5);
   ok("lateral funda = 5,10",    perto(nome("Lateral 1 · fundo").comp,5.10),     nome("Lateral 1 · fundo").comp,     5.10);
   ok("testeira funda = 3,60",   perto(nome("Testeira funda").comp,3.60),        nome("Testeira funda").comp,        3.60);
-  ok("espelho tem 90 cm de face", perto(nome("Degrau da prainha").faceProf,0.90), nome("Degrau da prainha").faceProf, 0.90);
+  ok("espelho tem 90 cm de face", perto(nome("Espelho da prainha").faceProf,0.90), nome("Espelho da prainha").faceProf, 0.90);
   // 2×5,10 + 3,60 + 3,60 + 5,60 = 23,00
   ok("total = 23,00 m lineares", perto(p.metrosLineares,23.00), p.metrosLineares, 23.00);
 }

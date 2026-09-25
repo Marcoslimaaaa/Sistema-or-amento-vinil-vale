@@ -3563,6 +3563,34 @@ export default function App(){
                 <div style={{fontSize:"9px",color:t.textMuted}}>bobina 1,55 × 25 m</div>
               </div>
 
+              {/* PRAINHA QUE NAO ENTROU NO CORTE — achado em 25/09/2026.
+                  Um orcamento de 6,00x3,00x1,40 com prainha de 1,00 saiu com
+                  47,18 m2 de manta em vez de 53,54: o plano recebeu praiComp=0
+                  (motor/orcamento.js:64) e cortou a piscina como lisa — 4
+                  paredes inteiras e o chao numa regiao so. A tela nao dizia
+                  nada, e a planta desenha a prainha mesmo sem medida
+                  (prainhaCfg cai no default de 25%). Sao 6,36 m2 de manta e
+                  5,09 m de solda a menos no orcamento. */}
+              {(()=>{
+                const pf=v=>parseFloat(String(v??"").replace(",","."))||0;
+                const cPrai=pf(pool.prainhaComp),cL=pf(pool.length);
+                const semMedida=poolFmt==="Com prainha"&&!(cPrai>0&&cPrai<cL);
+                // medida da prainha digitada, mas o formato foi trocado depois:
+                // os campos somem da tela e o valor fica salvo sem efeito nenhum
+                const fmtTrocado=poolFmt!=="Com prainha"&&cPrai>0;
+                const rasas=(desenho?.formas||[]).filter(x=>["prainha","escada","spa"].includes(x.tipo));
+                const desenhoLiso=!!manta.contorno&&rasas.length>0;
+                if(!semMedida&&!fmtTrocado&&!desenhoLiso)return null;
+                return <div style={{marginBottom:"10px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:"6px",padding:"8px 10px",fontSize:"10.5px",color:"#991b1b",lineHeight:1.55}}>
+                  ⚠ <b>Este plano saiu como piscina lisa.</b>{" "}
+                  {fmtTrocado
+                    ?<>Há uma prainha de <b>{m2(cPrai)} m</b> gravada nas medidas, mas o formato está em <b>"{poolFmt}"</b> — e só o formato "Com prainha" leva a prainha para o corte. Troque o formato em <b>Medidas</b>, ou apague a medida da prainha se ela não existe.</>
+                    :semMedida
+                    ?<>O formato é "Com prainha", mas <b>Comp. da prainha</b> está vazio (ou não é menor que o comprimento). Sem a medida o corte não quebra as paredes em dois níveis nem separa o chão do fundo do piso da prainha — o orçamento cobra manta e solda a menos. Preencha em <b>Medidas</b> e o plano refaz sozinho.</>
+                    :<>A {rasas.map(x=>x.tipo).join("/")} está desenhada no editor de forma, mas o plano de corte segue o contorno com <b>profundidade única</b> — a parte rasa não entra. Para o corte certo use o formato <b>"Com prainha"</b> com as medidas.</>}
+                </div>;
+              })()}
+
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}} className="vv-g2">
                 <div>
                   <div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".5px",marginBottom:"5px"}}>Paredes — {manta.paredes.qtdPecas} peças</div>
