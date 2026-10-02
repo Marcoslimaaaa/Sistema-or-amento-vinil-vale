@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } fro
 import { MessageCircleIcon, FileTextIcon, CheckIcon, DownloadIcon, SendIcon } from "./AnimatedIcons.jsx";
 import { User, Waves, ShoppingCart, ShieldCheck, Wallet, Ruler, FolderOpen, TrendingUp, MessageCircle, Package, FileText, Hammer, Paintbrush, Wrench, Menu, Cloud, RefreshCw, Save, Sun, Moon, Droplets, LogOut } from "lucide-react";
 import { getEstampaByNome } from "./data/estampas.js";
+import { VOPTS, vinilOpt, vinilNome, vinilDesc, opcoesVinil, nomeItemVinil, VINIL_PADRAO } from "./data/vinil.js";
 import FormaEditor, { MiniForma } from "./FormaEditor.jsx";
 import { MODELOS } from "./data/modelos.js";
 import { calcA } from "./motor/areas.js";
@@ -251,21 +252,12 @@ const contornoEmFracao=(poly)=>{
 };
 
 const PFMT=["Retangular","Retangular irregular","Formato L","Oval","Feijão","Oitavada","Com prainha","Com Spa","Triangular","Circular","Personalizado"];
-// t=espessura (chave/valor salvo), w=anos de garantia do vinil, nome=material,
-// resist=tagline técnica, armada=manta armada (linha de alto padrão, sem estoque próprio)
-const VOPTS=[
-  {t:"0,7mm",w:3,nome:"ACQUALINER 0,7mm",resist:"Resist. até 32°C"},
-  {t:"0,8mm",w:4,nome:"ACQUALINER 0,8mm",resist:"Resist. até 32°C"},
-  {t:"1,5mm",w:5,nome:"Manta Armada 1,5mm",resist:"Alto padrão · reforçada com trama de poliéster",armada:true},
-];
-const vinilOpt=t=>VOPTS.find(v=>v.t===t)||VOPTS[0];
-const vinilNome=t=>vinilOpt(t).nome; // ex.: "Manta Armada 1,5mm"
-const vinilDesc=t=>{const o=vinilOpt(t);return o.nome+(o.resist?" · "+o.resist:"");};
-const STAMPS=[{c:"Marmo Carrara",i:["Marmo Carrara Azul","Marmo Carrara Verde","Marmo Carrara Cinza"]},{c:"Travertino",i:["Travertino","Travertino Gris","Travertino Verde","Travertino Azul"]},{c:"Bali",i:["Bali Hijau","Bali Blue"]},{c:"Malibu",i:["Malibu Azul","Malibu Verde"]},{c:"Porto Vecchio",i:["Porto Vecchio Azul","Porto Vecchio Verde"]},{c:"Batu",i:["Batu Blue","Batu Vert"]},{c:"Sukabumi",i:["Sukabumi Azul","Sukabumi Verde"]},{c:"Petra Natural",i:["Petra Natural Azul","Petra Natural Verde"]},{c:"Montblanc",i:["Montblanc","Montblanc Block"]},{c:"Liso",i:["Mid Blue Liso"]},{c:"Aquática",i:["Aquática Azul"]},{c:"Santorini",i:["Santorini"]},{c:"Punta Cana",i:["Punta Cana"]}];
+// Cardápio de vinil (espessura, marca, garantia de fábrica e estoque): src/data/vinil.js
+const STAMPS=[{c:"Marmo Carrara",i:["Marmo Carrara Azul","Marmo Carrara Verde","Marmo Carrara Cinza"]},{c:"Travertino",i:["Travertino","Travertino Gris","Travertino Verde","Travertino Azul"]},{c:"Bali",i:["Bali Hijau","Bali Blue"]},{c:"Malibu",i:["Malibu Azul","Malibu Verde"]},{c:"Porto Vecchio",i:["Porto Vecchio Azul","Porto Vecchio Verde"]},{c:"Batu",i:["Batu Blue","Batu Vert"]},{c:"Sukabumi",i:["Sukabumi Azul","Sukabumi Verde"]},{c:"Petra Natural",i:["Petra Natural Azul","Petra Natural Verde"]},{c:"Montblanc",i:["Montblanc","Montblanc Block"]},{c:"Liso",i:["Mid Blue Liso"]},{c:"Santorini",i:["Santorini"]},{c:"Punta Cana",i:["Punta Cana"]},{c:"Rock",m:"LOCOMOTIVA",i:["Rock Green","Rock Blue"]},{c:"Cayman",m:"LOCOMOTIVA",i:["Cayman"]},{c:"Maldivas",m:"LOCOMOTIVA",i:["Maldivas Green","Maldivas Blue"]},{c:"Curaçao",m:"LOCOMOTIVA",i:["Curaçao"]},{c:"Bali",m:"LOCOMOTIVA",i:["Bali Green","Bali Blue (Locomotiva)"]},{c:"Azul Celeste",m:"LOCOMOTIVA",i:["Azul Celeste"]},{c:"Ibiza",m:"LOCOMOTIVA",i:["Ibiza Dark","Ibiza Light"]},{c:"Eagle",m:"LOCOMOTIVA",i:["Eagle Green","Eagle Blue"]},{c:"Diamond",m:"LOCOMOTIVA",i:["Diamond Hijau","Diamond Hitam","Diamond Blue"]},{c:"Paradise",m:"LOCOMOTIVA",i:["Paradise Green","Paradise Blue"]},{c:"Lazuri",m:"LOCOMOTIVA",i:["Lazuri Green","Lazuri Cream","Lazuri Blue"]}];
 const ALLST=STAMPS.flatMap(s=>s.i);
-const SWATCH_SLUG={"Marmo Carrara Azul":"marmo-carrara-azul","Marmo Carrara Verde":"marmo-carrara-verde","Marmo Carrara Cinza":"marmo-carrara-cinza","Travertino":"travertino","Travertino Gris":"travertino-gris","Travertino Verde":"travertino-verde","Travertino Azul":"travertino-azul","Bali Hijau":"bali-hijau","Bali Blue":"bali-blue","Santorini":"santorini","Malibu Azul":"malibu-azul","Malibu Verde":"malibu-verde","Punta Cana":"punta-cana","Porto Vecchio Azul":"porto-vecchio-azul","Porto Vecchio Verde":"porto-vecchio-verde","Batu Blue":"batu-blue","Batu Vert":"batu-vert","Sukabumi Azul":"sukabumi-azul","Sukabumi Verde":"sukabumi-verde","Petra Natural Azul":"petra-natural-azul","Petra Natural Verde":"petra-natural-verde","Montblanc":"montblanc","Montblanc Block":"montblanc-block","Mid Blue Liso":"mid-blue-liso","Aquática Azul":"aquatica-azul"};
+const SWATCH_SLUG={"Marmo Carrara Azul":"marmo-carrara-azul","Marmo Carrara Verde":"marmo-carrara-verde","Marmo Carrara Cinza":"marmo-carrara-cinza","Travertino":"travertino","Travertino Gris":"travertino-gris","Travertino Verde":"travertino-verde","Travertino Azul":"travertino-azul","Bali Hijau":"bali-hijau","Bali Blue":"bali-blue","Santorini":"santorini","Malibu Azul":"malibu-azul","Malibu Verde":"malibu-verde","Punta Cana":"punta-cana","Porto Vecchio Azul":"porto-vecchio-azul","Porto Vecchio Verde":"porto-vecchio-verde","Batu Blue":"batu-blue","Batu Vert":"batu-vert","Sukabumi Azul":"sukabumi-azul","Sukabumi Verde":"sukabumi-verde","Petra Natural Azul":"petra-natural-azul","Petra Natural Verde":"petra-natural-verde","Montblanc":"montblanc","Montblanc Block":"montblanc-block","Mid Blue Liso":"mid-blue-liso","Aquática Azul":"aquatica-azul","Rock Green":"loc-rock-green","Rock Blue":"loc-rock-blue","Cayman":"loc-cayman","Maldivas Green":"loc-maldivas-green","Maldivas Blue":"loc-maldivas-blue","Curaçao":"loc-curacao","Bali Green":"loc-bali-green","Bali Blue (Locomotiva)":"loc-bali-blue","Azul Celeste":"loc-azul-celeste","Ibiza Dark":"loc-ibiza-dark","Ibiza Light":"loc-ibiza-light","Eagle Green":"loc-eagle-green","Eagle Blue":"loc-eagle-blue","Diamond Hijau":"loc-diamond-hijau","Diamond Hitam":"loc-diamond-hitam","Diamond Blue":"loc-diamond-blue","Paradise Green":"loc-paradise-green","Paradise Blue":"loc-paradise-blue","Lazuri Green":"loc-lazuri-green","Lazuri Cream":"loc-lazuri-cream","Lazuri Blue":"loc-lazuri-blue"};
 const SWATCH_SOON=new Set(["Travertino Verde","Travertino Azul"]);
-const STAMP_COLOR={"Marmo Carrara Azul":"#a8cce8","Marmo Carrara Verde":"#a8d4c0","Marmo Carrara Cinza":"#b0bcc8","Travertino":"#c8b89a","Travertino Gris":"#b0a898","Travertino Verde":"#98b4a0","Travertino Azul":"#8ab0c8","Bali Hijau":"#5aaa88","Bali Blue":"#5090c0","Santorini":"#6aaccc","Malibu Azul":"#4a98d8","Malibu Verde":"#4aac7a","Porto Vecchio Azul":"#3d8fc0","Porto Vecchio Verde":"#3da878","Batu Blue":"#4a90c0","Batu Vert":"#4aa880","Sukabumi Azul":"#3aa8d0","Sukabumi Verde":"#3ab080","Petra Natural Azul":"#6aa8c0","Petra Natural Verde":"#6ab090","Montblanc":"#7ab8e0","Montblanc Block":"#5aa0c8","Mid Blue Liso":"#3a96d0","Aquática Azul":"#3aacdc","Punta Cana":"#50c0b0"};
+const STAMP_COLOR={"Marmo Carrara Azul":"#a8cce8","Marmo Carrara Verde":"#a8d4c0","Marmo Carrara Cinza":"#b0bcc8","Travertino":"#c8b89a","Travertino Gris":"#b0a898","Travertino Verde":"#98b4a0","Travertino Azul":"#8ab0c8","Bali Hijau":"#5aaa88","Bali Blue":"#5090c0","Santorini":"#6aaccc","Malibu Azul":"#4a98d8","Malibu Verde":"#4aac7a","Porto Vecchio Azul":"#3d8fc0","Porto Vecchio Verde":"#3da878","Batu Blue":"#4a90c0","Batu Vert":"#4aa880","Sukabumi Azul":"#3aa8d0","Sukabumi Verde":"#3ab080","Petra Natural Azul":"#6aa8c0","Petra Natural Verde":"#6ab090","Montblanc":"#7ab8e0","Montblanc Block":"#5aa0c8","Mid Blue Liso":"#3a96d0","Aquática Azul":"#3aacdc","Punta Cana":"#50c0b0","Rock Green":"#8d9fa2","Rock Blue":"#74859a","Cayman":"#779bb6","Maldivas Green":"#bcd0c1","Maldivas Blue":"#aec8da","Curaçao":"#6e7c8f","Bali Green":"#93c3bb","Bali Blue (Locomotiva)":"#7eabcf","Azul Celeste":"#b6d1ea","Ibiza Dark":"#87a1ca","Ibiza Light":"#83c4de","Eagle Green":"#71989c","Eagle Blue":"#85a1c1","Diamond Hijau":"#acb9af","Diamond Hitam":"#aeaeae","Diamond Blue":"#92a7c0","Paradise Green":"#84aeaf","Paradise Blue":"#95a0bc","Lazuri Green":"#8d9fa3","Lazuri Cream":"#bca980","Lazuri Blue":"#83a1c1"};
 const CAT=[
   {id:"m06",c:"Mantas",n:"Manta Acrílica 0,6mm",s:"R$20,00/m² (só chão)",p:20,un:"chao"},{id:"m04",c:"Mantas",n:"Manta Acrílica 0,4mm",s:"R$3,50/m² (só chão)",p:3.50,un:"chao"},{id:"eva",c:"Mantas",n:"Bobina EVA 0,30mm",s:"R$11,88/m² (só chão)",p:11.88,un:"chao"},
   {id:"pR",c:"Perfis",n:"Perfil Rígido",s:"R$20,00/ml",p:20,un:"ml"},{id:"pF",c:"Perfis",n:"Perfil Flangeamento",s:"R$119/3m = R$39,67/m",p:39.67,un:"ml"},
@@ -1098,8 +1090,8 @@ const mkItems=(tipo)=>{
 // não usa perfil rígido — vai perfil de vulcanização, porque a fixação é soldada.
 // Em compensação entram PVC líquido e cola de contato, que o bolsão não leva.
 const ITENS_ARMADA={
-  // o item do revestimento troca de nome: ACQUALINER é a marca do vinil 0,7/0,8,
-  // não da manta armada, e não pode aparecer num orçamento de manta
+  // o item do revestimento troca de nome: ACQUALINER e LOCOMOTIVA são marcas do vinil
+  // de bolsão, não da manta armada, e não podem aparecer num orçamento de manta
   renomeia:{1:{n:"Manta Armada 1,5mm",nt:"Alto padrão · reforçada com trama de poliéster · Estampa à escolha"}},
   volta:{1:{n:"Vinil ACQUALINER",nt:"Resistência até 32°C · Estampa à escolha"}},
   remove:[2],                       // Manta Acrílica 0,6mm
@@ -1112,9 +1104,10 @@ const ITENS_ARMADA={
 /**
  * Ajusta a lista de itens quando o vinil vira manta armada (e desfaz quando volta).
  * Mexe SÓ nos itens afetados — preço e quantidade que o usuário editou nas outras
- * linhas continuam de pé.
+ * linhas continuam de pé. `vinilT` dá o nome do item do vinil: "Vinil ACQUALINER" ou
+ * "Vinil LOCOMOTIVA", conforme a linha escolhida (src/data/vinil.js).
  */
-const aplicarItensVinil=(items,armada)=>{
+const aplicarItensVinil=(items,armada,vinilT)=>{
   const lista=(items||[]).slice();
   const acha=id=>lista.findIndex(i=>i.id===id);
   if(armada){
@@ -1134,7 +1127,7 @@ const aplicarItensVinil=(items,armada)=>{
     }
   }else{
     for(const [id,volta] of Object.entries(ITENS_ARMADA.volta)){
-      const k=acha(Number(id));if(k>=0)lista[k]={...lista[k],...volta};
+      const k=acha(Number(id));if(k>=0)lista[k]={...lista[k],...volta,...(Number(id)===1?{n:nomeItemVinil(vinilT)}:{})};
     }
     for(const novo of ITENS_ARMADA.entram){const k=acha(novo.id);if(k>=0)lista.splice(k,1);}
     for(const [de,para] of Object.entries(ITENS_ARMADA.troca)){
@@ -1191,8 +1184,11 @@ const Sel=({label,value,onChange,options,style:sx,t:th})=>{const t=th||themes.li
 // `pad` sai do default de 20px só onde a moldura atrapalha — o chat do
 // WhatsApp, que é interface de trabalho e quer a tela inteira.
 const Card=({children,t:th,pad})=>{const t=th||themes.light;return <div style={{background:t.card,borderRadius:"8px",padding:pad||"20px",boxShadow:t.shadow,border:`1px solid ${t.cardBorder}`}}>{children}</div>};
-const CatalogoPicker=({value,onChange,t,dark})=>{
+const CatalogoPicker=({value,onChange,t,dark,vinilT})=>{
   const [open,setOpen]=React.useState(false);
+  // só as estampas da linha escolhida (Acqualiner ou Locomotiva); o tramado 0,8 sai em duas
+  const op=vinilOpt(vinilT);const loc=op.marca==="LOCOMOTIVA";
+  const grupos=STAMPS.filter(g=>(g.m==="LOCOMOTIVA")===loc).map(g=>({...g,i:op.estampas?g.i.filter(n=>op.estampas.includes(n)):g.i})).filter(g=>g.i.length);
   const slug=SWATCH_SLUG[value];
   return <div>
     <label style={{fontSize:"9px",fontWeight:"600",color:t.textSec,textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:"4px"}}>Estampa Vinil</label>
@@ -1205,8 +1201,8 @@ const CatalogoPicker=({value,onChange,t,dark})=>{
       {value&&<button onClick={()=>{onChange("");setOpen(false);}} style={{padding:"6px 10px",border:"none",background:"#ef4444",color:"#fff",borderRadius:"6px",fontSize:"11px",cursor:"pointer",flexShrink:0}}>✕</button>}
     </div>
     {open&&<div style={{marginTop:"8px",background:dark?"#0f172a":"#f0f7ff",border:`1.5px solid #3b82f6`,borderRadius:"10px",padding:"12px",maxHeight:"380px",overflowY:"auto"}}>
-      <div style={{fontSize:"9px",fontWeight:"700",color:"#2563eb",marginBottom:"10px"}}>CATÁLOGO ACQUALINER — Clique para selecionar</div>
-      {STAMPS.map(grp=><div key={grp.c} style={{marginBottom:"14px"}}>
+      <div style={{fontSize:"9px",fontWeight:"700",color:"#2563eb",marginBottom:"10px"}}>CATÁLOGO {loc?"LOCOMOTIVA":"ACQUALINER"} — Clique para selecionar</div>
+      {grupos.map(grp=><div key={grp.c} style={{marginBottom:"14px"}}>
         <div style={{fontSize:"8px",fontWeight:"800",color:dark?"#94a3b8":"#475569",textTransform:"uppercase",letterSpacing:".8px",marginBottom:"6px",borderBottom:`1px solid ${dark?"#334155":"#e2e8f0"}`,paddingBottom:"3px"}}>{grp.c}</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(68px,1fr))",gap:"6px"}}>
           {grp.i.map(nm=>{
@@ -1618,7 +1614,7 @@ export default function App(){
   const [svcType,setST2]=useState("construcao");
   const [propNum,setPN]=useState(()=>{const d=new Date();return String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear()});
   const [poolFmt,setPF]=useState("Retangular");
-  const [vinilT,setVT]=useState("0,7mm");
+  const [vinilT,setVT]=useState(VINIL_PADRAO);
   const [stamp,setSt]=useState("");
   const [execDays,setED]=useState("60 a 90");
   const [gM,setGM]=useState(0);
@@ -2516,8 +2512,10 @@ export default function App(){
     // preencheu raso/fundo e ignorava spa, prainha, banco e formato.
     // `semMedida`: medida que não fecha — pedir conferência, não sugerir zero.
     const {areaTotal,areaChao,perim,semMedida}=medidasParaEstoque(d);
-    const stamp=d.stamp||"";const vinilT=d.vinilT||"0,7mm";
-    const thick=vinilT.includes("0,8")?"8":"7";
+    const stamp=d.stamp||"";const vinilT=d.vinilT||VINIL_PADRAO;
+    // a bobina sai da categoria de estoque da espessura escolhida (src/data/vinil.js);
+    // espessura sem estoque cadastrado pede conferência em vez de descontar de outra
+    const vOpt=vinilOpt(vinilT);
     const stkItems=[];
     const unmatched=[];
     inc.forEach(i=>{
@@ -2526,11 +2524,11 @@ export default function App(){
       // entrar na lista de "não encontrado", que é ruído.
       if(nm.includes("Manta Armada"))return;
       // Vinil, manta e perfil saem da área/perímetro: sem medida, conferir.
-      if(semMedida&&(nm.includes("Vinil ACQUALINER")||nm.includes("Manta")||nm.includes("Perfil"))){unmatched.push({name:nm,reason:semMedida});return;}
+      if(semMedida&&(nm.includes("Vinil ACQUALINER")||nm.includes("Vinil LOCOMOTIVA")||nm.includes("Manta")||nm.includes("Perfil"))){unmatched.push({name:nm,reason:semMedida});return;}
       if(nm.includes("Vinil ACQUALINER")){
         const stampClean=stamp.replace(/\s+/g," ").trim();
         // Manta armada 1,5mm não tem estoque próprio no catálogo — não desconta vinil 0,7/0,8
-        const vinilMatch=vinilOpt(vinilT).armada||!stampClean?null:CAT.find(p=>p.c==="Vinil 0,"+thick+"mm"&&p.n.toUpperCase().includes(stampClean.toUpperCase()));
+        const vinilMatch=vOpt.armada||!stampClean||!vOpt.estoque?null:CAT.find(p=>p.c===vOpt.estoque&&p.n.toUpperCase().includes(stampClean.toUpperCase()));
         if(vinilMatch){
           const m2needed=Math.ceil(areaTotal*1.1);
           const m2Aberto=stk[vinilMatch.id]?.m2Aberto||0;
@@ -2542,7 +2540,9 @@ export default function App(){
           const obsLabel=`${m2needed}m² → ${bobsFech>0?bobsFech+` bob. fech.`:""}${newM2Aberto>0?(bobsFech>0?" + ":"")+"1 aberta ("+newM2Aberto+"m² rest.)":""}`+(m2FromAberto>0?` | usa ${m2FromAberto}m² aberto`:"");
           stkItems.push({catId:vinilMatch.id,qty:m2needed,name:vinilMatch.n,matched:true,_obs:obsLabel,_vinilM2:m2needed});
         }
-        else unmatched.push({name:nm,reason:stampClean?"Estampa '"+stampClean+"' não encontrada no catálogo":"Estampa ainda não escolhida — não dá para saber de qual bobina sai"});
+        else unmatched.push({name:nm,reason:!vOpt.estoque&&!vOpt.armada?"Sem estoque cadastrado para o "+vOpt.nome+" — conferir a bobina na mão":stampClean?"Estampa '"+stampClean+"' não encontrada no catálogo":"Estampa ainda não escolhida — não dá para saber de qual bobina sai"});
+      }else if(nm.includes("Vinil LOCOMOTIVA")){
+        unmatched.push({name:nm,reason:"Vinil da Locomotiva ainda não tem estoque cadastrado — conferir a bobina na mão"});
       }else if(nm.includes("Manta")){
         const nmLow=nm.toLowerCase();
         const mantaMatch=CAT.find(p=>p.c==="Mantas"&&(
@@ -2753,7 +2753,7 @@ export default function App(){
   const abrirRascunhoBot=(r)=>{
     const e=estadoDoRascunho(r);
     setST2(e.svcType);
-    setItems(aplicarItensVinil(mkItems(e.svcType),!!vinilOpt(vinilT).armada));
+    setItems(aplicarItensVinil(mkItems(e.svcType),!!vinilOpt(vinilT).armada,vinilT));
     setG(mkG(e.svcType));setCI(mkCI(e.svcType));
     setED(e.svcType==="construcao"?"60 a 90":e.svcType==="reforma"?"30 a 45":"15 a 20");
     setCl(e.client);
@@ -3186,7 +3186,7 @@ export default function App(){
 
         {/* Service type */}
         <div style={{padding:"12px 12px 8px",display:"flex",flexDirection:"column",gap:"4px"}}>
-          {SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(aplicarItensVinil(mkItems(sv.id),!!vinilOpt(vinilT).armada));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20");setEditingId(null);setAvisoPreco(null);setSidebarOpen(false);}} style={{padding:"8px 12px",borderRadius:"6px",border:"none",background:svcType===sv.id?"rgba(45,212,191,.13)":"transparent",color:svcType===sv.id?aguaBright:"rgba(255,255,255,.75)",fontSize:"11.5px",fontWeight:svcType===sv.id?"700":"400",fontFamily:"inherit",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:"8px"}}><sv.lucide size={14}/> {sv.label}</button>)}
+          {SVC.map(sv=><button key={sv.id} onClick={()=>{setST2(sv.id);setItems(aplicarItensVinil(mkItems(sv.id),!!vinilOpt(vinilT).armada,vinilT));setG(mkG(sv.id));setCI(mkCI(sv.id));setED(sv.id==="construcao"?"60 a 90":sv.id==="reforma"?"30 a 45":"15 a 20");setEditingId(null);setAvisoPreco(null);setSidebarOpen(false);}} style={{padding:"8px 12px",borderRadius:"6px",border:"none",background:svcType===sv.id?"rgba(45,212,191,.13)":"transparent",color:svcType===sv.id?aguaBright:"rgba(255,255,255,.75)",fontSize:"11.5px",fontWeight:svcType===sv.id?"700":"400",fontFamily:"inherit",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:"8px"}}><sv.lucide size={14}/> {sv.label}</button>)}
         </div>
 
         {/* Nav items */}
@@ -3446,8 +3446,8 @@ export default function App(){
             </div>
             {!spaType.quadrado&&!spaType.redondo&&<div style={{fontSize:"9px",color:"#dc2626",marginTop:"6px"}}>⚠ Selecione pelo menos um tipo de spa</div>}
           </div>}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={v=>{setVT(v);const vo=VOPTS.find(o=>o.t===v);if(vo)setG(prev=>prev.map(g=>g.it==="Vinil (fabricação)"?{...g,y:vo.w}:g));setItems(prev=>aplicarItensVinil(prev,!!vo?.armada));}} options={VOPTS.map(v=>({value:v.t,label:`${v.nome} (${v.w}a)`}))} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
-          <div style={{marginTop:"10px"}}><CatalogoPicker value={stamp} onChange={setSt} t={t} dark={dark}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginTop:"10px"}}><Sel label="Vinil" value={vinilT} onChange={v=>{setVT(v);const vo=VOPTS.find(o=>o.t===v);if(vo)setG(prev=>prev.map(g=>g.it==="Vinil (fabricação)"?{...g,y:vo.w}:g));setItems(prev=>aplicarItensVinil(prev,!!vo?.armada,v));}} options={opcoesVinil(vinilT)} t={t}/><Inp label="Prazo (dias)" value={execDays} onChange={setED} t={t}/></div>
+          <div style={{marginTop:"10px"}}><CatalogoPicker value={stamp} onChange={setSt} t={t} dark={dark} vinilT={vinilT}/></div>
 
           {/* MODO PAREDES */}
           <div style={{marginTop:"14px",background:t.sectionBg,borderRadius:"8px",padding:"12px",border:`1px solid ${t.cardBorder}`}}>

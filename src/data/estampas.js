@@ -1,4 +1,4 @@
-// Catálogo de estampas Acqualiner.
+// Catálogo de estampas: Acqualiner e Locomotiva (linha Aqualona).
 // pastilhaCm   → medida real de uma pastilha (lado em cm). null = estampa lisa.
 // tilesPerSide → quantas pastilhas por lado aparecem em public/swatches/<id>.png.
 //                Usado para calcular a escala real da repetição no 3D.
@@ -30,7 +30,33 @@ export const ESTAMPAS = [
   { id: 'montblanc',            nome: 'Montblanc',            pastilhaCm: null, tilesPerSide: 1 },
   { id: 'montblanc-block',      nome: 'Montblanc Block',      pastilhaCm: 10, tilesPerSide: 5 },
   { id: 'mid-blue-liso',        nome: 'Mid Blue Liso',        pastilhaCm: null, tilesPerSide: 1 },
+  // Aquática Azul é material de capa no catálogo Acqualiner: saiu do seletor em 01/10/2026 e
+  // fica aqui só para os orçamentos salvos com ela.
   { id: 'aquatica-azul',        nome: 'Aquática Azul',        pastilhaCm: null, tilesPerSide: 1 },
+
+  // Locomotiva (linha Aqualona). O catálogo não traz a medida da pastilha: 10 cm é estimativa
+  // visual, só para a escala do 3D; as pastilhas por lado foram contadas no swatch.
+  { id: 'loc-rock-green', nome: 'Rock Green', pastilhaCm: 10, tilesPerSide: 4, marca: 'LOCOMOTIVA' },
+  { id: 'loc-rock-blue', nome: 'Rock Blue', pastilhaCm: 10, tilesPerSide: 4, marca: 'LOCOMOTIVA' },
+  { id: 'loc-cayman', nome: 'Cayman', pastilhaCm: 10, tilesPerSide: 5, marca: 'LOCOMOTIVA' },
+  { id: 'loc-maldivas-green', nome: 'Maldivas Green', pastilhaCm: 10, tilesPerSide: 4, marca: 'LOCOMOTIVA' },
+  { id: 'loc-maldivas-blue', nome: 'Maldivas Blue', pastilhaCm: 10, tilesPerSide: 4, marca: 'LOCOMOTIVA' },
+  { id: 'loc-curacao', nome: 'Curaçao', pastilhaCm: 10, tilesPerSide: 5, marca: 'LOCOMOTIVA' },
+  { id: 'loc-bali-green', nome: 'Bali Green', pastilhaCm: 10, tilesPerSide: 5, marca: 'LOCOMOTIVA' },
+  { id: 'loc-bali-blue', nome: 'Bali Blue (Locomotiva)', pastilhaCm: 10, tilesPerSide: 4, marca: 'LOCOMOTIVA' },
+  { id: 'loc-azul-celeste', nome: 'Azul Celeste', pastilhaCm: null, tilesPerSide: 1, marca: 'LOCOMOTIVA' },
+  { id: 'loc-ibiza-dark', nome: 'Ibiza Dark', pastilhaCm: 10, tilesPerSide: 7, marca: 'LOCOMOTIVA' },
+  { id: 'loc-ibiza-light', nome: 'Ibiza Light', pastilhaCm: 10, tilesPerSide: 7, marca: 'LOCOMOTIVA' },
+  { id: 'loc-eagle-green', nome: 'Eagle Green', pastilhaCm: 10, tilesPerSide: 3, marca: 'LOCOMOTIVA' },
+  { id: 'loc-eagle-blue', nome: 'Eagle Blue', pastilhaCm: 10, tilesPerSide: 3, marca: 'LOCOMOTIVA' },
+  { id: 'loc-diamond-hijau', nome: 'Diamond Hijau', pastilhaCm: 10, tilesPerSide: 4, marca: 'LOCOMOTIVA' },
+  { id: 'loc-diamond-hitam', nome: 'Diamond Hitam', pastilhaCm: 10, tilesPerSide: 4, marca: 'LOCOMOTIVA' },
+  { id: 'loc-diamond-blue', nome: 'Diamond Blue', pastilhaCm: 10, tilesPerSide: 4, marca: 'LOCOMOTIVA' },
+  { id: 'loc-paradise-green', nome: 'Paradise Green', pastilhaCm: 10, tilesPerSide: 4, marca: 'LOCOMOTIVA' },
+  { id: 'loc-paradise-blue', nome: 'Paradise Blue', pastilhaCm: 10, tilesPerSide: 5, marca: 'LOCOMOTIVA' },
+  { id: 'loc-lazuri-green', nome: 'Lazuri Green', pastilhaCm: 10, tilesPerSide: 3, marca: 'LOCOMOTIVA' },
+  { id: 'loc-lazuri-cream', nome: 'Lazuri Cream', pastilhaCm: 10, tilesPerSide: 3, marca: 'LOCOMOTIVA' },
+  { id: 'loc-lazuri-blue', nome: 'Lazuri Blue', pastilhaCm: 10, tilesPerSide: 3, marca: 'LOCOMOTIVA' },
 ];
 
 export const getEstampa = (id) => ESTAMPAS.find(e => e.id === id);
