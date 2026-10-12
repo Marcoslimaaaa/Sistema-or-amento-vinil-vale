@@ -79,6 +79,7 @@ import { classificarBase } from "./services/etapaAuto.js";
 import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA, notificarResumoDiario } from "./services/notificacoes.js";
 import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, registrarTokenProvider, marcarOrcamentoEnviado, desfazerOrcamentoEnviado, pausarFollowup, CANAL } from "./services/wa.js";
 import { parseMoney } from "./services/dinheiro.js";
+import { normalizarConversa } from "./services/conversa.js";
 import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento, precoMudou, resumoMedidas, medidasParaEstoque } from "./motor/orcamento.js";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
@@ -2211,7 +2212,9 @@ export default function App(){
     const q=fbFns.query(ref,fbFns.orderBy("lastActivity","desc"),fbFns.limit(50));
     const unsub=fbFns.onSnapshot(q,(snap)=>{
       const convs=[];
-      snap.forEach(doc=>{const d=doc.data();convs.push({phone:doc.id,...d});});
+      // normalizarConversa: o histórico é gravado pelo bot e já veio com
+      // content que não era texto — uma mensagem assim dava tela branca na aba.
+      snap.forEach(doc=>{const d=doc.data();convs.push({phone:doc.id,...normalizarConversa(d)});});
       setWaConvs(convs);
     },(err)=>console.warn("whatsapp_conversations:",err.code||err.message));
     return ()=>unsub();
@@ -2287,7 +2290,7 @@ export default function App(){
     if(!waChat||!fbReady||!fb.db||!user||user.uid==="local")return;
     const ref=fbFns.doc(fb.db,"whatsapp_conversations",waChat);
     const unsub=fbFns.onSnapshot(ref,(snap)=>{
-      if(snap.exists())setWaChatData({phone:snap.id,...snap.data()});
+      if(snap.exists())setWaChatData({phone:snap.id,...normalizarConversa(snap.data())});
     },(err)=>console.warn("whatsapp_chat:",err.code||err.message));
     return ()=>unsub();
   },[waChat,fbReady,user]);
