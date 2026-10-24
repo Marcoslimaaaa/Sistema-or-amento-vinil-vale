@@ -8,6 +8,7 @@ import FormaEditor, { MiniForma } from "./FormaEditor.jsx";
 import { MODELOS } from "./data/modelos.js";
 import { calcA } from "./motor/areas.js";
 import { bancoCfg, textoBanco, FORMATOS_COM_BANCO } from "./motor/banco.js";
+import { pontaCfg, textoPonta } from "./motor/niveis.js";
 import { geometriaTriangular, geometriaComBanco } from "./motor/triangular.js";
 import { contornoOitavada, medidasCirculo, bancoMaximoRedondo, erroBancoRedondo, desenhoDoFormato, piscinaDaVista } from "./motor/formatos.js";
 import { calcDesenho, contornoEfetivo, regioesProfundidade, pontoDentro, offsetPoligono, fracaoMaisProxima, caminhoNoContorno, pontoNaFracao, trechosColetor, ortogonalizar, espelharDesenho, encostarNoContorno } from "./motor/formas.js";
@@ -422,7 +423,19 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
   const L_NORM=[[0,0],[1,0],[1,.6],[.6,.6],[.6,1],[0,1]];    // contorno do Formato L em 0..1
   const lPts=L_NORM.map(([u,v])=>S(u,v)).join(" ");
   const prai=prainhaCfg(pool,L,D);
-  const banco=bancoCfg(pool,poolFmt,L,W,D);
+  // Profundidade da CONTA (média de raso e fundo quando os dois existem): é com
+  // ela que a ponta em níveis e a escada são conferidas no calcA. Com a padrão
+  // de 1,40 da tela, uma piscina inclinada podia desenhar o que a conta recusa.
+  const Dn=(parseFloat(pool.depthMin)>0&&parseFloat(pool.depthMax)>0)?(parseFloat(pool.depthMin)+parseFloat(pool.depthMax))/2:D;
+  const banco=bancoCfg(pool,poolFmt,L,W,Dn);
+  // com desenho livre o contorno é o do desenho (a conta também ignora a ponta)
+  const pontaN=efPoly?null:pontaCfg(pool,poolFmt,L,W,Dn);
+  const pontaOk=pontaN&&!pontaN.erro?pontaN:null;
+  // O corte também mostra a prainha antiga (um nível só) descendo em degrau —
+  // antes ele saía liso, como se a prainha não existisse. Só desenho: a conta
+  // dela continua a de sempre.
+  const pontaCorte=pontaOk||(poolFmt==="Com prainha"&&prai.medida&&prai.comp<L
+    ?{niveis:[{tipo:"prainha",rotulo:"Prainha",x0:0,x1:prai.comp,avanco:prai.comp,prof:prai.prof}],canto:null,fim:prai.comp,prainha:null}:null);
   // dRef: bico dentro do spa mede a altura pela profundidade DO SPA, não da piscina
   const alturaBicoP=(t,f,dRef)=>alturaBico(t,f,dRef||D,devHeights);
   const caixaSpa=caixaSpaNorm(L,W,spa,customPos?.spaExt);
@@ -531,13 +544,35 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
         return<rect x={ox} y={oy} width={pw} height={ph} rx="1" fill={fill} stroke={stroke} strokeWidth="2"/>;
       })()}
       {stamp&&SWATCH_SLUG[stamp]&&<image href={`/swatches/${SWATCH_SLUG[stamp]}.png`} x={ox} y={oy} width={pw} height={ph} preserveAspectRatio="xMidYMid slice" clipPath="url(#poolClip2d)" opacity="0.85"/>}
-      {poolFmt==="Com prainha"&&(()=>{const a=PU(0,0),b=PU(Math.min(prai.comp/L,1),1);const x0=Math.min(a.x,b.x),y0=Math.min(a.y,b.y),wq=Math.abs(b.x-a.x),hq=Math.abs(b.y-a.y);return<g><rect x={x0} y={y0} width={wq} height={hq} rx="1" fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#2563eb" strokeWidth="0.5"/>{prai.medida&&<text x={x0+wq/2} y={y0+hq/2+3} textAnchor="middle" fontSize="5.5" fontWeight="700" fill={dark?"#93c5fd":"#1d4ed8"}>{prai.comp}m · {prai.prof}m</text>}</g>})()}
+      {poolFmt==="Com prainha"&&!pontaOk&&(()=>{const a=PU(0,0),b=PU(Math.min(prai.comp/L,1),1);const x0=Math.min(a.x,b.x),y0=Math.min(a.y,b.y),wq=Math.abs(b.x-a.x),hq=Math.abs(b.y-a.y);return<g><rect x={x0} y={y0} width={wq} height={hq} rx="1" fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#2563eb" strokeWidth="0.5"/>{prai.medida&&<text x={x0+wq/2} y={y0+hq/2+3} textAnchor="middle" fontSize="5.5" fontWeight="700" fill={dark?"#93c5fd":"#1d4ed8"}>{prai.comp}m · {prai.prof}m</text>}</g>})()}
+      {/* PONTA EM NÍVEIS (24/10/2026) — cada nível da largura toda é um
+          retângulo, do mais raso (mais claro) ao mais fundo; o bloco de canto
+          vem por cima. Rótulo deitado quando o degrau é estreito. */}
+      {pontaOk&&(()=>{
+        const tons=dark?["#2f6aa6","#2a5f96","#245485","#1f4a76"]:["#e8f1ff","#d6e7fe","#c4dcfd","#b2d1fc"];
+        const caixa=(u0,v0,u1,v1)=>{const a=PU(u0,v0),b=PU(u1,v1);return{x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),w:Math.abs(b.x-a.x),h:Math.abs(b.y-a.y)}};
+        const f2=v=>v.toFixed(2).replace(".",",");
+        const rotulo=(r,txt,curto,key,cor)=>{const deitado=r.w<r.h&&r.w<38;const cx=r.x+r.w/2,cy=r.y+r.h/2;return<text key={key} x={cx} y={cy+2} textAnchor="middle" fontSize={deitado?"6":"5.2"} fontWeight="700" fill={cor} transform={deitado?`rotate(-90 ${cx} ${cy})`:undefined}>{deitado?curto:txt}</text>};
+        const els=[];
+        pontaOk.niveis.forEach((nv,i)=>{
+          const r=caixa(nv.x0/L,0,nv.x1/L,1);
+          els.push(<rect key={"nv"+i} x={r.x} y={r.y} width={r.w} height={r.h} fill={tons[Math.min(i,tons.length-1)]} stroke="#2563eb" strokeWidth="0.6"/>);
+          els.push(rotulo(r,`${nv.tipo==="prainha"?"PRAINHA":nv.rotulo} ${f2(nv.avanco)} · prof. ${f2(nv.prof)}m`,`${nv.tipo==="prainha"?"PRAINHA":nv.rotulo} · ${f2(nv.prof)}m`,"nt"+i,dark?"#bfdbfe":"#1d4ed8"));
+        });
+        const c=pontaOk.canto;
+        if(c)c.degraus.forEach((d,i)=>{
+          const r=caixa(d.x0/L,c.y0/W,d.x1/L,c.y1/W);
+          els.push(<rect key={"cd"+i} x={r.x} y={r.y} width={r.w} height={r.h} fill={dark?"#4b80b8":"#eef5ff"} stroke="#1d4ed8" strokeWidth="0.9"/>);
+          els.push(rotulo(r,`${d.rotulo} ${f2(d.avanco)} · prof. ${f2(d.prof)}m`,`${d.rotulo} · ${f2(d.prof)}m`,"ct"+i,dark?"#e0f2fe":"#1e3a8a"));
+        });
+        return<g>{els}</g>;
+      })()}
       {/* BANCO LATERAL — faixa encostada na lateral escolhida, de ponta a
           ponta. Usa o mesmo PU()/espelho do resto: virar a piscina vira o
           banco junto. Com prainha de medida ele para no degrau. */}
-      {banco&&(()=>{
+      {banco&&(banco.niveis||[]).length<=1&&(()=>{
         const v0=banco.lado==="cima"?0:1-banco.larg/W;
-        const u0=banco.sobreTrechoFundo?Math.min(prai.comp/L,1):0;
+        const u0=Math.min((banco.x0||0)/L,1);
         const a0=PU(u0,v0),b0=PU(1,v0+banco.larg/W);
         const x0=Math.min(a0.x,b0.x),y0=Math.min(a0.y,b0.y);
         const wq=Math.abs(b0.x-a0.x),hq=Math.abs(b0.y-a0.y);
@@ -548,6 +583,23 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
             BANCO {banco.larg.toFixed(2).replace(".",",")}m · prof. {banco.prof.toFixed(2).replace(".",",")}m
           </text>}
         </g>;
+      })()}
+      {/* ESCADA LATERAL (24/10/2026) — uma faixa por degrau, da parede para
+          dentro, do mais raso ao mais fundo. Mesmo PU()/espelho do banco. */}
+      {banco&&(banco.niveis||[]).length>1&&(()=>{
+        const f2=v=>v.toFixed(2).replace(".",",");
+        const u0=Math.min((banco.x0||0)/L,1);
+        let acc=0;
+        return<g>{banco.niveis.map((nv,i)=>{
+          const a=acc,b=acc+nv.larg;acc=b;
+          const v0=banco.lado==="cima"?a/W:1-b/W,v1=banco.lado==="cima"?b/W:1-a/W;
+          const p=PU(u0,v0),q=PU(1,v1);
+          const x0=Math.min(p.x,q.x),y0=Math.min(p.y,q.y),wq=Math.abs(q.x-p.x),hq=Math.abs(q.y-p.y);
+          return<g key={"esc"+i}>
+            <rect x={x0} y={y0} width={wq} height={hq} fill={dark?["#3a4766","#334060","#2c3858"][Math.min(i,2)]:["#e0e7ff","#c7d2fe","#b4c0fc"][Math.min(i,2)]} stroke="#6366f1" strokeWidth="0.8"/>
+            <text x={x0+wq/2} y={y0+hq/2+2} textAnchor="middle" fontSize={hq<10?"4.6":"5.2"} fontWeight="700" fill={dark?"#c7d2fe":"#4338ca"}>D{i+1} {f2(nv.larg)} · prof. {f2(nv.prof)}m</text>
+          </g>;
+        })}</g>;
       })()}
       {extras.length>0&&extras.map((e,i)=>{const pf=v=>parseFloat(String(v||"").replace(",","."))||0;const el=pf(e.l),ew=pf(e.w);if(el<=0||ew<=0)return null;const ePw=el*scale,ePh=ew*scale;const desc=(e.desc||"").toLowerCase();const isBank=desc.includes("banco");const isPrainha=desc.includes("prainha");const isDegrau=desc.includes("degrau");const eColor=isPrainha?(dark?"#1e4d7a":"#bfdbfe"):isBank?(dark?"#2d3a4a":"#c7d2fe"):(dark?"#1e3a5f":"#ddd6fe");const eX=isPrainha?ox:isBank?ox:(ox+pw-ePw);const eY=isPrainha?oy:(oy+ph-ePh);const m1={x:MX(eX),y:MY(eY)},m2={x:MX(eX+ePw),y:MY(eY+ePh)};const rx0=Math.min(m1.x,m2.x),ry0=Math.min(m1.y,m2.y);return<g key={`ext${i}`}><rect x={rx0} y={ry0} width={ePw} height={ePh} rx="2" fill={eColor} stroke={dark?"#475569":"#6366f1"} strokeWidth="0.8" strokeDasharray="3,2" opacity="0.7"/><text x={rx0+ePw/2} y={ry0+ePh/2+3} textAnchor="middle" fontSize="5.5" fill={dark?"#94a3b8":"#4f46e5"} fontWeight="600">{e.desc||"Extra"}</text></g>})}
       {spaExtBox&&(()=>{const {x:sx,y:sy,w:sw2,h:sh}=spaExtBox;return<g style={{cursor:"grab"}} onMouseDown={e=>{e.preventDefault();setDragging("spaExt")}} onTouchStart={e=>{e.preventDefault();setDragging("spaExt")}}><rect x={sx} y={sy} width={sw2} height={sh} rx="3" fill={dark?"#1e3a5f":"#93c5fd"} stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="4,2"/><text x={sx+sw2/2} y={sy+sh/2+3} textAnchor="middle" fontSize="7" fill="#1d4ed8" fontWeight="700">SPA</text></g>;})()}
@@ -600,19 +652,50 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
       {[["R","Retorno","#ef4444"],["A","Asp.","#ec4899"],["D","Dreno","#8b5cf6"],["SK","Skim.","#f59e0b"],["L","LED","#f97316"],["N","Niv.","#06b6d4"],["H","Hidro","#14b8a6"],["DQ","Ralo Q.","#7f1d1d"],["RQ","Ret. Q.","#e11d48"],["CM","Casa M.","#475569"]].map(([s,lb,c])=><div key={s} style={{display:"flex",alignItems:"center",gap:"2px"}}><div style={{width:"8px",height:"3px",borderRadius:"1px",background:c}}/><span style={{fontSize:"6px",color:t.textMuted}}>{lb}</span></div>)}
       <button className="no-pdf" onClick={()=>{setCustomPos({});setTubeOffsets({})}} style={{fontSize:"6px",padding:"1px 4px",borderRadius:"3px",border:"1px solid "+(dark?"#334155":"#e2e8f0"),background:"transparent",color:t.textMuted,cursor:"pointer",marginLeft:"auto"}}>Reset</button>
     </div>
-    <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginTop:"10px",marginBottom:"4px",textAlign:"center"}}>Corte Lateral</div>
+    <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginTop:"10px",marginBottom:"4px",textAlign:"center"}}>Corte Lateral{pontaOk?.canto?" (pelos degraus do canto)":""}</div>
     <svg viewBox={`0 0 ${svgW} ${cutH}`} style={{width:"100%",height:"auto",display:"block",background:dark?"#0f172a":"#f8fafc",borderRadius:"6px",border:"1px solid "+(dark?"#334155":"#e2e8f0")}}>
-      <polygon points={sloped?(cox2+","+coy2+" "+(cox2+cpw2)+","+coy2+" "+(cox2+cpw2)+","+(coy2+hMax2)+" "+cox2+","+(coy2+hMin2)):(cox2+","+coy2+" "+(cox2+cpw2)+","+coy2+" "+(cox2+cpw2)+","+(coy2+cph2)+" "+cox2+","+(coy2+cph2))} fill={dark?"#1e3a5f":"#dbeafe"} stroke="#2563eb" strokeWidth="2"/>
+      {/* PONTA EM NÍVEIS (24/10/2026): o perfil desce em escada — borda,
+          cada degrau/prainha na sua profundidade, depois o fundo. Com bloco
+          no canto o corte passa pelos degraus, e a prainha ao lado vai
+          tracejada. Sem degrau, o perfil de sempre. */}
+      {(()=>{
+        const dF=x=>sloped?dMin+(dMax-dMin)*(x/L):D;
+        const P=([x,d])=>`${(cox2+x*cutScale).toFixed(1)},${(coy2+d*cutScale).toFixed(1)}`;
+        if(!pontaCorte)return<polygon points={sloped?(cox2+","+coy2+" "+(cox2+cpw2)+","+coy2+" "+(cox2+cpw2)+","+(coy2+hMax2)+" "+cox2+","+(coy2+hMin2)):(cox2+","+coy2+" "+(cox2+cpw2)+","+coy2+" "+(cox2+cpw2)+","+(coy2+cph2)+" "+cox2+","+(coy2+cph2))} fill={dark?"#1e3a5f":"#dbeafe"} stroke="#2563eb" strokeWidth="2"/>;
+        const c=pontaCorte.canto,pr=pontaCorte.prainha;
+        const degs=c?c.degraus:pontaCorte.niveis;
+        const pts=[[0,0]];
+        degs.forEach(n=>pts.push([n.x0,n.prof],[n.x1,n.prof]));
+        if(c&&pr)pts.push([c.fim,pr.prof],[pr.avanco,pr.prof]);
+        const xf=c?(pr?pr.avanco:c.fim):pontaCorte.fim;
+        pts.push([xf,dF(xf)],[L,dF(L)],[L,0]);
+        const f2=v=>v.toFixed(2).replace(".",",");
+        return<g>
+          <polygon points={pts.map(P).join(" ")} fill={dark?"#1e3a5f":"#dbeafe"} stroke="#2563eb" strokeWidth="2" strokeLinejoin="round"/>
+          {degs.map((n,i)=><text key={"cp"+i} x={cox2+(n.x0+n.x1)/2*cutScale} y={coy2+n.prof*cutScale-2.5} textAnchor="middle" fontSize="5" fontWeight="700" fill={dark?"#93c5fd":"#1d4ed8"}>{f2(n.prof)}</text>)}
+          {c&&pr&&<text x={cox2+(c.fim+pr.avanco)/2*cutScale} y={coy2+pr.prof*cutScale-2.5} textAnchor="middle" fontSize="5" fontWeight="700" fill={dark?"#93c5fd":"#1d4ed8"}>{f2(pr.prof)}</text>}
+          {c&&pr&&<line x1={cox2} y1={coy2+pr.prof*cutScale} x2={cox2+c.fim*cutScale} y2={coy2+pr.prof*cutScale} stroke="#2563eb" strokeWidth="0.8" strokeDasharray="3,2"/>}
+          {c&&pr&&<text x={cox2+2} y={coy2+pr.prof*cutScale+6} fontSize="4.6" fill={dark?"#93c5fd":"#1d4ed8"}>prainha ao lado</text>}
+        </g>;
+      })()}
       <line x1={cox2+2} y1={coy2+3} x2={cox2+cpw2-2} y2={coy2+3} stroke="#0ea5e9" strokeWidth="0.6" strokeDasharray="4,2"/>
       <text x={cox2+cpw2/2} y={coy2+13} textAnchor="middle" fontSize="6" fill="#0ea5e9">N.A.</text>
       <text x={cox2+cpw2/2} y={(sloped?Math.max(coy2+hMax2,coy2+hMin2):coy2+cph2)+14} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{L}m</text>
-      <text x={cox2-14} y={coy2+(sloped?hMin2:cph2)/2+3} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{sloped?dMin:D}m</text>
+      {!pontaCorte&&<text x={cox2-14} y={coy2+(sloped?hMin2:cph2)/2+3} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{sloped?dMin:D}m</text>}
       {/* O banco corre PARALELO a este corte, entao nao e cortado: aparece
           tracejado, como o que esta atras do plano — convencao de desenho. */}
-      {banco&&banco.medida&&(()=>{
+      {banco&&banco.medida&&(banco.niveis||[]).length>1&&(()=>{
+        // ESCADA LATERAL: um tracejado por degrau, todos atrás do corte
+        const x0=cox2+cpw2*Math.min((banco.x0||0)/L,1);
+        return<g>{banco.niveis.map((nv,i)=>{const yb=coy2+nv.prof*cutScale;return<g key={"ce"+i}>
+          <line x1={x0+2} y1={yb} x2={cox2+cpw2-2} y2={yb} stroke="#6366f1" strokeWidth="1" strokeDasharray="5,3"/>
+          <text x={x0+6+i*70} y={yb-2.5} fontSize="5" fontWeight="700" fill="#6366f1">escada D{i+1} (atrás do corte) −{nv.prof.toFixed(2).replace(".",",")}m</text>
+        </g>})}</g>;
+      })()}
+      {banco&&banco.medida&&(banco.niveis||[]).length<=1&&(()=>{
         const escY=(sloped?hMin2:cph2)/Math.max(D,0.01);
         const yb=coy2+banco.prof*escY;
-        const x0=banco.sobreTrechoFundo?cox2+cpw2*Math.min(prai.comp/L,1):cox2;
+        const x0=cox2+cpw2*Math.min((banco.x0||0)/L,1);
         return<g>
           <line x1={x0+2} y1={yb} x2={cox2+cpw2-2} y2={yb} stroke="#6366f1" strokeWidth="1.2" strokeDasharray="5,3"/>
           <text x={x0+6} y={yb-3} fontSize="5.4" fontWeight="700" fill="#6366f1">banco (atrás do corte) −{banco.prof.toFixed(2).replace(".",",")}m</text>
@@ -794,8 +877,39 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
     els.push(<polygon key="rim" points={pts([[0,0,D],[L,0,D],[L,W,D],[0,W,D]])} fill="none" stroke="#2563eb" strokeWidth="2.5"/>);
     [[0,0],[L,0],[L,W],[0,W]].forEach(([x,y],i)=>{const a=iso(x,y,0),b=iso(x,y,D);els.push(<line key={`cv${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#2563eb" strokeWidth="1" opacity="0.35"/>);});
   }
+  // Profundidade da conta para conferir degraus (média de raso e fundo), igual à planta
+  const DnIso=(parseFloat(pool.depthMin)>0&&parseFloat(pool.depthMax)>0)?(parseFloat(pool.depthMin)+parseFloat(pool.depthMax))/2:D;
+  const pontaIso=(()=>{const pc=desenho?null:pontaCfg(pool,poolFmt,L,W,DnIso);return pc&&!pc.erro?pc:null})();
+  // PONTA EM NÍVEIS (24/10/2026) — cada nível uma plataforma na sua altura, do
+  // raso para o fundo; o bloco de canto sobe por cima da prainha.
+  if(pontaIso){
+    const X=FX,Y=FY;
+    const zDe=prof=>Math.max(0,D-prof);
+    const f2=v=>v.toFixed(2).replace(".",",");
+    const nv=pontaIso.niveis;
+    nv.forEach((n,i)=>{
+      const z=zDe(n.prof),zN=i<nv.length-1?zDe(nv[i+1].prof):0;
+      els.push(<polygon key={"pn_t"+i} points={pts([[X(n.x0),Y(0),z],[X(n.x1),Y(0),z],[X(n.x1),Y(W),z],[X(n.x0),Y(W),z]])} fill={dk?"#1e4d7a":"#bfdbfe"} opacity="0.6"/>);
+      els.push(<polygon key={"pn_f"+i} points={pts([[X(n.x0),Y(0),0],[X(n.x1),Y(0),0],[X(n.x1),Y(0),z],[X(n.x0),Y(0),z]])} fill={dk?"#2563a0":"#93c5fd"} stroke="#2563eb" strokeWidth="0.5" opacity="0.5"/>);
+      els.push(<polygon key={"pn_r"+i} points={pts([[X(n.x1),Y(0),zN],[X(n.x1),Y(W),zN],[X(n.x1),Y(W),z],[X(n.x1),Y(0),z]])} fill={dk?"#1e4080":"#7dd3fc"} stroke="#2563eb" strokeWidth="0.5" opacity="0.55"/>);
+      const pp=iso(X((n.x0+n.x1)/2),Y(W/2),z);
+      els.push(<text key={"pn_l"+i} x={pp.x} y={pp.y-3} textAnchor="middle" fontSize="5.5" fontWeight="700" fill={dk?"#93c5fd":"#1d4ed8"} opacity="0.85">{n.tipo==="prainha"?"PRAINHA":n.rotulo} {f2(n.prof)}m</text>);
+    });
+    const c=pontaIso.canto;
+    if(c){
+      const zB=zDe(c.baseProf),yIn=c.lado==="cima"?c.y1:c.y0;
+      c.degraus.forEach((d,i)=>{
+        const z=zDe(d.prof),zN=i<c.degraus.length-1?zDe(c.degraus[i+1].prof):zB;
+        els.push(<polygon key={"pc_t"+i} points={pts([[X(d.x0),Y(c.y0),z],[X(d.x1),Y(c.y0),z],[X(d.x1),Y(c.y1),z],[X(d.x0),Y(c.y1),z]])} fill={dk?"#3b6ea5":"#dbeafe"} opacity="0.75"/>);
+        els.push(<polygon key={"pc_s"+i} points={pts([[X(d.x0),Y(yIn),zB],[X(d.x1),Y(yIn),zB],[X(d.x1),Y(yIn),z],[X(d.x0),Y(yIn),z]])} fill={dk?"#2f5f94":"#bfdbfe"} stroke="#1d4ed8" strokeWidth="0.5" opacity="0.65"/>);
+        els.push(<polygon key={"pc_r"+i} points={pts([[X(d.x1),Y(c.y0),zN],[X(d.x1),Y(c.y1),zN],[X(d.x1),Y(c.y1),z],[X(d.x1),Y(c.y0),z]])} fill={dk?"#28548a":"#93c5fd"} stroke="#1d4ed8" strokeWidth="0.5" opacity="0.65"/>);
+        const pp=iso(X((d.x0+d.x1)/2),Y((c.y0+c.y1)/2),z);
+        els.push(<text key={"pc_l"+i} x={pp.x} y={pp.y-2} textAnchor="middle" fontSize="5" fontWeight="700" fill={dk?"#e0f2fe":"#1e3a8a"}>{d.rotulo}</text>);
+      });
+    }
+  }
   // "Com prainha" — plataforma rasa na ponta rasa (acompanha o espelho da piscina)
-  if(poolFmt==="Com prainha"){
+  if(poolFmt==="Com prainha"&&!pontaIso){
     const prai=prainhaCfg(pool,L,D);
   const alturaBicoP=(t,f)=>alturaBico(t,f,D,devHeights);
     const pW=prai.comp,pH=prai.medida?Math.max(0,D-prai.prof):D*0.4; // pH = altura do platô a partir do fundo
@@ -811,16 +925,34 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   // try/catch pelo mesmo motivo da uniao com o spa: medida estranha e problema,
   // tela branca e pior. Sem banco, o resto da isometrica continua de pe.
   try{
-    const bc=bancoCfg(pool,poolFmt,L,W,D);
+    const bc=bancoCfg(pool,poolFmt,L,W,DnIso);
     if(!bc)throw new Error("sem banco");
+    // ESCADA LATERAL (24/10/2026): um bloco por degrau, do mais raso (junto
+    // da parede) ao mais fundo; a face de cada um vai do degrau de baixo ao seu.
+    if((bc.niveis||[]).length>1){
+      const X=FX,Y=FY;
+      const x0=bc.x0||0;
+      let acc=0;
+      bc.niveis.forEach((n,i)=>{
+        const a=acc,b=acc+n.larg;acc=b;
+        const y0=bc.lado==="cima"?a:W-b,y1=bc.lado==="cima"?b:W-a;
+        const z=Math.max(0,D-n.prof),zN=i<bc.niveis.length-1?Math.max(0,D-bc.niveis[i+1].prof):0;
+        const yIn=bc.lado==="cima"?y1:y0;
+        els.push(<polygon key={"es_t"+i} points={pts([[X(x0),Y(y0),z],[X(L),Y(y0),z],[X(L),Y(y1),z],[X(x0),Y(y1),z]])} fill={dk?"#3b4763":"#c7d2fe"} opacity="0.75"/>);
+        els.push(<polygon key={"es_f"+i} points={pts([[X(x0),Y(yIn),zN],[X(L),Y(yIn),zN],[X(L),Y(yIn),z],[X(x0),Y(yIn),z]])} fill={dk?"#2f3a52":"#a5b4fc"} stroke="#6366f1" strokeWidth="0.5" opacity="0.65"/>);
+        const pb=iso(X((x0+L)/2),Y((y0+y1)/2),z);
+        els.push(<text key={"es_l"+i} x={pb.x} y={pb.y-2} textAnchor="middle" fontSize="5.2" fontWeight="700" fill={dk?"#a5b4fc":"#4338ca"} opacity="0.9">D{i+1}</text>);
+      });
+    }else{
     const alt=Math.max(0,D-bc.prof);           // altura do bloco a partir do fundo
     const y0=bc.lado==="cima"?0:W-bc.larg, y1=y0+bc.larg;
-    const x0=bc.sobreTrechoFundo?prainhaCfg(pool,L,D).comp:0;
+    const x0=bc.x0||0;
     const X=FX,Y=FY;
     els.push(<polygon key="banco_top" points={pts([[X(x0),Y(y0),alt],[X(L),Y(y0),alt],[X(L),Y(y1),alt],[X(x0),Y(y1),alt]])} fill={dk?"#3b4763":"#c7d2fe"} opacity="0.75"/>);
     els.push(<polygon key="banco_face" points={pts([[X(x0),Y(bc.lado==="cima"?y1:y0),0],[X(L),Y(bc.lado==="cima"?y1:y0),0],[X(L),Y(bc.lado==="cima"?y1:y0),alt],[X(x0),Y(bc.lado==="cima"?y1:y0),alt]])} fill={dk?"#2f3a52":"#a5b4fc"} stroke="#6366f1" strokeWidth="0.5" opacity="0.65"/>);
     const pb=iso(X((x0+L)/2),Y((y0+y1)/2),alt);
     els.push(<text key="banco_lbl" x={pb.x} y={pb.y-3} textAnchor="middle" fontSize="6" fontWeight="700" fill={dk?"#a5b4fc":"#4338ca"} opacity="0.85">BANCO{bc.medida?` ${bc.larg.toFixed(2).replace(".",",")}m`:""}</text>);
+    }
   }catch{/* sem banco no desenho; a conta e a planta nao dependem disto */}
   // "Com Spa" — spa(s) nos cantos da piscina
   if(poolFmt==="Com Spa"){
@@ -1257,6 +1389,26 @@ const Avisos=({chunkQuebrado,onAtualizar,rascunho,onRecuperar,onDescartar})=>{
 };
 
 const Btn=({children,onClick,style:sx})=><button onClick={onClick} style={{padding:"8px 14px",background:"var(--btn-bg,#f2f6f8)",color:"var(--btn-fg,#3d5268)",border:"1px solid var(--btn-bd,#cfdae2)",borderRadius:"6px",fontWeight:"600",fontSize:"12px",fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:"6px",...sx}}>{children}</button>;
+// ═══ LINHAS DE DEGRAU (24/10/2026) ═══
+// Uma linha por degrau: medida no sentido em que ele avança e profundidade da
+// BORDA até o piso dele. Serve à ponta em níveis (avanço) e à escada lateral
+// (largura). Guarda o texto como o `up` guarda (vírgula vira ponto).
+const LinhasDegrau=({linhas,campoA,rotA,phA,phP,inicio=1,onChange,t,blue})=>{
+  const lista=Array.isArray(linhas)?linhas:[];
+  const muda=(i,campo,v)=>onChange(lista.map((x,j)=>j===i?{...x,[campo]:String(v).replace(",",".")}:x));
+  return <>{lista.map((d,i)=><div key={i} className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",alignItems:"end",marginBottom:"6px"}}>
+    <Inp label={`D${i+inicio} · ${rotA} (m)`} value={d[campoA]||""} onChange={v=>muda(i,campoA,v)} t={t} placeholder={phA}/>
+    <Inp label={`D${i+inicio} · prof. (m)`} value={d.prof||""} onChange={v=>muda(i,"prof",v)} t={t} placeholder={phP}/>
+    <button type="button" onClick={()=>onChange(lista.filter((_,j)=>j!==i))} style={{alignSelf:"end",padding:"9px 8px",fontSize:"10px",fontWeight:"700",fontFamily:"inherit",borderRadius:"6px",cursor:"pointer",border:"1.5px solid #ef444455",background:"transparent",color:"#ef4444"}}>Remover D{i+inicio}</button>
+  </div>)}
+  <button type="button" onClick={()=>onChange([...lista,{[campoA]:"",prof:""}])} style={{padding:"6px 12px",fontSize:"10px",fontWeight:"700",fontFamily:"inherit",borderRadius:"6px",cursor:"pointer",border:`1.5px solid ${blue}55`,background:"transparent",color:blue}}>+ Degrau</button>
+  </>;
+};
+// Botões de escolha — o mesmo visual do lado do banco
+const Escolha=({opcoes,valor,onChange,t,blue})=><div style={{display:"flex",gap:"6px"}}>
+  {opcoes.map(([v,rot])=><button key={v} type="button" onClick={()=>onChange(v)} style={{flex:1,padding:"7px 4px",fontSize:"9.5px",fontWeight:"700",fontFamily:"inherit",borderRadius:"6px",cursor:"pointer",
+    border:"1.5px solid "+(valor===v?blue:t.cardBorder),background:valor===v?blue:"transparent",color:valor===v?"#fff":t.textSec}}>{rot}</button>)}
+</div>;
 const DarkToggle=({dark,onToggle})=><button onClick={onToggle} aria-label={dark?"Mudar para tema claro":"Mudar para tema escuro"} style={{width:"38px",height:"22px",borderRadius:"11px",border:"none",background:dark?"#2c4368":"#cbd5e1",cursor:"pointer",position:"relative",transition:"background .3s"}}><div style={{width:"18px",height:"18px",borderRadius:"50%",background:dark?"#0b1524":"#fff",position:"absolute",top:"2px",left:dark?"18px":"2px",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>{dark?<Moon size={11} color="#2dd4bf"/>:<Sun size={11} color="#e8b100"/>}</div></button>;
 
 // ═══ PDF PREVIEW ═══
@@ -1498,8 +1650,21 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue,aviso})=>{
                 const bc=bancoCfg(pool,d.poolFmt,n(pool.length),n(pool.width),ar.depthInfo?.avg||n(pool.depth));
                 if(!bc||!bc.medida)return null;
                 const m2=v=>v.toFixed(2).replace(".",",");
+                if((bc.niveis||[]).length>1)return <span style={{background:"#eef2ff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #c7d2fe"}}>
+                  <b>Escada lateral:</b> {bc.niveis.map((x,i)=>`D${i+1} ${m2(x.larg)}×${m2(x.prof)}m`).join(" → ")} · {m2(bc.comprimento)}m de extensão
+                </span>;
                 return <span style={{background:"#eef2ff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #c7d2fe"}}>
                   <b>Banco lateral:</b> {m2(bc.larg)}m de largura × {m2(bc.comprimento)}m · assento a {m2(bc.prof)}m da borda
+                </span>;
+              })()}
+              {/* PONTA EM NÍVEIS no PDF (24/10/2026): os níveis que entraram na conta,
+                  do mais raso ao fundo — é o que o pedreiro e o cliente conferem. */}
+              {(()=>{
+                const n=v=>parseFloat(String(v??"").replace(",","."))||0;
+                const pc=pontaCfg(pool,d.poolFmt,n(pool.length),n(pool.width),ar.depthInfo?.avg||n(pool.depth));
+                if(!pc||pc.erro)return null;
+                return <span style={{background:"#eff6ff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #bfdbfe"}}>
+                  <b>Degraus:</b> {textoPonta(pc).replace("Ponta em níveis · ","")}
                 </span>;
               })()}
               {d.execDays&&<span style={{background:"#fff",padding:"2px 7px",borderRadius:"10px",border:"1px solid #dce3ee"}}><b>Prazo:</b> {d.execDays} dias úteis{d.svcType==="revestimento"?" após a medição detalhada":""}</span>}
@@ -2637,8 +2802,14 @@ export default function App(){
     const c=n(pool.prainhaComp),p=n(pool.prainhaProf),L=n(pool.length);
     const dMin=n(pool.depthMin),dMax=n(pool.depthMax);
     const D=(dMin>0&&dMax>0)?(dMin+dMax)/2:n(pool.depth);
-    if(poolFmt!=="Com prainha"||!(c>0&&c<L))return null;
     const m2=v=>v.toFixed(2).replace(".",",");
+    // com degraus: os níveis da ponta, do mais raso ao mais fundo (só quando a medida fecha)
+    const pc=pontaCfg(pool,poolFmt,L,n(pool.width),D);
+    if(pc&&!pc.erro){
+      const lista=pc.canto?[...pc.canto.degraus,...pc.niveis]:pc.niveis;
+      return{txt:lista.map(x=>m2(x.prof)).join(" · ")+"m",rot:pc.prainha?"Degraus + prainha (prof.)":"Degraus (prof.)"};
+    }
+    if(poolFmt!=="Com prainha"||!(c>0&&c<L))return null;
     return{txt:`${m2(c)}×${m2(Math.min(p>0?p:D*0.25,Math.max(D-0.05,0.05)))}m`};
   })();
   // Banco do resumo: mesma condicao do calcA — so aparece quando tem medida,
@@ -2650,6 +2821,7 @@ export default function App(){
     const bc=bancoCfg(pool,poolFmt,n(pool.length),n(pool.width),D);
     if(!bc||!bc.medida)return null;
     const m2=v=>v.toFixed(2).replace(".",",");
+    if((bc.niveis||[]).length>1)return{txt:bc.niveis.map(x=>m2(x.prof)).join(" · ")+"m",lado:bc.lado,linha:textoBanco(bc),rot:`Escada ${bc.niveis.length} degraus (${bc.lado})`};
     return{txt:`${m2(bc.larg)}×${m2(bc.prof)}m`,lado:bc.lado,linha:textoBanco(bc)};
   })();
 
@@ -3296,6 +3468,42 @@ export default function App(){
               Comprimento = quanto a prainha avança da borda rasa antes de cair para a parte funda ({(parseFloat(String(pool.prainhaComp||"").replace(",","."))||0)>0?`sobram ${Math.max(0,(parseFloat(String(pool.length||"").replace(",","."))||0)-(parseFloat(String(pool.prainhaComp||"").replace(",","."))||0)).toFixed(2)}m de parte funda`:"deixe vazio para a prainha ficar só ilustrativa, sem entrar no cálculo"}).
               Preenchido, entra no chão, nas paredes e no volume: a lâmina sobre a prainha usa a profundidade informada e ganha o degrau de descida.
             </div>
+            {/* DEGRAUS DA PONTA (24/10/2026) — "dois, três degraus com níveis
+                diferentes e depois vem uma prainha". Cada degrau: avanço (a
+                pisada, no sentido do comprimento) e profundidade da BORDA até o
+                piso dele. Largura vazia = a largura toda; menor = bloco no canto
+                (o Marcos: "os dois acontecem"). Conta em motor/niveis.js. */}
+            <div style={{marginTop:"10px",paddingTop:"9px",borderTop:`1px dashed ${t.cardBorder}`}}>
+              <div style={{fontSize:"10px",fontWeight:"700",color:blue,marginBottom:"8px"}}>Degraus da ponta</div>
+              <LinhasDegrau linhas={pool.degraus} campoA="avanco" rotA="avanço" phA="0,30" phP="0,20" t={t} blue={blue}
+                onChange={v=>setPool(p=>({...p,degraus:v}))}/>
+              {(pool.degraus||[]).length>0&&(()=>{
+                const n=v=>parseFloat(String(v??"").replace(",","."))||0;
+                const temPrai=n(pool.prainhaComp)>0;
+                const Dv=ar.depthInfo?.avg||n(pool.depth);
+                const pc=pontaCfg(pool,poolFmt,n(pool.length),n(pool.width),Dv);
+                return <div style={{marginTop:"10px"}}>
+                  <div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}}>
+                    {temPrai&&<div>
+                      <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>Onde ficam os degraus</div>
+                      <Escolha t={t} blue={blue} valor={pool.degrausPos==="depois"?"depois":"antes"} onChange={v=>setPool(p=>({...p,degrausPos:v}))}
+                        opcoes={[["antes","Antes da prainha"],["depois","Depois (descendo ao fundo)"]]}/>
+                    </div>}
+                    <Inp label="Largura dos degraus (m)" value={pool.degrausLarg||""} onChange={up("degrausLarg")} t={t} placeholder="vazio = largura toda"/>
+                    {n(pool.degrausLarg)>0&&n(pool.degrausLarg)<n(pool.width)&&<div>
+                      <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>Canto (como aparece na planta)</div>
+                      <Escolha t={t} blue={blue} valor={pool.degrausLado==="baixo"?"baixo":"cima"} onChange={v=>setPool(p=>({...p,degrausLado:v}))}
+                        opcoes={[["cima","Em cima"],["baixo","Embaixo"]]}/>
+                    </div>}
+                  </div>
+                  <div style={{fontSize:"8.5px",color:pc?.erro?"#dc2626":t.textMuted,fontWeight:pc?.erro?"700":"400",marginTop:"6px",lineHeight:1.45}}>
+                    {pc?.erro?`⚠ ${pc.erro}`
+                      :pc?`${textoPonta(pc)} — sobram ${Math.max(0,n(pool.length)-pc.fim).toFixed(2).replace(".",",")} m de fundo. Profundidade = da BORDA até o piso de cada nível, como a prainha.`
+                      :"Preencha avanço e profundidade de cada degrau."}
+                  </div>
+                </div>;
+              })()}
+            </div>
           </div>}
           {poolFmt==="Triangular"&&<div style={{marginTop:"10px",background:t.sectionBg,borderRadius:"8px",padding:"10px",border:`1px solid ${t.cardBorder}`}}>
             <div style={{fontSize:"10px",fontWeight:"700",color:blue,marginBottom:"8px"}}>Lados do triângulo</div>
@@ -3328,12 +3536,12 @@ export default function App(){
           {(FORMATOS_COM_BANCO.includes(poolFmt)||["Triangular","Circular","Oitavada"].includes(poolFmt))&&<div style={{marginTop:"10px",background:t.sectionBg,borderRadius:"8px",padding:"10px",border:`1px solid ${t.cardBorder}`}}>
             <label style={{display:"flex",alignItems:"center",gap:"7px",cursor:"pointer",marginBottom:pool.bancoOn?"8px":0}}>
               <input type="checkbox" checked={!!pool.bancoOn} onChange={e=>setPool(p=>({...p,bancoOn:e.target.checked}))} style={{width:"15px",height:"15px",accentColor:blue,cursor:"pointer"}}/>
-              <span style={{fontSize:"10px",fontWeight:"700",color:blue}}>{poolFmt==="Triangular"?"Banco nos três lados":poolFmt==="Circular"?"Banco em volta (circular)":poolFmt==="Oitavada"?"Banco nas oito paredes":"Banco lateral (de ponta a ponta)"}</span>
+              <span style={{fontSize:"10px",fontWeight:"700",color:blue}}>{poolFmt==="Triangular"?"Banco nos três lados":poolFmt==="Circular"?"Banco em volta (circular)":poolFmt==="Oitavada"?"Banco nas oito paredes":(pool.bancoDegraus||[]).length?"Escada lateral (de ponta a ponta)":"Banco lateral (de ponta a ponta)"}</span>
             </label>
             {pool.bancoOn&&<>
               <div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px"}}>
-                <Inp label="Largura do banco (m)" value={pool.bancoLarg||""} onChange={up("bancoLarg")} t={t} placeholder="0,45"/>
-                <Inp label="Prof. do banco (m)" value={pool.bancoProf||""} onChange={up("bancoProf")} t={t} placeholder="0,40"/>
+                <Inp label={(pool.bancoDegraus||[]).length&&FORMATOS_COM_BANCO.includes(poolFmt)?"D1 · largura (m)":"Largura do banco (m)"} value={pool.bancoLarg||""} onChange={up("bancoLarg")} t={t} placeholder="0,45"/>
+                <Inp label={(pool.bancoDegraus||[]).length&&FORMATOS_COM_BANCO.includes(poolFmt)?"D1 · prof. (m)":"Prof. do banco (m)"} value={pool.bancoProf||""} onChange={up("bancoProf")} t={t} placeholder="0,40"/>
                 {!["Triangular","Circular","Oitavada"].includes(poolFmt)&&<div>
                   <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>Lado (como aparece na planta)</div>
                   <div style={{display:"flex",gap:"6px"}}>
@@ -3364,6 +3572,19 @@ export default function App(){
                   </div>;
                 }
                 if(poolFmt==="Triangular")return null;
+                // ESCADA LATERAL (24/10/2026): os degraus que vêm depois do banco,
+                // cada um mais fundo e mais para dentro da piscina.
+                const nE=v=>parseFloat(String(v??"").replace(",","."))||0;
+                if((pool.bancoDegraus||[]).length){
+                  const be=bancoCfg(pool,poolFmt,nE(pool.length),nE(pool.width),ar.depthInfo?.avg||nE(pool.depth));
+                  return <div style={{marginTop:"8px"}}>
+                    <LinhasDegrau linhas={pool.bancoDegraus} campoA="larg" rotA="largura" phA="0,30" phP="0,40" inicio={2} t={t} blue={blue}
+                      onChange={v=>setPool(p=>({...p,bancoDegraus:v}))}/>
+                    <div style={{fontSize:"8.5px",color:be?.erro?"#dc2626":t.textMuted,fontWeight:be?.erro?"700":"400",marginTop:"6px",lineHeight:1.45}}>
+                      {be?.erro?`⚠ ${be.erro}`:be?.medida?`${textoBanco(be)}${be.sobreTrechoFundo?" (começa depois da ponta rasa)":""}. Largura = quanto cada degrau avança para dentro; profundidade = da BORDA até o piso do degrau.`:"Preencha largura e profundidade do 1º degrau (acima) e de cada degrau seguinte."}
+                    </div>
+                  </div>;
+                }
                 const bcfg=bancoCfg(pool,poolFmt,parseFloat(String(pool.length||"").replace(",","."))||0,parseFloat(String(pool.width||"").replace(",","."))||0,parseFloat(String(pool.depth||"").replace(",","."))||0);
                 return <div style={{fontSize:"8.5px",color:bcfg?.aviso?"#b45309":t.textMuted,marginTop:"6px",lineHeight:1.45}}>
                   {bcfg?.aviso
@@ -3371,6 +3592,9 @@ export default function App(){
                     :bcfg?.medida
                       ?`Assento a ${bcfg.prof.toFixed(2).replace(".",",")}m da borda, bloco de ${bcfg.altura.toFixed(2).replace(".",",")}m de altura, correndo ${bcfg.comprimento.toFixed(2).replace(".",",")}m${bcfg.sobreTrechoFundo?" (para no degrau da prainha)":""}. Entra no volume e nas paredes; o topo do assento devolve o chão que o banco tapa.`
                       :"Profundidade = da BORDA da piscina até o assento, medida igual à da prainha (o vinil sobe até a borda, não tem lâmina de água na conta). Deixe vazio para o banco ficar só ilustrativo, sem entrar no cálculo."}
+                  {FORMATOS_COM_BANCO.includes(poolFmt)&&<div style={{marginTop:"8px"}}>
+                    <button type="button" onClick={()=>setPool(p=>({...p,bancoDegraus:[{larg:"",prof:""}]}))} style={{padding:"6px 12px",fontSize:"10px",fontWeight:"700",fontFamily:"inherit",borderRadius:"6px",cursor:"pointer",border:`1.5px solid ${blue}55`,background:"transparent",color:blue}}>+ Degrau (vira escada lateral)</button>
+                  </div>}
                 </div>;
               })()}
             </>}
@@ -3537,8 +3761,8 @@ export default function App(){
           <div style={{marginTop:"14px",background:t.areaBg,borderRadius:"10px",padding:"14px"}}>
             <div style={{display:"flex",justifyContent:"center",gap:"12px",flexWrap:"wrap",alignItems:"center"}}>
               <div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{poolFmt==="Triangular"?`${pool.triA||"—"}/${pool.triB||"—"}/${pool.triC||"—"} × ${pool.depth||"—"}m`:poolFmt==="Circular"?`Ø${pool.diametro||"—"} × ${pool.depth||"—"}m`:`${pool.length}×${pool.width}×${pool.depth}m`}</div><div style={{fontSize:"8px",color:t.textSec}}>{poolFmt==="Triangular"?"Triângulo × prof.":poolFmt==="Circular"?"Diâmetro × prof.":"Piscina"}</div></div>
-              {praiInfo&&<><div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/><div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:"#b45309"}}>{praiInfo.txt}</div><div style={{fontSize:"8px",color:t.textSec}}>Prainha</div></div></>}
-              {bancoInfo&&<><div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/><div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:"#4338ca"}}>{bancoInfo.txt}</div><div style={{fontSize:"8px",color:t.textSec}}>Banco ({bancoInfo.lado})</div></div></>}
+              {praiInfo&&<><div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/><div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:"#b45309"}}>{praiInfo.txt}</div><div style={{fontSize:"8px",color:t.textSec}}>{praiInfo.rot||"Prainha"}</div></div></>}
+              {bancoInfo&&<><div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/><div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:"#4338ca"}}>{bancoInfo.txt}</div><div style={{fontSize:"8px",color:t.textSec}}>{bancoInfo.rot||`Banco (${bancoInfo.lado})`}</div></div></>}
               <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
               <div style={{textAlign:"center"}}><div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{ar.chao} m²</div><div style={{fontSize:"8px",color:t.textSec}}>Chão</div></div>
               <div style={{width:"1px",height:"24px",background:"#cbd5e1"}}/>
@@ -3577,20 +3801,50 @@ export default function App(){
               {(()=>{
                 const pf=v=>parseFloat(String(v??"").replace(",","."))||0;
                 const cPrai=pf(pool.prainhaComp),cL=pf(pool.length);
-                const semMedida=poolFmt==="Com prainha"&&!(cPrai>0&&cPrai<cL);
+                const temDegraus=(pool.degraus||[]).some(x=>pf(x?.avanco)>0);
+                const semMedida=poolFmt==="Com prainha"&&!temDegraus&&!(cPrai>0&&cPrai<cL);
                 // medida da prainha digitada, mas o formato foi trocado depois:
                 // os campos somem da tela e o valor fica salvo sem efeito nenhum
-                const fmtTrocado=poolFmt!=="Com prainha"&&cPrai>0;
+                const fmtTrocado=poolFmt!=="Com prainha"&&(cPrai>0||temDegraus);
                 const rasas=(desenho?.formas||[]).filter(x=>["prainha","escada","spa"].includes(x.tipo));
                 const desenhoLiso=!!manta.contorno&&rasas.length>0;
                 if(!semMedida&&!fmtTrocado&&!desenhoLiso)return null;
                 return <div style={{marginBottom:"10px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:"6px",padding:"8px 10px",fontSize:"10.5px",color:"#991b1b",lineHeight:1.55}}>
                   ⚠ <b>Este plano saiu como piscina lisa.</b>{" "}
                   {fmtTrocado
-                    ?<>Há uma prainha de <b>{m2(cPrai)} m</b> gravada nas medidas, mas o formato está em <b>"{poolFmt}"</b> — e só o formato "Com prainha" leva a prainha para o corte. Troque o formato em <b>Medidas</b>, ou apague a medida da prainha se ela não existe.</>
+                    ?<>Há {cPrai>0?<>uma prainha de <b>{m2(cPrai)} m</b></>:<b>degraus da ponta</b>} gravada{cPrai>0?"":"s"} nas medidas, mas o formato está em <b>"{poolFmt}"</b> — e só o formato "Com prainha" leva a prainha para o corte. Troque o formato em <b>Medidas</b>, ou apague a medida da prainha se ela não existe.</>
                     :semMedida
                     ?<>O formato é "Com prainha", mas <b>Comp. da prainha</b> está vazio (ou não é menor que o comprimento). Sem a medida o corte não quebra as paredes em dois níveis nem separa o chão do fundo do piso da prainha — o orçamento cobra manta e solda a menos. Preencha em <b>Medidas</b> e o plano refaz sozinho.</>
                     :<>A {rasas.map(x=>x.tipo).join("/")} está desenhada no editor de forma, mas o plano de corte segue o contorno com <b>profundidade única</b> — a parte rasa não entra. Para o corte certo use o formato <b>"Com prainha"</b> com as medidas.</>}
+                </div>;
+              })()}
+
+              {/* PONTA EM NÍVEIS (24/10/2026). A faixa única é a do Marcos: "às
+                  vezes dá para passar a faixa inteira, começar de um lado,
+                  rodear toda a piscina e retornar para o degrau, mas às vezes
+                  não". Nasce desligada; fora de esquadro não liga (manta não vinca). */}
+              {manta.niveis&&<div style={{marginBottom:"10px",background:t.card,borderRadius:"8px",padding:"9px 10px",border:`1px solid ${t.cardBorder}`}}>
+                <div style={{fontSize:"10px",color:t.textSec,lineHeight:1.5,marginBottom:"6px"}}>
+                  Ordem da obra: primeiro os <b>espelhos</b> do lado dos degraus, depois as paredes. Parede com pé em escada sai <b>inteira</b>, na altura maior, e é recortada na obra. Pisadas estreitas saem lado a lado na mesma passada.
+                </div>
+                <label style={{display:"flex",alignItems:"center",gap:"7px",cursor:wMode==="irregular"?"not-allowed":"pointer",fontSize:"10.5px",fontWeight:"600",color:wMode==="irregular"?t.textMuted:t.text}}>
+                  <input type="checkbox" disabled={wMode==="irregular"} checked={!!pool.paredeFaixaUnica&&wMode!=="irregular"} onChange={e=>setPool(p=>({...p,paredeFaixaUnica:e.target.checked}))} style={{cursor:"inherit",width:"15px",height:"15px"}}/>
+                  Paredes numa faixa só (lateral + fundo + lateral, vincada nos cantos)
+                </label>
+                <div style={{fontSize:"9px",color:t.textMuted,marginTop:"4px",lineHeight:1.45}}>
+                  {wMode==="irregular"?"Paredes fora de esquadro: a manta não acomoda no vinco, então sai em 3 peças.":"Só quando a piscina deixa — estrutura no esquadro e parede que não seja grande demais. Sem marcar, saem 2 comprimentos e 1 largura."}
+                </div>
+              </div>}
+              {(()=>{
+                // Banco/escada lateral junto com prainha ou degraus da ponta: o plano
+                // ainda não junta os dois (a prainha manda, como desde 22/09) — dizer
+                // em vez de cobrar a menos em silêncio.
+                const pf=v=>parseFloat(String(v??"").replace(",","."))||0;
+                const comPonta=poolFmt==="Com prainha"&&((pf(pool.prainhaComp)>0&&pf(pool.prainhaComp)<pf(pool.length))||(pool.degraus||[]).some(x=>pf(x?.avanco)>0));
+                const bc=bancoCfg(pool,poolFmt,pf(pool.length),pf(pool.width),ar.depthInfo?.avg||pf(pool.depth));
+                if(!comPonta||!bc?.medida)return null;
+                return <div style={{marginBottom:"10px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:"6px",padding:"8px 10px",fontSize:"10.5px",color:"#92400e",lineHeight:1.55}}>
+                  ⚠ <b>{(bc.niveis||[]).length>1?"A escada lateral":"O banco lateral"} não entrou neste plano de corte.</b> Com prainha ou degraus na ponta o plano corta a ponta; as peças {(bc.niveis||[]).length>1?"da escada":"do banco"} ({textoBanco(bc)}) ficam para cortar à parte na obra. A área do vinil (bolsão) já conta tudo.
                 </div>;
               })()}
 
@@ -3598,7 +3852,7 @@ export default function App(){
                 <div>
                   <div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".5px",marginBottom:"5px"}}>Paredes — {manta.paredes.qtdPecas} peças</div>
                   {manta.paredes.pecas.map((p,i)=><div key={i} style={linha}>
-                    <span style={{color:t.textSec}}>{p.nome}{p.corrida?<span style={{color:"#b45309",fontWeight:"700"}}> ↩ vincada</span>:""}{p.recorte?<span style={{color:"#4338ca",fontWeight:"700"}}> ✂ recorte {m2(p.recorte.larg)}×{m2(p.recorte.alt)}</span>:""}</span>
+                    <span style={{color:t.textSec}}>{p.nome}{p.corrida?<span style={{color:"#b45309",fontWeight:"700"}}> ↩ vincada</span>:""}{p.recorte?<span style={{color:"#4338ca",fontWeight:"700"}}>{p.recorte.degraus?.length?` ✂ inteira, recortada em ${p.recorte.degraus.length} degrau${p.recorte.degraus.length===1?"":"s"} na obra`:` ✂ recorte ${m2(p.recorte.larg)}×${m2(p.recorte.alt)}`}</span>:""}</span>
                     <b style={{color:t.text,whiteSpace:"nowrap"}}>{m2(p.comp)} × {m2(p.altura)}</b>
                   </div>)}
                   <div style={{fontSize:"9px",color:t.textMuted,marginTop:"3px"}}>{m2(manta.paredes.metrosLineares)} m lineares{manta.passadas?.length?" (peça por peça)":""}</div>

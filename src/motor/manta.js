@@ -412,7 +412,32 @@ export function facesRetangulo(comp, larg, prof) {
  * subir degrau — as mesmas peças forram o fundo e o topo do assento. É o
  * contrário da prainha, cujo degrau atravessa as faixas e obriga duas regiões.
  */
-export function facesComBanco(comp, larg, prof, bancoLarg, bancoProf) {
+export function facesComBanco(comp, larg, prof, bancoLarg, bancoProf, niveis = null) {
+  // ESCADA LATERAL (24/10/2026): o banco em 2 ou mais degraus. A mesma regra
+  // ditada para o banco, degrau por degrau — as duas testeiras levam a sobra
+  // dos cantos e o recorte em escada; tudo o que corre no comprimento sai
+  // RENTE: a lateral oposta, um espelho por degrau e a testeira do 1º degrau
+  // (do assento dele até a borda). O chão continua não mudando: os degraus
+  // correm paralelos às faixas, como o assento do banco.
+  if (Array.isArray(niveis) && niveis.length > 1) {
+    const degraus = niveis.map((n) => ({ larg: arred(n.larg), alt: arred(Math.max(prof - n.prof, 0)) }));
+    const recorte = {
+      larg: arred(niveis.reduce((s, n) => s + n.larg, 0)),
+      alt: degraus[0].alt,
+      degraus,
+    };
+    const faces = [
+      { nome: "Testeira 1", comp: larg, prof, recorte },
+      { nome: "Testeira 2", comp: larg, prof, recorte },
+      { nome: "Lateral (em frente à escada)", comp, prof, semSobraLateral: true },
+    ];
+    niveis.forEach((n, i) => {
+      const prox = i < niveis.length - 1 ? niveis[i + 1].prof : prof;
+      faces.push({ nome: `Espelho do degrau ${i + 1}`, comp, prof: arred(Math.max(prox - n.prof, 0)), semSobraLateral: true });
+    });
+    faces.push({ nome: "Testeira do 1º degrau", comp, prof: niveis[0].prof, semSobraLateral: true });
+    return faces;
+  }
   // arred: 1,40 - 0,50 em ponto flutuante da 0,8999999999999999, e esse numero
   // ia parar na tela do plano de corte.
   const alturaEspelho = arred(Math.max(prof - bancoProf, 0));

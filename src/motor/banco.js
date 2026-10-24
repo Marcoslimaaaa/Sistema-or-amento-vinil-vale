@@ -28,15 +28,30 @@
 //
 // Sem medida o banco é só desenho e não mexe em preço nenhum, igual à prainha.
 
+import { pontaCfg, lerDegraus, DEGRAU_MINIMO } from "./niveis.js";
+
 /** Formatos em que o banco de ponta a ponta faz sentido geométrico. */
 export const FORMATOS_COM_BANCO = ["Retangular", "Retangular irregular", "Com prainha", "Com Spa"];
 
 const pf = (v) => parseFloat(String(v ?? "").replace(",", ".")) || 0;
+const n2 = (v) => v.toFixed(2).replace(".", ",");
 
 /**
  * Lê os campos do orçamento e devolve o banco já validado, ou null.
  *
- * @returns {null|{larg,prof,altura,lado,comprimento,sobreTrechoFundo,medida,aviso}}
+ * ESCADA LATERAL (24/10/2026): `pool.bancoDegraus` = [{larg, prof}] são os
+ * degraus que vêm DEPOIS do banco, cada um mais fundo e mais para dentro da
+ * piscina. Com eles o banco vira uma escada que corre a lateral inteira, e a
+ * medida passa a ser conferida com rigor — degrau fora de ordem ou escada larga
+ * demais vira `erro` (o orçamento trava), em vez do ajuste com aviso do banco
+ * simples. Sem degrau extra, nada muda.
+ *
+ * @returns {null|{larg,prof,altura,lado,comprimento,sobreTrechoFundo,medida,aviso,
+ *                 niveis,x0,erro}}
+ *   larg   largura TOTAL (todos os degraus juntos)
+ *   prof   profundidade do 1º degrau — o assento, no banco simples
+ *   niveis [{larg, prof}] do 1º degrau (encostado na parede) para dentro
+ *   x0     onde a escada começa no comprimento (depois da prainha/degraus da ponta)
  */
 export function bancoCfg(pool, poolFmt, L, W, D) {
   if (!pool?.bancoOn) return null;
@@ -45,10 +60,52 @@ export function bancoCfg(pool, poolFmt, L, W, D) {
   const larg = pf(pool.bancoLarg);
   const prof = pf(pool.bancoProf);   // da borda até o assento
   const lado = pool.bancoLado === "baixo" ? "baixo" : "cima";
+  const { lista: extras, erro: erroExtras } = lerDegraus(pool.bancoDegraus, { campoA: "larg", campoP: "prof", nome: "Degrau", inicio: 2 });
   // Sem medida: desenho ilustrativo, largura de mentirinha e nada na conta.
   const medida = larg > 0 && prof > 0;
   if (!medida) {
-    return { larg: Math.min(W * 0.15, 0.5), prof: Math.min(D * 0.3, 0.4), altura: 0, lado, comprimento: 0, sobreTrechoFundo: false, medida: false, aviso: null };
+    const erro = erroExtras || (extras.length ? "Escada lateral: preencha a largura e a profundidade do 1º degrau." : null);
+    return { larg: Math.min(W * 0.15, 0.5), prof: Math.min(D * 0.3, 0.4), altura: 0, lado, comprimento: 0, sobreTrechoFundo: false, medida: false, aviso: null, niveis: [], x0: 0, erro };
+  }
+
+  // Onde a lateral começa: depois da prainha, ou depois de todos os níveis da
+  // ponta quando ela tem degraus (motor/niveis.js).
+  const ponta = pontaCfg(pool, poolFmt, L, W, D);
+  const praiC = poolFmt === "Com prainha" ? pf(pool.prainhaComp) : 0;
+  const inicio = ponta && !ponta.erro ? ponta.fim : (praiC > 0 && praiC < L ? praiC : 0);
+
+  // ── ESCADA LATERAL: 2 ou mais degraus ─────────────────────────────────────
+  if (erroExtras || extras.length) {
+    const falha = (erro) => ({ larg, prof, altura: Math.max(D - prof, 0), lado, comprimento: 0, sobreTrechoFundo: false, medida: false, aviso: null, niveis: [], x0: 0, erro });
+    if (erroExtras) return falha(erroExtras);
+    const niveis = [{ larg, prof }, ...extras.map((e) => ({ larg: e.a, prof: e.p }))];
+    let ant = 0;
+    for (let i = 0; i < niveis.length; i++) {
+      if (niveis[i].prof < ant + DEGRAU_MINIMO - 1e-9) {
+        return falha(`Escada lateral: o degrau ${i + 1} (${n2(niveis[i].prof)} m) tem de ficar pelo menos 5 cm abaixo do ${i ? `degrau ${i} (${n2(ant)} m)` : "nível da borda"}.`);
+      }
+      ant = niveis[i].prof;
+    }
+    if (ant > D - DEGRAU_MINIMO + 1e-9) {
+      return falha(`Escada lateral: o último degrau (${n2(ant)} m) tem de ficar pelo menos 5 cm acima do fundo (${n2(D)} m).`);
+    }
+    const total = niveis.reduce((s, n) => s + n.larg, 0);
+    if (total > W * 0.45 + 1e-9) {
+      return falha(`Escada lateral de ${n2(total)} m de largura numa piscina de ${n2(W)} m: passa de 45% da largura. Confira as medidas — isso já é outro nível de piscina, não escada.`);
+    }
+    return {
+      larg: total,
+      prof,
+      altura: Math.max(D - prof, 0),
+      lado,
+      comprimento: L - inicio,
+      sobreTrechoFundo: inicio > 0,
+      medida: true,
+      aviso: null,
+      niveis,
+      x0: inicio,
+      erro: null,
+    };
   }
 
   let aviso = null;
@@ -67,10 +124,9 @@ export function bancoCfg(pool, poolFmt, L, W, D) {
   }
 
   // Com prainha de medida, o banco corre só o trecho fundo: em cima da prainha
-  // não há banco, há prainha.
-  const praiC = poolFmt === "Com prainha" ? pf(pool.prainhaComp) : 0;
-  const sobreTrechoFundo = praiC > 0 && praiC < L;
-  const comprimento = sobreTrechoFundo ? L - praiC : L;
+  // não há banco, há prainha (e com degraus na ponta, depois deles).
+  const sobreTrechoFundo = inicio > 0;
+  const comprimento = sobreTrechoFundo ? L - inicio : L;
 
   return {
     larg: largUsada,
@@ -81,6 +137,9 @@ export function bancoCfg(pool, poolFmt, L, W, D) {
     sobreTrechoFundo,
     medida: true,
     aviso,
+    niveis: [{ larg: largUsada, prof: profUsada }],
+    x0: inicio,
+    erro: null,
   };
 }
 
@@ -116,5 +175,9 @@ export function ajusteBanco(b, { D = 0, prainhaProf = 0 } = {}) {
 export function textoBanco(b) {
   if (!b || !b.medida) return null;
   const n = (v) => v.toFixed(2).replace(".", ",");
+  if ((b.niveis || []).length > 1) {
+    const degs = b.niveis.map((d, i) => `D${i + 1} ${n(d.larg)} × ${n(d.prof)} m`).join(" → ");
+    return `Escada lateral · ${b.niveis.length} degraus (${degs}) · ${n(b.comprimento)} m de extensão`;
+  }
   return `Banco lateral · ${n(b.larg)} m de largura × ${n(b.comprimento)} m de extensão · assento a ${n(b.prof)} m da borda (bloco de ${n(b.altura)} m de altura)`;
 }

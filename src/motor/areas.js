@@ -10,6 +10,7 @@ import { calcDesenho } from "./formas.js";
 import { bancoCfg, ajusteBanco } from "./banco.js";
 import { geometriaTriangular, geometriaComBanco } from "./triangular.js";
 import { contornoOitavada, medidasCirculo, erroBancoRedondo } from "./formatos.js";
+import { pontaCfg, celulasDaPiscina, medirCelulas } from "./niveis.js";
 
 export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
   const pf2=v=>parseFloat(String(v??"").replace(",","."))||0;
@@ -137,6 +138,28 @@ export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
   // Desenho livre (modelos/editor): áreas e perímetro REAIS do formato desenhado
   const dM=desenho&&desenho.vertices&&desenho.vertices.length>=3?calcDesenho(desenho,D):null;
   if(dM){chao=dM.chao;par=dM.paredes;perim=dM.perim;}
+  // ── DEGRAUS EM NÍVEIS (motor/niveis.js, pedido do Marcos em 24/10/2026) ──
+  // Ponta com degraus (com ou sem prainha) e escada lateral de 2+ degraus.
+  // Parede, espelho e volume saem da conta por CÉLULAS, exata em qualquer
+  // combinação. O chão não muda: cada degrau devolve em pisada o fundo que
+  // tampa. Sem degrau digitado nada disto roda e a conta é a de sempre.
+  const ponta=dM?null:pontaCfg(pool,poolFmt,L,W,D);
+  if(ponta?.erro)return invalido(ponta.erro);
+  const bcoN=dM?null:bancoCfg(pool,poolFmt,L,W,D);
+  if(bcoN?.erro)return invalido(bcoN.erro);
+  const escadaLat=!!(bcoN?.medida&&(bcoN.niveis||[]).length>1);
+  const celM=(ponta||escadaLat)?medirCelulas(celulasDaPiscina({L,W,D,ponta,
+    prainhaLegada:(!ponta&&temPrainha)?{comp:praiC,prof:Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05))}:null,
+    banco:bcoN?.medida?bcoN:null})):null;
+  if(celM){
+    const vertical=celM.paredes+celM.espelhos;
+    // Paredes digitadas (fora de esquadro) valem como a caixa na profundidade
+    // cheia; os degraus entram como DIFERENÇA — tiram a parede onde o degrau
+    // encosta e somam os espelhos.
+    par=(wMode==="irregular"&&walls.length>0)
+      ?walls.reduce((s,w)=>s+(parseFloat(w.l)||0)*(parseFloat(w.h)||D),0)+(vertical-2*(L+W)*D)
+      :vertical;
+  }
   // Extras (prainha, degrau, banco — cada peça: topo=L×W, face=L×H)
   const pf=v=>parseFloat(String(v||"").replace(",","."))||0;
   let extraChao=0,extraPar=0;
@@ -195,10 +218,11 @@ export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
   // identico ao de antes (travado por teste, para nao mexer em orcamento
   // antigo). No desenho livre nao entra: ali o contorno e outro.
   const bco=dM?null:bancoCfg(pool,poolFmt,L,W,D);
-  const ajB=ajusteBanco(bco,{D,prainhaProf:temPrainha?Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)):0});
+  // com a conta por células o banco/escada já está dentro dela
+  const ajB=celM?{chao:0,parede:0,volume:0}:ajusteBanco(bco,{D,prainhaProf:temPrainha?Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)):0});
   chao+=ajB.chao;par+=ajB.parede;
   const srVol=st.redondo?(isRndSq?srC2*srL2*srP:Math.PI*srR*srR*srP):0;
-  const vol=(dM?dM.vol:(temPrainha?praiVol:(isOval?(Math.PI*a*b):isOitavada?(L*W-4*(ch*ch/2)):L*W)*D))+(spa.on?sL*sW*sD:0)+(st.quadrado?sqC*sqL*sqP:0)+srVol+ajB.volume;
+  const vol=(celM?celM.volume:dM?dM.vol:(temPrainha?praiVol:(isOval?(Math.PI*a*b):isOitavada?(L*W-4*(ch*ch/2)):L*W)*D))+(spa.on?sL*sW*sD:0)+(st.quadrado?sqC*sqL*sqP:0)+srVol+ajB.volume;
   const depthInfo={avg:D,min:realDMin,max:realDMax,sloped:dMin>0&&dMax>0&&dMin!==dMax};
   return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:(sChao+fmtSpaChao).toFixed(1),sPar:(sPar+fmtSpaPar).toFixed(1),tot:(chao+par+sChao+sPar+fmtSpaChao+fmtSpaPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao+fmtSpaChao).toFixed(1),depthInfo,banco:bco,extraChao:extraChao.toFixed(1),extraPar:extraPar.toFixed(1),sqChao:sqChao.toFixed(1),sqPar:sqPar.toFixed(1),srChao:srChao.toFixed(1),srPar:srPar.toFixed(1)};
 };

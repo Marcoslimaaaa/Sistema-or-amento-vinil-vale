@@ -21,6 +21,7 @@ import { planoTriangular } from "./triangular.js";
 import { contornoOitavada } from "./formatos.js";
 import { planoCircular } from "./circular.js";
 import { calcA } from "./areas.js";
+import { pontaCfg, planoNiveis } from "./niveis.js";
 import { parseMoney } from "../services/dinheiro.js";
 
 const num = (v) => parseFloat(String(v ?? "").replace(",", ".")) || 0;
@@ -82,6 +83,22 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
       areaCobravel: +((base.metrosLineares + diff) * 1.55).toFixed(2), contorno: true };
   }
 
+  // PONTA EM NÍVEIS (degraus + prainha) tem plano próprio, com as regras que o
+  // Marcos passou em 24/10/2026: espelhos primeiro, paredes de pé em escada
+  // inteiras e recortadas, pisadas estreitas lado a lado na mesma passada, e a
+  // opção de uma faixa só rodeando (lateral + fundo + lateral). A faixa única
+  // só vale com a estrutura no esquadro — fora de esquadro a manta não vinca.
+  const ponta = pontaCfg(pool, poolFmt, L, W, D);
+  if (ponta && !ponta.erro) {
+    const sp = spaDaManta(spa, L, W, D);
+    return planoNiveis({
+      L, W, D, ponta,
+      faixaUnica: !!pool.paredeFaixaUnica && (wMode || "regular") !== "irregular",
+      areaReal, anexos: sp.anexos, facesExtra: sp.facesExtra,
+    });
+  }
+  if (ponta?.erro) return null;
+
   // TRIANGULAR tem plano próprio: paredes e chão não saem de comprimento ×
   // largura, e o ninho (costas + espelho do mesmo lado) muda a bobina. A
   // OITAVADA com banco usa o mesmo caminho sobre o contorno de 8 lados.
@@ -110,7 +127,7 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
     ? facesComPrainha(L, W, D, praiC, Math.min(praiP > 0 ? praiP : D * 0.25, Math.max(D - 0.05, 0.05)),
       { prainhaCorrida: (wMode || "regular") !== "irregular" })
     : (bcM && bcM.medida
-      ? facesComBanco(L, W, D, bcM.larg, bcM.prof)
+      ? facesComBanco(L, W, D, bcM.larg, bcM.prof, bcM.niveis)
       : facesRetangulo(L, W, D));
   const sp = spaDaManta(spa, L, W, D);
   return planoManta({ comp: L, larg: W, prof: D, perimetro, areaReal, praiComp: praiC,
