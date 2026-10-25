@@ -3465,7 +3465,13 @@ export default function App(){
               <Inp label="Prof. da prainha (m)" value={pool.prainhaProf||""} onChange={up("prainhaProf")} t={t} placeholder="0,30"/>
             </div>
             <div style={{fontSize:"8.5px",color:t.textMuted,marginTop:"6px",lineHeight:1.45}}>
-              Comprimento = quanto a prainha avança da borda rasa antes de cair para a parte funda ({(parseFloat(String(pool.prainhaComp||"").replace(",","."))||0)>0?`sobram ${Math.max(0,(parseFloat(String(pool.length||"").replace(",","."))||0)-(parseFloat(String(pool.prainhaComp||"").replace(",","."))||0)).toFixed(2)}m de parte funda`:"deixe vazio para a prainha ficar só ilustrativa, sem entrar no cálculo"}).
+              {/* Com degraus antes, a prainha não começa na borda: o que sobra de
+                  fundo sai do pontaCfg (achado no teste local de 24/10 — dizia
+                  6,50 m com 5,90 m de verdade). Sem degrau, o texto é o antigo. */}
+              {(pool.degraus||[]).length?"Comprimento = a pisada da prainha, no sentido do comprimento":"Comprimento = quanto a prainha avança da borda rasa antes de cair para a parte funda"} ({(()=>{const n=v=>parseFloat(String(v??"").replace(",","."))||0;const comD=(pool.degraus||[]).length>0;
+                if(!(n(pool.prainhaComp)>0))return comD?"vazio = só os degraus, sem prainha":"deixe vazio para a prainha ficar só ilustrativa, sem entrar no cálculo";
+                if(comD){const pc=pontaCfg(pool,poolFmt,n(pool.length),n(pool.width),ar.depthInfo?.avg||n(pool.depth));return pc&&!pc.erro?`com os degraus, sobram ${Math.max(0,n(pool.length)-pc.fim).toFixed(2)}m de parte funda`:"com os degraus, veja o aviso abaixo";}
+                return `sobram ${Math.max(0,n(pool.length)-n(pool.prainhaComp)).toFixed(2)}m de parte funda`;})()}).
               Preenchido, entra no chão, nas paredes e no volume: a lâmina sobre a prainha usa a profundidade informada e ganha o degrau de descida.
             </div>
             {/* DEGRAUS DA PONTA (24/10/2026) — "dois, três degraus com níveis
