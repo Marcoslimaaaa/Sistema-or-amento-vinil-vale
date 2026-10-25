@@ -28,7 +28,7 @@
 //
 // Sem medida o banco é só desenho e não mexe em preço nenhum, igual à prainha.
 
-import { pontaCfg, lerDegraus, DEGRAU_MINIMO } from "./niveis.js";
+import { pontaCfg, lerDegraus, faltouVirgula, DEGRAU_MINIMO } from "./niveis.js";
 
 /** Formatos em que o banco de ponta a ponta faz sentido geométrico. */
 export const FORMATOS_COM_BANCO = ["Retangular", "Retangular irregular", "Com prainha", "Com Spa"];
@@ -77,6 +77,10 @@ export function bancoCfg(pool, poolFmt, L, W, D) {
   // ── ESCADA LATERAL: 2 ou mais degraus ─────────────────────────────────────
   if (erroExtras || extras.length) {
     const falha = (erro) => ({ larg, prof, altura: Math.max(D - prof, 0), lado, comprimento: 0, sobreTrechoFundo: false, medida: false, aviso: null, niveis: [], x0: 0, erro });
+    // O 1º degrau usa os campos do banco; a trava do "030" só entra aqui, na
+    // escada — o banco de um nível segue como sempre foi.
+    const virgula = faltouVirgula(pool.bancoLarg, "Degrau 1: a largura") || faltouVirgula(pool.bancoProf, "Degrau 1: a profundidade");
+    if (virgula) return falha(virgula);
     if (erroExtras) return falha(erroExtras);
     const niveis = [{ larg, prof }, ...extras.map((e) => ({ larg: e.a, prof: e.p }))];
     let ant = 0;

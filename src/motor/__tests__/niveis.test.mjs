@@ -24,7 +24,7 @@
 //    espelhos 8·0,2 + 8·1,0 = 9,60 → vertical 32,28 → TOTAL 64,28 m²
 //    volume 8 × 4,94 = 39,52 m³
 import { lerDegraus, pontaCfg, textoPonta, celulasDaPiscina, medirCelulas,
-  facesPontaNiveis, chaoPontaNiveis, ninharPecas, planoNiveis } from "../niveis.js";
+  facesPontaNiveis, chaoPontaNiveis, ninharPecas, planoNiveis, faltouVirgula } from "../niveis.js";
 import { calcA } from "../areas.js";
 import { bancoCfg, textoBanco } from "../banco.js";
 import { facesComBanco, cortarPeca, planoManta } from "../manta.js";
@@ -266,6 +266,48 @@ eq("ponta largura toda", textoPonta(pA), "Ponta em níveis · D1 0,30 × 0,20 m 
 eq("bloco no canto", textoPonta(pB), "Ponta em níveis · D1 0,30 × 0,20 m → D2 0,30 × 0,40 m → Prainha 1,50 × 0,60 m → fundo · degraus no canto de cima, 1,20 m de largura");
 eq("escada lateral", textoBanco(bcC), "Escada lateral · 2 degraus (D1 0,30 × 0,20 m → D2 0,30 × 0,40 m) · 8,00 m de extensão");
 eq("banco simples segue com o texto de sempre", textoBanco(bc1), "Banco lateral · 0,45 m de largura × 8,00 m de extensão · assento a 0,40 m da borda (bloco de 1,00 m de altura)");
+
+console.log("\n— o teste do Marcos (24/10): \"030\" sem a vírgula —");
+// 10,00 × 4,00 × 1,40 · prainha 1,00 × 0,50 · D1 0,30 × 0,70 · D2 "030" × 0,90,
+// degraus DEPOIS da prainha. A tela dizia "os níveis da ponta somam 31,30 m"
+// sem apontar o campo.
+const MARCOS = { length: "10.00", width: "4.00", depth: "1.40", prainhaComp: "1.00", prainhaProf: "0.50",
+  degraus: [{ avanco: "0.30", prof: "0.70" }, { avanco: "030", prof: "0.90" }], degrausPos: "depois" };
+eq("aponta o campo e pede a vírgula", pontaCfg(MARCOS, "Com prainha", 10, 4, 1.4).erro,
+  'Degrau 2: o avanço "030" ficou 30,00 m. Faltou a vírgula? Digite 0,30.');
+vd("e o orçamento trava", calcA(MARCOS, SEM_SPA, "regular", [], "Com prainha", [], {}, null).invalido);
+// Com a vírgula, À MÃO: laterais 2 × (1,0·0,5 + 0,3·0,7 + 0,3·0,9 + 8,4·1,4) = 2 × 12,74 = 25,48
+// testeiras 4·0,5 + 4·1,4 = 7,60 · espelhos 4·0,2 + 4·0,2 + 4·0,5 = 3,60 · chão 40
+// TOTAL 76,68 m² · volume 4 × 12,74 = 50,96 m³ · fundo 10 − 1,60 = 8,40 m
+const MARCOS_OK = { ...MARCOS, degraus: [{ avanco: "0.30", prof: "0.70" }, { avanco: "0,30", prof: "0.90" }] };
+const pMarcos = pontaCfg(MARCOS_OK, "Com prainha", 10, 4, 1.4);
+eq("com a vírgula fecha", textoPonta(pMarcos), "Ponta em níveis · Prainha 1,00 × 0,50 m → D1 0,30 × 0,70 m → D2 0,30 × 0,90 m → fundo · largura toda");
+perto("sobram 8,40 m de fundo", 10 - pMarcos.fim, 8.4, 1e-9);
+const mMarcos = medirCelulas(celulasDaPiscina({ L: 10, W: 4, D: 1.4, ponta: pMarcos }));
+perto("total 76,68 (à mão)", mMarcos.total, 76.68, 1e-6);
+perto("volume 50,96 (à mão)", mMarcos.volume, 50.96, 1e-6);
+const aMarcos = calcA(MARCOS_OK, SEM_SPA, "regular", [], "Com prainha", [], {}, null);
+eq("na tela: área 76,7 · volume 51,0", [aMarcos.tot, aMarcos.vol], ["76.7", "51.0"]);
+eq("profundidade sem vírgula", pontaCfg({ ...MARCOS_OK, degraus: [{ avanco: "0.30", prof: "070" }] }, "Com prainha", 10, 4, 1.4).erro,
+  'Degrau 1: a profundidade "070" ficou 70,00 m. Faltou a vírgula? Digite 0,70.');
+eq("prainha (com degrau)", pontaCfg({ ...MARCOS_OK, prainhaProf: "050" }, "Com prainha", 10, 4, 1.4).erro,
+  'Prainha: a profundidade "050" ficou 50,00 m. Faltou a vírgula? Digite 0,50.');
+eq("largura dos degraus", pontaCfg({ ...PONTA_A, degrausLarg: "012" }, "Com prainha", L, W, D).erro,
+  'A largura dos degraus "012" ficou 12,00 m. Faltou a vírgula? Digite 0,12.');
+eq("escada lateral: degrau 1 (campos do banco)", bancoCfg({ ...ESCADA_C, bancoLarg: "030" }, "Retangular", L, W, D).erro,
+  'Degrau 1: a largura "030" ficou 30,00 m. Faltou a vírgula? Digite 0,30.');
+eq("escada lateral: degrau 2", bancoCfg({ ...ESCADA_C, bancoDegraus: [{ larg: "030", prof: "0,40" }] }, "Retangular", L, W, D).erro,
+  'Degrau 2: a largura "030" ficou 30,00 m. Faltou a vírgula? Digite 0,30.');
+eq("escrito certo passa direto", ["0,30", "0.30", "0", "10", "1,40", " 0.5 ", ""].map((v) => faltouVirgula(v, "x")),
+  [null, null, null, null, null, null, null]);
+eq("30 digitado inteiro: diz a soma e aponta o D2",
+  pontaCfg({ ...MARCOS, degraus: [{ avanco: "0.30", prof: "0.70" }, { avanco: "30", prof: "0.90" }] }, "Com prainha", 10, 4, 1.4).erro,
+  "Os níveis da ponta somam 31,30 m e a piscina tem 10,00 m: não sobra fundo. Confira o D2 (30,00 m de avanço).");
+eq("bloco no canto: aponta a prainha", pontaCfg({ ...PONTA_B, prainhaComp: "7,95" }, "Com prainha", L, W, D).erro,
+  "A ponta ocupa 7,95 m e a piscina tem 8,00 m: não sobra fundo. Confira a prainha (7,95 m de avanço).");
+// Orçamento salvo não muda: sem degrau, nada disso roda.
+eq("prainha SEM degrau não passa pela trava nova", pontaCfg({ length: "6", width: "3", depth: "1.4", prainhaComp: "1", prainhaProf: "050" }, "Com prainha", 6, 3, 1.4), null);
+vd("banco de um nível também não", !String(bancoCfg({ ...BASE, bancoOn: true, bancoLarg: "045", bancoProf: "0,40" }, "Retangular", L, W, D)?.erro || "").includes("vírgula"));
 
 console.log(`\nniveis.test: ${ok} testes ok${falhas ? `, ${falhas} FALHA(S)` : ""}`);
 process.exit(falhas ? 1 : 0);

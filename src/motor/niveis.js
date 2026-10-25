@@ -45,6 +45,22 @@ export const DEGRAU_MINIMO = 0.05;
 export const FUNDO_MINIMO = 0.10;
 
 /**
+ * "030" no lugar de "0,30": sem a vírgula, o zero da frente some e o degrau
+ * vira 30 m. Achado no teste do Marcos em 24/10 — o D2 com "030" dava "os
+ * níveis da ponta somam 31,30 m" sem dizer qual campo estava errado.
+ * Só vale para campo que começa com zero seguido de algarismo: "0,30", "0.30",
+ * "0" e "10" passam direto. Não corrige sozinho; diz o que entendeu e pede a
+ * vírgula.
+ *
+ * @returns {string|null} a mensagem de erro, ou null quando está escrito certo
+ */
+export function faltouVirgula(valor, rotulo) {
+  const s = String(valor ?? "").trim();
+  if (!/^0\d*[1-9]\d*$/.test(s)) return null;
+  return `${rotulo} "${s}" ficou ${m2(pf(s))} m. Faltou a vírgula? Digite 0,${s.slice(1)}.`;
+}
+
+/**
  * Linhas de degrau digitadas.
  *
  * Linha toda vazia some (o usuário só apertou "+ Degrau"). Linha pela metade é
@@ -60,6 +76,9 @@ export function lerDegraus(linhas, { campoA = "avanco", campoP = "prof", nome = 
     const l = rows[i] || {};
     const vazioA = !String(l[campoA] ?? "").trim(), vazioP = !String(l[campoP] ?? "").trim();
     if (vazioA && vazioP) continue;
+    const virgula = faltouVirgula(l[campoA], `${nome} ${i + inicio}: ${campoA === "larg" ? "a largura" : "o avanço"}`)
+      || faltouVirgula(l[campoP], `${nome} ${i + inicio}: a profundidade`);
+    if (virgula) return { lista: [], erro: virgula };
     const a = pf(l[campoA]), p = pf(l[campoP]);
     if (!(a > 0)) return { lista: [], erro: `${nome} ${i + inicio}: falta ${campoA === "larg" ? "a largura" : "o avanço"}.` };
     if (!(p > 0)) return { lista: [], erro: `${nome} ${i + inicio}: falta a profundidade (da borda até o piso do degrau).` };
@@ -92,6 +111,11 @@ export function pontaCfg(pool, poolFmt, L, W, D) {
   if (!lista.length && !erroLeitura) return null;
   const falha = (erro) => ({ niveis: [], canto: null, fim: 0, prainha: null, erro });
   if (erroLeitura) return falha(erroLeitura);
+  // Só com degrau: a prainha sozinha segue pelo caminho antigo, sem esta trava.
+  const virgula = faltouVirgula(pool?.prainhaComp, "Prainha: o comprimento")
+    || faltouVirgula(pool?.prainhaProf, "Prainha: a profundidade")
+    || faltouVirgula(pool?.degrausLarg, "A largura dos degraus");
+  if (virgula) return falha(virgula);
   if (!(L > 0 && W > 0 && D > 0)) return falha("Faltam comprimento, largura ou profundidade da piscina.");
 
   const praiC = pf(pool?.prainhaComp), praiP = pf(pool?.prainhaProf);
@@ -134,7 +158,7 @@ export function pontaCfg(pool, poolFmt, L, W, D) {
     }
     const fim = Math.max(prainha ? prainha.avanco : 0, x);
     if (fim > L - FUNDO_MINIMO + EPS) {
-      return falha(`A ponta ocupa ${m2(fim)} m e a piscina tem ${m2(L)} m: não sobra fundo.`);
+      return falha(`A ponta ocupa ${m2(fim)} m e a piscina tem ${m2(L)} m: não sobra fundo. ${confira([...(prainha ? [prainha] : []), ...blocos])}`);
     }
     const y0 = lado === "cima" ? 0 : W - larg;
     return {
@@ -159,9 +183,15 @@ export function pontaCfg(pool, poolFmt, L, W, D) {
     return falha(`O último nível (${m2(ant)} m) tem de ficar pelo menos 5 cm acima do fundo (${m2(D)} m).`);
   }
   if (x > L - FUNDO_MINIMO + EPS) {
-    return falha(`Os níveis da ponta somam ${m2(x)} m e a piscina tem ${m2(L)} m: não sobra fundo.`);
+    return falha(`Os níveis da ponta somam ${m2(x)} m e a piscina tem ${m2(L)} m: não sobra fundo. ${confira(niveis)}`);
   }
   return { niveis, canto: null, fim: x, prainha, erro: null };
+}
+
+/** Quando a ponta não cabe, aponta o nível de maior avanço — quase sempre o digitado errado. */
+function confira(niveis) {
+  const maior = niveis.reduce((a, b) => (b.avanco > a.avanco ? b : a));
+  return `Confira ${maior.tipo === "prainha" ? "a prainha" : `o ${maior.rotulo}`} (${m2(maior.avanco)} m de avanço).`;
 }
 
 /** Uma linha por nível, do jeito que vai para o PDF e para o resumo. */
