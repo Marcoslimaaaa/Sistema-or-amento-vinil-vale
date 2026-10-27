@@ -3824,9 +3824,15 @@ export default function App(){
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}} className="vv-g2">
                 <div>
                   <div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".5px",marginBottom:"5px"}}>Paredes — {manta.paredes.qtdPecas} peças</div>
-                  {manta.paredes.pecas.map((p,i)=><div key={i} style={linha}>
-                    <span style={{color:t.textSec}}>{p.nome}{p.corrida?<span style={{color:"#b45309",fontWeight:"700"}}> ↩ vincada</span>:""}{p.recorte?<span style={{color:"#4338ca",fontWeight:"700"}}>{p.recorte.degraus?.length?` ✂ inteira, recortada em ${p.recorte.degraus.length} degrau${p.recorte.degraus.length===1?"":"s"} na obra`:` ✂ recorte ${m2(p.recorte.larg)}×${m2(p.recorte.alt)}`}</span>:""}</span>
-                    <b style={{color:t.text,whiteSpace:"nowrap"}}>{m2(p.comp)} × {m2(p.altura)}</b>
+                  {/* Fundo inclinado e faixinha (26/10/2026): a peça diz que é
+                      recortada na rampa, e a faixinha aparece com a medida dela —
+                      corre a peça inteira, do começo ao fim. */}
+                  {manta.paredes.pecas.map((p,i)=><div key={i}>
+                    <div style={linha}>
+                      <span style={{color:t.textSec}}>{p.nome}{p.corrida?<span style={{color:"#b45309",fontWeight:"700"}}> ↩ vincada</span>:""}{p.recorte?<span style={{color:"#4338ca",fontWeight:"700"}}>{p.recorte.degraus?.length?` ✂ inteira, recortada em ${p.recorte.degraus.length} degrau${p.recorte.degraus.length===1?"":"s"} na obra`:` ✂ recorte ${m2(p.recorte.larg)}×${m2(p.recorte.alt)}`}</span>:""}{p.rampa?<span style={{color:"#4338ca",fontWeight:"700"}}> ✂ recortada na rampa ({m2(p.rampa.de)} → {m2(p.rampa.ate)})</span>:""}</span>
+                      <b style={{color:t.text,whiteSpace:"nowrap"}}>{m2(p.comp)} × {m2(p.altura)}</b>
+                    </div>
+                    {(p.complementos||[]).map((c,j)=><div key={j} style={{fontSize:"9px",color:t.textMuted,paddingLeft:"6px"}}>+ faixinha {m2(c.comp)} × {m2(c.largura)} (bobina de {m2(p.alturaPrincipal)} + {m2(c.coberto)}, peça inteira)</div>)}
                   </div>)}
                   <div style={{fontSize:"9px",color:t.textMuted,marginTop:"3px"}}>{m2(manta.paredes.metrosLineares)} m lineares{manta.passadas?.length?" (peça por peça)":""}</div>
                 </div>
@@ -3878,6 +3884,8 @@ export default function App(){
                 <div style={{textAlign:"center",background:gold,borderRadius:"8px",padding:"5px 14px"}}>
                   <div style={{fontSize:"17px",fontWeight:"800",color:navy}}>{m2(manta.areaCobravel)} m²</div>
                   <div style={{fontSize:"8px",fontWeight:"600",color:"#1a1a2e"}}>Manta cortada</div>
+                  {(()=>{const tiras=(manta.passadas?.length?manta.passadas.flatMap(x=>x.faixinhas||[]):manta.paredes.complementos?.passadas?.flatMap(x=>x.itens)||[]).reduce((s2,f)=>s2+f.largura*f.comp,0);
+                    return tiras>0?<div style={{fontSize:"7.5px",color:"#1a1a2e"}}>inclui {m2(tiras)} m² de faixinha, só na largura dela</div>:null;})()}
                 </div>
                 <div style={{textAlign:"center",padding:"5px 4px"}}>
                   <div style={{fontSize:"15px",fontWeight:"800",color:blue}}>{m2(manta.metrosLineares)} m</div>

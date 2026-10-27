@@ -272,5 +272,13 @@ eq("prainha comprida demais: aponta a prainha", pontaCfg({ ...PONTA_A, prainhaCo
 eq("prainha SEM degrau não passa pela trava nova", pontaCfg({ length: "6", width: "3", depth: "1.4", prainhaComp: "1", prainhaProf: "050" }, "Com prainha", 6, 3, 1.4), null);
 vd("banco de um nível também não", !String(bancoCfg({ ...BASE, bancoOn: true, bancoLarg: "045", bancoProf: "0,40" }, "Retangular", L, W, D)?.erro || "").includes("vírgula"));
 
+console.log("\n— fundo inclinado: o último nível confere contra o RASO —");
+// raso 1,00 / fundo 1,80 dá média 1,40: um degrau a 0,98 passava, mas fica
+// 2 cm acima do fundo no começo da rampa (26/10/2026)
+const RAMPA_D = { ...BASE, depth: "", depthMin: "1.00", depthMax: "1.80", degraus: [{ avanco: "0,30", prof: "0,98" }] };
+eq("degrau a 0,98 com raso 1,00 trava", pontaCfg(RAMPA_D, "Com prainha", L, W, 1.4).erro,
+  "O último nível (0,98 m) tem de ficar pelo menos 5 cm acima do fundo (1,00 m).");
+eq("a 0,90 passa", pontaCfg({ ...RAMPA_D, degraus: [{ avanco: "0,30", prof: "0,90" }] }, "Com prainha", L, W, 1.4).erro, null);
+
 console.log(`\nniveis.test: ${ok} testes ok${falhas ? `, ${falhas} FALHA(S)` : ""}`);
 process.exit(falhas ? 1 : 0);

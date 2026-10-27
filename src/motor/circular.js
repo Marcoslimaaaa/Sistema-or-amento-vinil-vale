@@ -13,7 +13,7 @@
 //
 // Vale para MANTA ARMADA. O bolsão convencional o Marcos ainda vai conferir.
 
-import { MANTA, cortarPeca, cortarChao, encaixarBobinas } from "./manta.js";
+import { MANTA, cortarPeca, cortarChao, encaixarBobinas, ninharComplementos, faixinhasDe, areaCobravelDe } from "./manta.js";
 import { medidasCirculo, erroBancoRedondo } from "./formatos.js";
 
 const arred = (v, c = 2) => Math.round(v * 10 ** c) / 10 ** c;
@@ -104,8 +104,17 @@ export function planoCircular({ diametro, prof, banco = null, assento = "quadrad
     else passadas.push({ comp: arred(p.comp), pecas: [p.nome] });
   }
 
+  // Parede mais alta que a bobina: a faixinha corre a peça inteira e sai
+  // ninhada com as outras faixinhas. Antes de 26/10/2026 ela nem entrava na
+  // conta deste formato; agora entra, cobrada só na largura (areaCobravelDe).
+  const faixinhas = ninharComplementos(faixinhasDe(pecasParede), cfg);
+  paredes.complementos = faixinhas;
+  faixinhas.passadas.forEach((p, i) => passadas.push({ comp: p.comp,
+    pecas: [`Faixinhas de complemento ${i + 1}`], faixinhas: p.itens }));
+
   const metrosLineares = arred(passadas.reduce((s, p) => s + p.comp, 0));
-  const areaCobravel = arred(metrosLineares * cfg.larguraBobina);
+  const areaCobravel = areaCobravelDe(passadas.filter((p) => !p.faixinhas).reduce((s, p) => s + p.comp, 0),
+    passadas.flatMap((p) => p.faixinhas || []), cfg);
   const areaUtil = arred(m.fundo + m.assento + m.espelho + m.costas + m.parede);
   const solda = {
     emendaChao: arred(partesChao.reduce((s, p) => s + p.soldaEmenda, 0)),

@@ -2,6 +2,7 @@
 // node src/motor/__tests__/orcamento.test.mjs
 import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento, spaDaManta, totalDeHoje, precoMudou, resumoMedidas, medidasParaEstoque } from "../orcamento.js";
 import { calcA } from "../areas.js";
+import { areaCobravelDe } from "../manta.js";
 
 let ok = 0, falhas = 0;
 const eq = (n, r, e) => { const p = JSON.stringify(r) === JSON.stringify(e); p ? ok++ : falhas++;
@@ -113,6 +114,47 @@ eq("retangular continua como sempre foi", resumoMedidas("Retangular", EDITOR), "
 eq("triangular continua pelos três lados", resumoMedidas("Triangular", EDITOR), "4.10/3.10/2.80x1.40");
 eq("circular sai pelo diâmetro, não pelo 10x4 escondido", resumoMedidas("Circular", EDITOR), "Ø4x1.40");
 eq("separador do PDF", resumoMedidas("Circular", EDITOR, "×"), "Ø4×1.40");
+
+console.log("\n— manta com fundo inclinado e faixinha (achado 4.2b, 26/10/2026) —");
+// O Marcos: a parede sai pela altura que ela tem; acima da bobina, a faixinha
+// corre a parede INTEIRA e se cobra só a largura dela × o comprimento todo.
+const plano = (pool, fmt = "Retangular") => {
+  const ar = calcA(pool, SPA_OFF, "regular", [], fmt, [], {}, null);
+  return planoMantaDoOrcamento({ pool, poolFmt: fmt, spa: SPA_OFF, wMode: "regular", desenho: null }, ar);
+};
+const peca = (pl, nome) => { const p = pl.paredes.pecas.find((x) => x.nome === nome);
+  return p ? [p.comp, p.altura, ...(p.complementos || []).map((c) => [c.comp, c.largura])] : "nao existe"; };
+const RAMPA = { length: "8", width: "4", depth: "", depthMin: "1.00", depthMax: "1.80" };
+const pR = plano(RAMPA);
+eq("testeira rasa na altura do raso: 4,10 × 1,10", peca(pR, "Testeira rasa"), [4.1, 1.1]);
+eq("testeira funda 4,10 × 1,90: bobina de 1,55 + faixinha de 0,40", peca(pR, "Testeira funda"), [4.1, 1.9, [4.1, 0.4]]);
+eq("lateral na altura funda, faixinha na peça INTEIRA (8,10)", peca(pR, "Lateral 1"), [8.1, 1.9, [8.1, 0.4]]);
+eq("e a lateral sabe que é recortada na rampa", pR.paredes.pecas.find((x) => x.nome === "Lateral 1").rampa, { de: 1, ate: 1.8 });
+perto("metros lineares: 24,40 de parede + 8,10 de faixinhas + 3 × 8,02 de chão", pR.metrosLineares, 56.56);
+// À MÃO: (56,56 − 8,10 da passada de faixinhas) × 1,55 = 75,113; faixinhas
+// 0,40 × (8,10 + 8,10 + 4,10) = 8,12 → 83,23. Pela média dava 48,46 m / 75,11 m².
+perto("cobra 75,11 de peça cheia + 8,12 de faixinha = 83,23 m²", pR.areaCobravel, 83.23);
+eq("3 bobinas", pR.pedido.qtd, 3);
+eq("o exemplo dele: faixa de 16 m (6 + 4 + 6) × 0,40 = 6,40 m², não 16 × 1,55", areaCobravelDe(0, [{ largura: 0.4, comp: 16 }]), 6.4);
+const p160 = plano({ length: "8", width: "4", depth: "1.60" });
+// constante 1,60: 4 faixinhas de 0,20 numa passada de 8,10. Antes a passada
+// inteira era cobrada: 56,56 × 1,55 = 87,67 m².
+perto("1,60 constante: 75,11 + 0,20 × 24,40 = 79,99 m²", p160.areaCobravel, 79.99);
+eq("1,40 constante não muda nada (48,46 m · 75,11 m²)", (({ metrosLineares, areaCobravel }) => [metrosLineares, areaCobravel])(plano({ length: "8", width: "4", depth: "1.40" })), [48.46, 75.11]);
+const pRP = plano({ ...RAMPA, prainhaComp: "1,50", prainhaProf: "0,60" }, "Com prainha");
+eq("prainha + rampa: espelho da prainha no raso (1,00 − 0,60 + 0,10)", peca(pRP, "Espelho da prainha"), [4.1, 0.5]);
+eq("prainha + rampa: testeira funda 1,90 com faixinha", peca(pRP, "Testeira funda"), [4.1, 1.9, [4.1, 0.4]]);
+const pRD = plano({ ...RAMPA, prainhaComp: "1,50", prainhaProf: "0,60",
+  degraus: [{ avanco: "0,30", prof: "0,20" }, { avanco: "0,30", prof: "0,40" }] }, "Com prainha");
+eq("degraus + rampa: espelho prainha → fundo no raso", peca(pRD, "Espelho Prainha → fundo"), [4.1, 0.5]);
+eq("degraus + rampa: lateral 1,90 com faixinha inteira", peca(pRD, "Lateral 1"), [8.1, 1.9, [8.1, 0.4]]);
+const pBR = plano({ ...RAMPA, bancoOn: true, bancoLarg: "0,45", bancoProf: "0,40" });
+eq("banco + rampa: testeira rasa recortada no raso", pBR.paredes.pecas.find((x) => x.nome === "Testeira rasa").recorte, { larg: 0.45, alt: 0.6 });
+eq("banco + rampa: espelho do banco na altura funda (1,80 − 0,40)", peca(pBR, "Espelho do banco"), [8, 1.5]);
+const pC = plano({ length: "4", width: "4", depth: "1.60", diametro: "4" }, "Circular");
+// antes de 26/10 a redonda funda nem contava a faixinha: a passada dela não existia
+eq("redonda Ø4 × 1,60: a faixinha da tira entra no pedido", pC.passadas.filter((x) => x.faixinhas).length, 1);
+perto("e cobra só 0,20 × 12,62", pC.areaCobravel - (pC.metrosLineares - 12.62) * 1.55, 0.2 * 12.62, 0.02);
 
 console.log(`\norcamento.test: ${ok} testes ok${falhas ? `, ${falhas} FALHA(S)` : ""}`);
 process.exit(falhas ? 1 : 0);

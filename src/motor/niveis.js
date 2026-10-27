@@ -32,7 +32,7 @@
 
 import {
   MANTA, cortarPeca, cortarCorrida, cortarChao,
-  anexoExterno, encaixarBobinas,
+  anexoExterno, encaixarBobinas, areaCobravelDe,
 } from "./manta.js";
 
 const pf = (v) => parseFloat(String(v ?? "").replace(",", ".")) || 0;
@@ -134,8 +134,11 @@ export function pontaCfg(pool, poolFmt, L, W, D) {
     niveis.push({ ...n, x0: x, x1: x + n.avanco });
     x += n.avanco; ant = n.prof;
   }
-  if (ant > D - DEGRAU_MINIMO + EPS) {
-    return falha(`O último nível (${m2(ant)} m) tem de ficar pelo menos 5 cm acima do fundo (${m2(D)} m).`);
+  // com fundo inclinado o fundo começa no raso: é contra ele que o degrau confere
+  const dMin = pf(pool?.depthMin), dMax = pf(pool?.depthMax);
+  const fundoRaso = dMin > 0 && dMax > 0 ? Math.min(dMin, dMax) : D;
+  if (ant > fundoRaso - DEGRAU_MINIMO + EPS) {
+    return falha(`O último nível (${m2(ant)} m) tem de ficar pelo menos 5 cm acima do fundo (${m2(fundoRaso)} m).`);
   }
   if (x > L - FUNDO_MINIMO + EPS) {
     return falha(`Os níveis da ponta somam ${m2(x)} m e a piscina tem ${m2(L)} m: não sobra fundo. ${confira(niveis)}`);
@@ -250,11 +253,16 @@ export function medirCelulas({ xs, ys, prof }) {
  * dois cantos — "às vezes dá para passar a faixa inteira, rodear toda a
  * piscina e retornar para o degrau, mas às vezes não". Só em piscina no esquadro.
  */
-export function facesPontaNiveis({ L, W, D, ponta, faixaUnica = false }) {
+export function facesPontaNiveis({ L, W, D, ponta, faixaUnica = false, rampa = null }) {
   const espelhos = [];
   const paredes = [];
   const r = (v) => arred(v, 4);
   const niveis = ponta.niveis || [];
+  // Fundo inclinado: a rampa vai do pé do último espelho (raso) até a testeira
+  // funda. Laterais e testeira funda saem na altura funda; o último espelho,
+  // na altura do raso.
+  const rp = rampa && rampa.fundo > rampa.raso ? rampa : null;
+  const funda = rp ? rp.fundo : D, rasa = rp ? rp.raso : D;
 
   // recorte de uma lateral: onde o pé da parede sobe, a peça cheia é cortada
   const recorteLateral = (trechos) => {
@@ -268,13 +276,14 @@ export function facesPontaNiveis({ L, W, D, ponta, faixaUnica = false }) {
     const prox = niveis[i + 1];
     espelhos.push({
       nome: `Espelho ${n.rotulo} → ${prox ? prox.rotulo : "fundo"}`,
-      comp: W, prof: r((prox ? prox.prof : D) - n.prof),
+      comp: W, prof: r((prox ? prox.prof : rasa) - n.prof),
     });
   });
-  const rec = recorteLateral(niveis.map((n) => ({ comp: n.avanco, alt: D - n.prof })));
-  paredes.push({ nome: "Lateral 1", comp: L, prof: D, recorte: rec });
-  paredes.push({ nome: "Testeira funda", comp: W, prof: D });
-  paredes.push({ nome: "Lateral 2", comp: L, prof: D, recorte: rec });
+  const rec = recorteLateral(niveis.map((n) => ({ comp: n.avanco, alt: funda - n.prof })));
+  const naRampa = rp ? { rampa: { de: rasa, ate: funda } } : {};
+  paredes.push({ nome: "Lateral 1", comp: L, prof: funda, recorte: rec, ...naRampa });
+  paredes.push({ nome: "Testeira funda", comp: W, prof: funda });
+  paredes.push({ nome: "Lateral 2", comp: L, prof: funda, recorte: rec, ...naRampa });
 
   if (faixaUnica) {
     // as duas laterais e a testeira funda viram UMA corrida vincada nos cantos
@@ -325,8 +334,12 @@ export function ninharPecas(pecas, cfg = MANTA) {
     alvo.comp = arred(Math.max(alvo.comp, p.comp));
     alvo.pecas.push(p.nome);
     alvo.larguras.push(arred(w));
+    // passada só de faixinhas se cobra pela área delas (areaCobravelDe)
+    alvo.soFaixinha = (alvo.soFaixinha ?? true) && !!p.faixinha;
+    if (p.faixinha) (alvo.faixinhas ||= []).push({ largura: w, comp: p.comp });
   }
-  return passadas.map((p) => ({ comp: p.comp, pecas: p.pecas, larguras: p.larguras, largura: arred(p.largura) }));
+  return passadas.map((p) => ({ comp: p.comp, pecas: p.pecas, larguras: p.larguras, largura: arred(p.largura),
+    ...(p.soFaixinha ? { faixinhas: p.faixinhas } : {}) }));
 }
 
 /**
@@ -335,9 +348,9 @@ export function ninharPecas(pecas, cfg = MANTA) {
  * piscina tem degraus.
  */
 export function planoNiveis({ L, W, D, ponta, faixaUnica = false, areaReal = null,
-                              anexos = [], facesExtra = [] }, cfg = MANTA) {
+                              anexos = [], facesExtra = [], rampa = null }, cfg = MANTA) {
   if (!ponta || ponta.erro) return null;
-  const { espelhos, paredes } = facesPontaNiveis({ L, W, D, ponta, faixaUnica });
+  const { espelhos, paredes } = facesPontaNiveis({ L, W, D, ponta, faixaUnica, rampa });
   const faces = [...espelhos, ...paredes, ...(facesExtra || [])];
 
   // ── PAREDES E ESPELHOS: uma peça por face; a faixa única vira corrida ──
@@ -367,7 +380,7 @@ export function planoNiveis({ L, W, D, ponta, faixaUnica = false, areaReal = nul
   const ninhaveis = [
     ...pecasParede.map((p) => ({ nome: p.nome, comp: p.comp, largura: p.alturaPrincipal ?? p.altura })),
     ...pecasParede.flatMap((p) => (p.complementos || []).map((c, i) => ({
-      nome: `Faixinha ${i + 1} · ${p.nome}`, comp: c.comp, largura: c.largura,
+      nome: `Faixinha ${i + 1} · ${p.nome}`, comp: c.comp, largura: c.largura, faixinha: true,
     }))),
     ...partesChao.filter((p) => p.faixas === 1).map((p) => ({ nome: p.nome, comp: p.compFaixa ?? p.maior, largura: p.alvo })),
     ...anexosCalc.flatMap((a) => a.itens.map((it) => ({ nome: it.nome, comp: it.comp, largura: it.largura }))),
@@ -381,7 +394,9 @@ export function planoNiveis({ L, W, D, ponta, faixaUnica = false, areaReal = nul
 
   const metrosLineares = arred(passadas.reduce((s, p) => s + p.comp, 0));
   const pedido = encaixarBobinas(passadas.map((p, i) => ({ nome: `Passada ${i + 1}`, comp: p.comp })), cfg);
-  const areaCobravel = arred(metrosLineares * cfg.larguraBobina);
+  const areaCobravel = areaCobravelDe(
+    passadas.filter((p) => !p.faixinhas).reduce((s, p) => s + p.comp, 0),
+    passadas.flatMap((p) => p.faixinhas || []), cfg);
 
   const chao = {
     partes: partesChao,

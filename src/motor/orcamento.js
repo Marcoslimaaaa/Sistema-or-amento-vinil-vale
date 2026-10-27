@@ -62,6 +62,15 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
   const L = num(pool.length), W = num(pool.width);
   const D = ar?.depthInfo?.avg || num(pool.depth);
   if (!(L > 0 && W > 0 && D > 0)) return null;
+  // Fundo inclinado: a parede sai pela altura que ela tem, não pela média
+  // (achado 4.2b da planta de obra, corrigido em 26/10/2026). A rampa começa
+  // onde o fundo começa — depois da prainha ou dos degraus — e termina na
+  // testeira funda. Paredes que contornam a piscina inteira (redonda,
+  // triangular, oitavada) saem na altura da parte funda.
+  const dMin = num(pool.depthMin), dMax = num(pool.depthMax);
+  const rampa = dMin > 0 && dMax > 0 && dMin !== dMax
+    ? { raso: Math.min(dMin, dMax), fundo: Math.max(dMin, dMax) } : null;
+  const Dparede = rampa ? rampa.fundo : D;
   const praiC = poolFmt === "Com prainha" ? num(pool.prainhaComp) : 0;
   const praiP = num(pool.prainhaProf);
   const perimetro = parseFloat(ar?.perim) || 0;
@@ -92,7 +101,7 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
   if (ponta && !ponta.erro) {
     const sp = spaDaManta(spa, L, W, D);
     return planoNiveis({
-      L, W, D, ponta,
+      L, W, D, ponta, rampa,
       faixaUnica: !!pool.paredeFaixaUnica && (wMode || "regular") !== "irregular",
       areaReal, anexos: sp.anexos, facesExtra: sp.facesExtra,
     });
@@ -105,15 +114,15 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
   if (poolFmt === "Triangular" || (poolFmt === "Oitavada" && pool.bancoOn)) {
     const banco = pool.bancoOn ? { larg: num(pool.bancoLarg), prof: num(pool.bancoProf) } : null;
     const pt = poolFmt === "Triangular"
-      ? planoTriangular({ a: num(pool.triA), b: num(pool.triB), c: num(pool.triC), prof: D, banco })
-      : planoTriangular({ contorno: contornoOitavada(L, W, num(pool.chanfro)), prof: D, banco });
+      ? planoTriangular({ a: num(pool.triA), b: num(pool.triB), c: num(pool.triC), prof: Dparede, banco })
+      : planoTriangular({ contorno: contornoOitavada(L, W, num(pool.chanfro)), prof: Dparede, banco });
     return pt.erro ? null : pt;
   }
 
   // CIRCULAR na regra do Marcos (23/09): parede é uma TIRA contornando até
   // fechar, e o plano horizontal sai do QUADRADO que envolve.
   if (poolFmt === "Circular") {
-    const pc = planoCircular({ diametro: num(pool.diametro), prof: D,
+    const pc = planoCircular({ diametro: num(pool.diametro), prof: Dparede,
       banco: pool.bancoOn ? { larg: num(pool.bancoLarg), prof: num(pool.bancoProf) } : null });
     return pc.erro ? null : pc;
   }
@@ -125,10 +134,10 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
   const bcM = bancoCfg(pool, poolFmt, L, W, D);
   const faces = praiC > 0 && praiC < L
     ? facesComPrainha(L, W, D, praiC, Math.min(praiP > 0 ? praiP : D * 0.25, Math.max(D - 0.05, 0.05)),
-      { prainhaCorrida: (wMode || "regular") !== "irregular" })
+      { prainhaCorrida: (wMode || "regular") !== "irregular", rampa })
     : (bcM && bcM.medida
-      ? facesComBanco(L, W, D, bcM.larg, bcM.prof, bcM.niveis)
-      : facesRetangulo(L, W, D));
+      ? facesComBanco(L, W, D, bcM.larg, bcM.prof, bcM.niveis, rampa)
+      : facesRetangulo(L, W, D, rampa));
   const sp = spaDaManta(spa, L, W, D);
   return planoManta({ comp: L, larg: W, prof: D, perimetro, areaReal, praiComp: praiC,
     faces: [...faces, ...sp.facesExtra], anexos: sp.anexos, aproveitarSobra });

@@ -23,7 +23,7 @@
 // Tudo em METROS. Sem pixel, sem React.
 
 import { offsetPoligono, pisoRecuado } from "./formas.js";
-import { MANTA, cortarPeca, cortarChao, encaixarBobinas } from "./manta.js";
+import { MANTA, cortarPeca, cortarChao, encaixarBobinas, ninharComplementos, faixinhasDe, areaCobravelDe } from "./manta.js";
 
 const arred = (v, c = 2) => Math.round(v * 10 ** c) / 10 ** c;
 const pf = (v) => parseFloat(String(v ?? "").replace(",", ".")) || 0;
@@ -272,10 +272,19 @@ export function planoTriangular(entrada, cfg = MANTA) {
   ];
   // A bobina paga o que PASSA por ela, não a soma das peças: peça ninhada com
   // outra divide a mesma passada.
+  // Parede mais alta que a bobina: a faixinha corre a peça inteira e sai
+  // ninhada com as outras faixinhas. Antes de 26/10/2026 ela nem entrava na
+  // conta deste formato; agora entra, cobrada só na largura (areaCobravelDe).
+  const faixinhas = ninharComplementos(faixinhasDe(pecasParede), cfg);
+  paredes.complementos = faixinhas;
+  faixinhas.passadas.forEach((p, i) => passadas.push({ comp: p.comp,
+    pecas: [`Faixinhas de complemento ${i + 1}`], faixinhas: p.itens }));
+
   const metrosLineares = arred(passadas.reduce((s2, p) => s2 + p.comp, 0));
   const metrosSemNinhar = arred(chao.metrosLineares + paredes.metrosLineares);
   const pedido = encaixarBobinas(passadas.map((p, i) => ({ nome: `Passada ${i + 1}`, comp: p.comp })), cfg);
-  const areaCobravel = arred(metrosLineares * cfg.larguraBobina);
+  const areaCobravel = areaCobravelDe(passadas.filter((p) => !p.faixinhas).reduce((s2, p) => s2 + p.comp, 0),
+    passadas.flatMap((p) => p.faixinhas || []), cfg);
   const solda = {
     emendaChao: arred(partesChao.reduce((s, p) => s + p.soldaEmenda, 0)),
     chaoNaParede: arred(partesChao.reduce((s, p) => s + p.soldaBorda, 0)),

@@ -245,6 +245,9 @@ export function cortarPeca(face, cfg = MANTA) {
     // O recorte do banco viaja junto: quem corta precisa ver na lista que
     // aquela testeira sai inteira da bobina e é entalhada na obra.
     recorte: face.recorte || null,
+    // fundo inclinado: a peça sai na altura da parte funda e é recortada na
+    // obra acompanhando a rampa (o Marcos, 26/10/2026)
+    rampa: face.rampa || null,
     rente: !!face.semSobraLateral,
     faceComp: arred(face.comp || 0),
     faceProf: arred(face.prof || 0),
@@ -310,6 +313,30 @@ export function ninharComplementos(complementos, cfg = MANTA) {
 }
 
 /**
+ * O que se COBRA do cliente, em m² de manta cortada.
+ *
+ * Passada que leva peça de verdade (parede, espelho, faixa de chão) se cobra na
+ * largura cheia da bobina: o retalho ao lado de peça baixa não se aproveita.
+ * A FAIXINHA de complemento, não. Ela corre a parede inteira, do começo ao fim
+ * (cortada só no trecho fundo, o resto da tira ficaria na diagonal e viraria
+ * sucata), e se cobra só a largura dela vezes o comprimento todo. O resto da
+ * passada volta para o estoque e serve em outra piscina. O Marcos, em
+ * 26/10/2026: "teria sido 16 m por 1,55 e ficaria fora do comum".
+ *
+ * @param {number} metrosCheios  metros lineares das passadas com peça de verdade
+ * @param {Array<{largura:number, comp:number}>} faixinhas  as faixinhas cortadas
+ */
+export function areaCobravelDe(metrosCheios, faixinhas, cfg = MANTA) {
+  const tiras = (faixinhas || []).reduce((s, f) => s + (f.largura || 0) * (f.comp || 0), 0);
+  return arred(metrosCheios * cfg.larguraBobina + tiras);
+}
+
+/** As faixinhas de uma lista de peças, cada uma com o nome da peça de origem. */
+export function faixinhasDe(pecas) {
+  return (pecas || []).flatMap(p => (p.complementos || []).map(c => ({ ...c, de: p.nome })));
+}
+
+/**
  * CORRIDA: faces vizinhas de mesma altura saem numa peça só, VINCADA no canto
  * em vez de soldada. O canto dobrado não gasta material nem vira solda — só as
  * duas pontas da corrida levam os 5 cm.
@@ -328,6 +355,7 @@ export function cortarCorrida(faces, cfg = MANTA, nome) {
   return {
     nome: nome || faces.map(f => f.nome).join(" + "),
     corrida: true,
+    rampa: faces.find(f => f.rampa)?.rampa || null,
     trechos: faces.map(f => ({ nome: f.nome, comp: arred(f.comp || 0) })),
     faceComp: arred(somaFaces),
     faceProf: arred(prof),
@@ -361,8 +389,7 @@ export function cortarParedes(faces, cfg = MANTA) {
     ...soltas.map(f => cortarPeca(f, cfg)),
     ...[...grupos.entries()].map(([nome, fs]) => cortarCorrida(fs, cfg, nome)),
   ];
-  const complementos = ninharComplementos(
-    lista.flatMap(p => (p.complementos || []).map(c => ({ ...c, de: p.nome }))), cfg);
+  const complementos = ninharComplementos(faixinhasDe(lista), cfg);
   // As paredes tambem saem NINHADAS: peca baixa nao precisa de uma passada
   // inteira da bobina so para ela. Na obra a cinta da prainha e o espelho saem
   // da mesma passada quando as duas alturas somadas cabem na largura.
@@ -380,8 +407,27 @@ export function cortarParedes(faces, cfg = MANTA) {
   };
 }
 
-/** As 4 faces de uma piscina retangular de profundidade única. */
-export function facesRetangulo(comp, larg, prof) {
+/**
+ * As 4 faces de uma piscina retangular.
+ *
+ * Com fundo inclinado (`rampa` = {raso, fundo}), cada parede sai pela altura
+ * que ela tem de verdade — antes todas saíam na profundidade média, e a parede
+ * funda de 1,80 era cortada a 1,50 quando pede 1,90 (achado 4.2b da planta de
+ * obra). A testeira rasa e a funda têm altura própria; as laterais saem na
+ * altura da parte funda, com a faixinha correndo a peça inteira, e são
+ * recortadas na obra acompanhando a rampa.
+ */
+export function facesRetangulo(comp, larg, prof, rampa = null) {
+  if (rampa && rampa.fundo > rampa.raso) {
+    const lateral = { comp, prof: rampa.fundo, profMedia: (rampa.raso + rampa.fundo) / 2,
+      rampa: { de: rampa.raso, ate: rampa.fundo } };
+    return [
+      { nome: "Lateral 1", ...lateral },
+      { nome: "Lateral 2", ...lateral },
+      { nome: "Testeira rasa", comp: larg, prof: rampa.raso },
+      { nome: "Testeira funda", comp: larg, prof: rampa.fundo },
+    ];
+  }
   return [
     { nome: "Lateral 1", comp, prof },
     { nome: "Lateral 2", comp, prof },
@@ -412,7 +458,19 @@ export function facesRetangulo(comp, larg, prof) {
  * subir degrau — as mesmas peças forram o fundo e o topo do assento. É o
  * contrário da prainha, cujo degrau atravessa as faixas e obriga duas regiões.
  */
-export function facesComBanco(comp, larg, prof, bancoLarg, bancoProf, niveis = null) {
+export function facesComBanco(comp, larg, prof, bancoLarg, bancoProf, niveis = null, rampa = null) {
+  // Fundo inclinado: cada testeira na sua altura; o que corre no comprimento e
+  // desce até o fundo sai na altura da parte funda, recortado na rampa.
+  const inclinado = !!rampa && rampa.fundo > rampa.raso;
+  const raso = inclinado ? rampa.raso : prof, fundo = inclinado ? rampa.fundo : prof;
+  const naRampa = (alturaFunda) => (inclinado
+    ? { profMedia: alturaFunda - (fundo - raso) / 2, rampa: { de: arred(alturaFunda - (fundo - raso)), ate: arred(alturaFunda) } }
+    : {});
+  const testeiras = (recorteNa) => (inclinado
+    ? [{ nome: "Testeira rasa", comp: larg, prof: raso, recorte: recorteNa(raso) },
+      { nome: "Testeira funda", comp: larg, prof: fundo, recorte: recorteNa(fundo) }]
+    : [{ nome: "Testeira 1", comp: larg, prof, recorte: recorteNa(prof) },
+      { nome: "Testeira 2", comp: larg, prof, recorte: recorteNa(prof) }]);
   // ESCADA LATERAL (24/10/2026): o banco em 2 ou mais degraus. A mesma regra
   // ditada para o banco, degrau por degrau — as duas testeiras levam a sobra
   // dos cantos e o recorte em escada; tudo o que corre no comprimento sai
@@ -420,33 +478,30 @@ export function facesComBanco(comp, larg, prof, bancoLarg, bancoProf, niveis = n
   // (do assento dele até a borda). O chão continua não mudando: os degraus
   // correm paralelos às faixas, como o assento do banco.
   if (Array.isArray(niveis) && niveis.length > 1) {
-    const degraus = niveis.map((n) => ({ larg: arred(n.larg), alt: arred(Math.max(prof - n.prof, 0)) }));
-    const recorte = {
-      larg: arred(niveis.reduce((s, n) => s + n.larg, 0)),
-      alt: degraus[0].alt,
-      degraus,
+    const recorteNa = (h) => {
+      const degraus = niveis.map((n) => ({ larg: arred(n.larg), alt: arred(Math.max(h - n.prof, 0)) }));
+      return { larg: arred(niveis.reduce((s, n) => s + n.larg, 0)), alt: degraus[0].alt, degraus };
     };
     const faces = [
-      { nome: "Testeira 1", comp: larg, prof, recorte },
-      { nome: "Testeira 2", comp: larg, prof, recorte },
-      { nome: "Lateral (em frente à escada)", comp, prof, semSobraLateral: true },
+      ...testeiras(recorteNa),
+      { nome: "Lateral (em frente à escada)", comp, prof: fundo, semSobraLateral: true, ...naRampa(fundo) },
     ];
     niveis.forEach((n, i) => {
-      const prox = i < niveis.length - 1 ? niveis[i + 1].prof : prof;
-      faces.push({ nome: `Espelho do degrau ${i + 1}`, comp, prof: arred(Math.max(prox - n.prof, 0)), semSobraLateral: true });
+      const ultimo = i === niveis.length - 1;
+      const prox = ultimo ? fundo : niveis[i + 1].prof;
+      faces.push({ nome: `Espelho do degrau ${i + 1}`, comp, prof: arred(Math.max(prox - n.prof, 0)), semSobraLateral: true,
+        ...(ultimo ? naRampa(arred(Math.max(prox - n.prof, 0))) : {}) });
     });
     faces.push({ nome: "Testeira do 1º degrau", comp, prof: niveis[0].prof, semSobraLateral: true });
     return faces;
   }
   // arred: 1,40 - 0,50 em ponto flutuante da 0,8999999999999999, e esse numero
   // ia parar na tela do plano de corte.
-  const alturaEspelho = arred(Math.max(prof - bancoProf, 0));
-  const recorte = { larg: arred(bancoLarg), alt: alturaEspelho };
+  const alturaEspelho = arred(Math.max(fundo - bancoProf, 0));
   return [
-    { nome: "Testeira 1", comp: larg, prof, recorte },
-    { nome: "Testeira 2", comp: larg, prof, recorte },
-    { nome: "Lateral (em frente ao banco)", comp, prof, semSobraLateral: true },
-    { nome: "Espelho do banco", comp, prof: alturaEspelho, semSobraLateral: true },
+    ...testeiras((h) => ({ larg: arred(bancoLarg), alt: arred(Math.max(h - bancoProf, 0)) })),
+    { nome: "Lateral (em frente ao banco)", comp, prof: fundo, semSobraLateral: true, ...naRampa(fundo) },
+    { nome: "Espelho do banco", comp, prof: alturaEspelho, semSobraLateral: true, ...naRampa(alturaEspelho) },
     { nome: "Testeira do banco", comp, prof: bancoProf, semSobraLateral: true },
   ];
 }
@@ -457,6 +512,13 @@ export function facesComBanco(comp, larg, prof, bancoLarg, bancoProf, niveis = n
  */
 export function facesComPrainha(comp, larg, prof, praiComp, praiProf, opcoes = {}) {
   const fundo = comp - praiComp;
+  // Fundo inclinado (`opcoes.rampa`): a rampa começa no pé do espelho da
+  // prainha (o raso) e termina na testeira funda. O espelho e a testeira funda
+  // têm altura própria; as laterais do fundo saem na altura funda, recortadas.
+  const r = opcoes.rampa && opcoes.rampa.fundo > opcoes.rampa.raso ? opcoes.rampa : null;
+  const lateral = r
+    ? { prof: r.fundo, profMedia: (r.raso + r.fundo) / 2, rampa: { de: r.raso, ate: r.fundo } }
+    : { prof };
   // A cinta da prainha é baixa e curta: sai numa peça só, vincada nos dois
   // cantos — 1,00 + 3,50 + 1,00 com 5 cm de solda em cada ponta. Trocar as 3
   // peças soltas por essa corrida elimina 2 soldas.
@@ -468,10 +530,10 @@ export function facesComPrainha(comp, larg, prof, praiComp, praiProf, opcoes = {
   // orçar piscina fora de esquadro deve passar { prainhaCorrida: false }.
   const corrida = opcoes.prainhaCorrida !== false ? "Cinta da prainha" : undefined;
   return [
-    { nome: "Lateral 1 · fundo", comp: fundo, prof },
-    { nome: "Lateral 2 · fundo", comp: fundo, prof },
-    { nome: "Testeira funda", comp: larg, prof },
-    { nome: "Espelho da prainha", comp: larg, prof: prof - praiProf },
+    { nome: "Lateral 1 · fundo", comp: fundo, ...lateral },
+    { nome: "Lateral 2 · fundo", comp: fundo, ...lateral },
+    { nome: "Testeira funda", comp: larg, prof: r ? r.fundo : prof },
+    { nome: "Espelho da prainha", comp: larg, prof: (r ? r.raso : prof) - praiProf },
     { nome: "Lateral 1 · prainha", comp: praiComp, prof: praiProf, grupo: corrida },
     { nome: "Testeira rasa", comp: larg, prof: praiProf, grupo: corrida },
     { nome: "Lateral 2 · prainha", comp: praiComp, prof: praiProf, grupo: corrida },
@@ -764,15 +826,18 @@ export function planoManta({ comp, larg, prof, perimetro, areaReal, faces, praiC
   // proprio plano de corte desta piscina.
   const utilChao = (regioesChao(comp, larg, praiComp, cfg))
     .reduce((s, r) => s + r.comp * r.larg, 0);
+  // parede recortada na rampa: a superfície é a da altura média, não a do corte
   const utilParedes = (faces || facesRetangulo(comp, larg, prof))
-    .reduce((s, f) => s + (f.comp || 0) * (f.prof || 0), 0);
+    .reduce((s, f) => s + (f.comp || 0) * (f.profMedia ?? f.prof ?? 0), 0);
   const utilAnexos = anexosCalc.reduce((s, a) => s + (a.areaUtil || 0), 0);
   const areaUtil = arred(areaReal != null && !anexos.length
     ? areaReal : (utilChao + utilParedes + utilAnexos));
   // O que se COBRA do cliente: a manta cortada para esta piscina, largura cheia
-  // da bobina, porque o retalho ao lado de peça baixa não se aproveita. A ponta
-  // que sobra da bobina NÃO entra — ela volta para a prateleira.
-  const areaCobravel = arred(metrosLineares * cfg.larguraBobina);
+  // da bobina, porque o retalho ao lado de peça baixa não se aproveita — menos
+  // as faixinhas, cobradas só na largura delas (areaCobravelDe). A ponta que
+  // sobra da bobina NÃO entra — ela volta para a prateleira.
+  const areaCobravel = areaCobravelDe(metrosLineares - paredes.complementos.metrosLineares,
+    paredes.complementos.passadas.flatMap(p => p.itens), cfg);
   const real = areaReal ?? comp * larg + (perimetro ?? 2 * (comp + larg)) * prof;
   // lista de corte: cada faixa de chão e cada peça de parede vira um pedaço
   const lista = [
