@@ -15,7 +15,7 @@
 // Tudo aqui é puro (sem React): testado em __tests__/orcamento.test.mjs.
 
 import { planoManta, facesRetangulo, facesComPrainha, facesComBanco, facesDoContorno, cortarChaoContorno } from "./manta.js";
-import { contornoEfetivo } from "./formas.js";
+import { contornoEfetivo, medirDesenho } from "./formas.js";
 import { bancoCfg } from "./banco.js";
 import { planoTriangular } from "./triangular.js";
 import { contornoOitavada } from "./formatos.js";
@@ -80,7 +80,20 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
   const contorno = desenho && (desenho.vertices || []).length >= 3 ? contornoEfetivo(desenho) : null;
   if (contorno && contorno.length >= 3) {
     const chao = cortarChaoContorno(contorno, undefined, "Chão · desenho");
-    const paredes = facesDoContorno(contorno, D);
+    // parede trecho a trecho, na profundidade de quem encosta nela, e o degrau
+    // interno (prainha, escada) como espelho — achado 4.2a, 26/10/2026
+    const md = medirDesenho(desenho, D, rampa);
+    const paredes = md
+      ? [
+        ...md.trechosParede.filter((t) => t.comp >= 0.05).map((t, i) => ({
+          nome: `Parede ${i + 1}`, comp: +t.comp.toFixed(2), prof: +t.prof.toFixed(3), profMedia: t.profMedia,
+          ...(t.prof - t.raso > 1e-6 ? { rampa: { de: +t.raso.toFixed(2), ate: +t.prof.toFixed(2) } } : {}),
+        })),
+        ...md.trechosEspelho.filter((t) => t.comp >= 0.05).map((t, i) => ({
+          nome: `Espelho ${i + 1}`, comp: +t.comp.toFixed(2), prof: +t.prof.toFixed(3), profMedia: t.profMedia,
+        })),
+      ]
+      : facesDoContorno(contorno, D);
     const spC = spaDaManta(spa, L, W, D);
     const base = planoManta({ comp: L, larg: W, prof: D, perimetro, areaReal,
       faces: [...paredes, ...spC.facesExtra], anexos: spC.anexos, aproveitarSobra });

@@ -437,38 +437,193 @@ export function caminhoNoContorno(p, tA, tB) {
   return caminho;
 }
 
+// ── Medição do desenho: parede trecho a trecho e degrau interno ──
+//
+// POR QUE EXISTE (achado 4.2a da planta de obra, corrigido em 26/10/2026)
+// A conta antiga dava a cada lado do contorno UMA profundidade, a do ponto do
+// meio, e somava só o contorno. O degrau entre a prainha e o corpo não entrava.
+// Medido em 24/10: a mesma 6,00 × 3,00 × 1,40 com prainha de 1,00 a 0,50 dava
+// 22,5 m² de parede no desenho livre e 23,4 no "Com prainha"; a piscina do
+// Gilberto (Sólazer) dava 71,7 m² contra 75,08 do gabarito.
+//
+// Agora cada lado é partido onde muda a região, cada trecho leva a
+// profundidade de quem encosta nele, e toda divisa interna entre regiões de
+// profundidade diferente vira espelho (o degrau). Com raso e fundo o corpo
+// desce em rampa ao longo do eixo x do desenho, do raso à esquerda (como no
+// corte) ao fundo à direita.
+
+const EPS_SONDA = 0.005;   // 5 mm para cada lado de uma linha, para ver quem está ali
+
+/** Interseções e vértices que partem o segmento a→b, em trechos. */
+function partesDoSegmento(a, b, segs) {
+  const dx = b.x - a.x, dy = b.y - a.y, len2 = dx * dx + dy * dy;
+  if (len2 < 1e-18) return [];
+  const ts = [0, 1];
+  for (const [c, d] of segs) {
+    for (const q of [c, d]) {
+      const t = ((q.x - a.x) * dx + (q.y - a.y) * dy) / len2;
+      if (t > 1e-9 && t < 1 - 1e-9 && Math.hypot(a.x + t * dx - q.x, a.y + t * dy - q.y) < 1e-6) ts.push(t);
+    }
+    const ex = d.x - c.x, ey = d.y - c.y, den = dx * ey - dy * ex;
+    if (Math.abs(den) < 1e-12) continue;
+    const t = ((c.x - a.x) * ey - (c.y - a.y) * ex) / den;
+    const u = ((c.x - a.x) * dy - (c.y - a.y) * dx) / den;
+    if (t > 1e-9 && t < 1 - 1e-9 && u > -1e-9 && u < 1 + 1e-9) ts.push(t);
+  }
+  ts.sort((x, y) => x - y);
+  const out = [];
+  for (let i = 0; i < ts.length - 1; i++) {
+    if (ts[i + 1] - ts[i] < 1e-9) continue;
+    out.push([{ x: a.x + ts[i] * dx, y: a.y + ts[i] * dy }, { x: a.x + ts[i + 1] * dx, y: a.y + ts[i + 1] * dy }]);
+  }
+  return out;
+}
+
+const arestas = (p) => p.map((a, i) => [a, p[(i + 1) % p.length]]);
+
+/** Área e centróide em x de um multipolígono do polygon-clipping (furos descontados). */
+function areaECentroX(mp) {
+  let area = 0, mom = 0;
+  for (const poly of mp) {
+    poly.forEach((anel, k) => {
+      let A = 0, Cx = 0;
+      for (let i = 0; i < anel.length - 1; i++) {
+        const [x1, y1] = anel[i], [x2, y2] = anel[i + 1];
+        const cr = x1 * y2 - x2 * y1;
+        A += cr; Cx += (x1 + x2) * cr;
+      }
+      const a = Math.abs(A) / 2, cx = A ? Cx / (3 * A) : 0;
+      const sinal = k === 0 ? 1 : -1;
+      area += sinal * a; mom += sinal * a * cx;
+    });
+  }
+  return { area, cx: area > 1e-12 ? mom / area : 0 };
+}
+
+/** ∫ |f| num trecho onde f vai em linha reta de fa a fb (exato, mesmo trocando de sinal). */
+function integralAbs(fa, fb, len) {
+  if (fa * fb >= 0) return len * Math.abs(fa + fb) / 2;
+  return len * (fa * fa + fb * fb) / (2 * Math.abs(fa - fb));
+}
+
 /**
- * Métricas reais do desenho para o orçamento de vinil:
- * - chao: área do contorno efetivo (m²)
- * - perim: perímetro do contorno efetivo (m)
- * - paredes: Σ lado × profundidade da REGIÃO que encosta nele (prainha rasa
- *   conta parede baixa, não a do corpo) (m²)
- * - vol: Σ área × profundidade por região (m³)
+ * Mede o desenho: chão, paredes do contorno, espelhos internos e volume, e
+ * devolve também cada trecho de parede e de espelho (é o que a manta corta).
+ *
+ * @param {object} desenho     { vertices, formas }
+ * @param {number} profCorpo   profundidade do corpo (a média, quando há rampa)
+ * @param {object} [rampa]     { raso, fundo } — o corpo desce ao longo do eixo x
  */
-export function calcDesenho(desenho, profCorpo) {
+export function medirDesenho(desenho, profCorpo, rampa = null) {
   const efetivo = contornoEfetivo(desenho);
   if (efetivo.length < 3) return null;
-  const chao = areaPoligono(efetivo);
-  const perim = perimetroPoligono(efetivo);
   const regioes = regioesProfundidade(desenho, profCorpo);
-  const vol = regioes.reduce((s, r) => s + areaPoligono(r.poligono) * (r.profundidadeM ?? profCorpo), 0);
+  const xs = efetivo.map((p) => p.x);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const inclinado = !!rampa && rampa.fundo !== rampa.raso && x1 - x0 > 1e-9;
+  const incl = inclinado ? (rampa.fundo - rampa.raso) / (x1 - x0) : 0;
+  // profundidade de uma região num ponto: forma rasa é plana; o corpo segue a rampa
+  const profEm = (ri, pt) => {
+    const r = regioes[ri];
+    if (r && r.profundidadeM != null) return r.profundidadeM;
+    return inclinado ? rampa.raso + incl * (pt.x - x0) : profCorpo;
+  };
+  // quem manda num ponto: a ÚLTIMA região que o contém (corpo, banco, formas)
+  const regiaoEm = (pt) => {
+    for (let i = regioes.length - 1; i >= 0; i--) if (pontoDentro(pt, regioes[i].poligono)) return i;
+    return -1;
+  };
+  const sondas = (p, q) => {
+    const len = Math.hypot(q.x - p.x, q.y - p.y);
+    const nx = (q.y - p.y) / len, ny = -(q.x - p.x) / len;
+    const m = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+    return { len, m, s1: { x: m.x + nx * EPS_SONDA, y: m.y + ny * EPS_SONDA }, s2: { x: m.x - nx * EPS_SONDA, y: m.y - ny * EPS_SONDA } };
+  };
+  const segsRegioes = regioes.flatMap((r) => arestas(r.poligono));
+  const segsContorno = arestas(efetivo);
 
-  // paredes: para cada aresta do contorno, a profundidade da região logo por dentro
-  let paredes = 0;
-  for (let i = 0; i < efetivo.length; i++) {
-    const a = efetivo[i], b = efetivo[(i + 1) % efetivo.length];
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    if (len < 1e-9) continue;
-    // ponto 6 cm para dentro a partir do meio da aresta
-    const nx = (b.y - a.y) / len, ny = -(b.x - a.x) / len;
-    const meio = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    const dentroA = { x: meio.x + nx * 0.06, y: meio.y + ny * 0.06 };
-    const dentroB = { x: meio.x - nx * 0.06, y: meio.y - ny * 0.06 };
-    const pt = pontoDentro(dentroA, efetivo) ? dentroA : dentroB;
-    const reg = regioes.find(r => r.profundidadeM !== null && pontoDentro(pt, r.poligono));
-    paredes += len * (reg ? reg.profundidadeM : profCorpo);
+  // PAREDES: cada lado do contorno partido onde muda a região
+  const trechosParede = [];
+  segsContorno.forEach(([a, b], lado) => {
+    let atual = null;
+    for (const [p, q] of partesDoSegmento(a, b, segsRegioes)) {
+      const { len, s1, s2 } = sondas(p, q);
+      const ri = regiaoEm(pontoDentro(s1, efetivo) ? s1 : s2);
+      const pa = profEm(ri, p), pb = profEm(ri, q);
+      if (atual && atual.regiao === ri) {
+        atual.comp += len; atual.area += len * (pa + pb) / 2;
+        atual.max = Math.max(atual.max, pa, pb); atual.min = Math.min(atual.min, pa, pb);
+      } else {
+        atual = { lado, regiao: ri, comp: len, area: len * (pa + pb) / 2, max: Math.max(pa, pb), min: Math.min(pa, pb) };
+        trechosParede.push(atual);
+      }
+    }
+  });
+
+  // ESPELHOS: divisa interna entre duas regiões de profundidade diferente.
+  // Duas regiões vizinhas trazem a mesma divisa nas duas bordas: conta uma vez só.
+  const trechosEspelho = [];
+  const contados = [];
+  const jaContado = (m) => contados.some(([p, q]) => {
+    const dx = q.x - p.x, dy = q.y - p.y, l2 = dx * dx + dy * dy;
+    const t = Math.max(0, Math.min(1, ((m.x - p.x) * dx + (m.y - p.y) * dy) / l2));
+    return Math.hypot(p.x + t * dx - m.x, p.y + t * dy - m.y) < 1e-5;
+  });
+  for (const [a, b] of segsRegioes) {
+    for (const [p, q] of partesDoSegmento(a, b, [...segsRegioes, ...segsContorno])) {
+      const { len, m, s1, s2 } = sondas(p, q);
+      if (jaContado(m)) continue;
+      if (!pontoDentro(s1, efetivo) || !pontoDentro(s2, efetivo)) continue;   // é parede, já contada
+      const r1 = regiaoEm(s1), r2 = regiaoEm(s2);
+      if (r1 === r2) continue;
+      const fa = profEm(r1, p) - profEm(r2, p), fb = profEm(r1, q) - profEm(r2, q);
+      if (Math.abs(fa) < 1e-9 && Math.abs(fb) < 1e-9) continue;
+      contados.push([p, q]);
+      const par = `${Math.min(r1, r2)}|${Math.max(r1, r2)}`;
+      const area = integralAbs(fa, fb, len);
+      const ant = trechosEspelho[trechosEspelho.length - 1];
+      if (ant && ant.par === par && Math.hypot(ant.fim.x - p.x, ant.fim.y - p.y) < 1e-6) {
+        ant.comp += len; ant.area += area; ant.max = Math.max(ant.max, Math.abs(fa), Math.abs(fb)); ant.fim = q;
+      } else {
+        trechosEspelho.push({ par, comp: len, area, max: Math.max(Math.abs(fa), Math.abs(fb)), fim: q });
+      }
+    }
   }
-  return { chao, perim, paredes, vol, efetivo, regioes };
+
+  // CHÃO e VOLUME: a última região manda no pedaço que cobre
+  let chao = 0, vol = 0;
+  regioes.forEach((r, i) => {
+    const depois = regioes.slice(i + 1).map((o) => [paraRing(o.poligono)]);
+    const mp = depois.length ? polygonClipping.difference([paraRing(r.poligono)], ...depois) : [[paraRing(r.poligono)]];
+    const { area, cx } = areaECentroX(mp);
+    if (area < 1e-9) return;
+    if (r.profundidadeM != null) { chao += area; vol += area * r.profundidadeM; return; }
+    // corpo: a rampa estica o piso (√(1 + i²)), e o volume é a área × a profundidade no centróide
+    chao += area * Math.sqrt(1 + incl * incl);
+    vol += area * (inclinado ? rampa.raso + incl * (cx - x0) : profCorpo);
+  });
+
+  const paredesContorno = trechosParede.reduce((s, t) => s + t.area, 0);
+  const espelhos = trechosEspelho.reduce((s, t) => s + t.area, 0);
+  return {
+    chao, perim: perimetroPoligono(efetivo), paredes: paredesContorno + espelhos,
+    paredesContorno, espelhos, vol, efetivo, regioes,
+    trechosParede: trechosParede.map(({ lado, regiao, comp, area, max, min }) =>
+      ({ lado, regiao, comp, profMedia: comp ? area / comp : 0, prof: max, raso: min })),
+    trechosEspelho: trechosEspelho.map(({ comp, area, max }) => ({ comp, profMedia: comp ? area / comp : 0, prof: max })),
+  };
+}
+
+/**
+ * Métricas reais do desenho para o orçamento de vinil:
+ * - chao: área do contorno efetivo (m²), com o piso da rampa esticado
+ * - perim: perímetro do contorno efetivo (m)
+ * - paredes: paredes do contorno trecho a trecho + espelhos internos (m²) —
+ *   a mesma convenção do calcA: toda face vertical, interna ou não
+ * - vol: Σ área × profundidade por região (m³)
+ */
+export function calcDesenho(desenho, profCorpo, rampa = null) {
+  return medirDesenho(desenho, profCorpo, rampa);
 }
 
 /**

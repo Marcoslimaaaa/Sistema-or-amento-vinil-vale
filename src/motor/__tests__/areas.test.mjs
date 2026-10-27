@@ -108,5 +108,39 @@ console.log("\ncalcA - orcamento antigo (spa sem o campo) nao pode mudar de valo
   ok("segue como tanque separado", perto(r.tot,48.8), r.tot, 48.8);
 }
 
+console.log("\ndesenho livre — parede trecho a trecho e degrau interno (achado 4.2a, 26/10/2026)");
+{
+  // controle: a MESMA 6,00 × 3,00 × 1,40 com prainha de 1,00 a 0,50 pelo formato
+  // e pelo desenho. Antes o desenho dava 22,5 m² de parede (esquecia o degrau).
+  const fmt=calcA({length:"6",width:"3",depth:"1.4",prainhaComp:"1",prainhaProf:"0.5"},SPA_OFF,"regular",[],"Com prainha",[],{},null);
+  const des={vertices:[{x:0,y:0},{x:6,y:0},{x:6,y:3},{x:0,y:3}],
+    formas:[{id:"p",tipo:"prainha",operacao:"uniao",cxM:0.5,cyM:1.5,larguraM:1,comprimentoM:3,profundidadeM:0.5}]};
+  const r=calcA({length:"6",width:"3",depth:"1.4"},SPA_OFF,"regular",[],"Personalizado",[],{},des);
+  ok("paredes iguais às do formato (23,4)", r.par===fmt.par, r.par, fmt.par);
+  ok("total igual (41,4)",                  r.tot===fmt.tot, r.tot, fmt.tot);
+  ok("volume igual (22,5)",                 r.vol===fmt.vol, r.vol, fmt.vol);
+}
+{
+  // a piscina do Gilberto (Sólazer, Pariquera-Açu): 10,00 × 3,00 com chanfro
+  // 1,30 × 1,30, prainha LATERAL 4,00 × 2,00 a 0,60 e rampa de 1,20 a 1,60.
+  // Gabarito feito à mão em 24/10, fórmula fechada: 75,08 m² e 45,77 m³ (as 11
+  // diagonais da planta batem com esta geometria até 0,41 cm). Antes: 71,7 m².
+  const V=[[0,0],[10,0],[10,3],[6.3,3],[6.3,5],[2.3,5],[2.3,3],[1.3,3],[0,1.7]].map(([x,y])=>({x,y:5-y}));
+  const des={vertices:V,formas:[{id:"p1",tipo:"prainha",operacao:"uniao",cxM:4.3,cyM:1.0,larguraM:4.0,comprimentoM:2.0,profundidadeM:0.6}]};
+  const r=calcA({length:"10",width:"5",depth:"",depthMin:"1.2",depthMax:"1.6"},SPA_OFF,"regular",[],"Personalizado",[],{},des);
+  ok("Gilberto: total 75,08",  perto(r.tot,75.08,0.05), r.tot, 75.08);
+  ok("Gilberto: volume 45,77", perto(r.vol,45.77,0.05), r.vol, 45.77);
+}
+{
+  // banco no desenho: o assento é raso por cima do corpo. O volume não conta o
+  // corpo embaixo dele (antes contava os dois) e o espelho do banco entra.
+  const des={vertices:[{x:0,y:0},{x:6,y:0},{x:6,y:3},{x:0,y:3}],formas:[{id:"b",tipo:"banco",larguraM:0.5,profundidadeM:0.5}]};
+  const r=calcA({length:"6",width:"3",depth:"1.4"},SPA_OFF,"regular",[],"Personalizado",[],{},des);
+  // à mão: assento = 18 − 5 × 2 = 8 m² a 0,50; poço 10 m² a 1,40 → 18 m³.
+  // Paredes 18 × 0,50 = 9,0 + espelho 14 × 0,90 = 12,6 → 21,6 m²
+  ok("banco: volume 18,0", perto(r.vol,18.0), r.vol, 18.0);
+  ok("banco: paredes 21,6 (contorno no assento + espelho do banco)", perto(r.par,21.6), r.par, 21.6);
+}
+
 console.log(`\n${total-falhas}/${total} passaram`);
 process.exit(falhas?1:0);

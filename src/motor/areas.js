@@ -135,8 +135,10 @@ export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
       :"Faltam os TRÊS LADOS do triângulo");
   }
 
-  // Desenho livre (modelos/editor): áreas e perímetro REAIS do formato desenhado
-  const dM=desenho&&desenho.vertices&&desenho.vertices.length>=3?calcDesenho(desenho,D):null;
+  // Desenho livre (modelos/editor): áreas e perímetro REAIS do formato desenhado.
+  // Com raso e fundo, o corpo desce em rampa (raso à esquerda, como no corte).
+  const dM=desenho&&desenho.vertices&&desenho.vertices.length>=3
+    ?calcDesenho(desenho,D,sloped?{raso:Math.min(dMin,dMax),fundo:Math.max(dMin,dMax)}:null):null;
   if(dM){chao=dM.chao;par=dM.paredes;perim=dM.perim;}
   // ── DEGRAUS EM NÍVEIS (motor/niveis.js, pedido do Marcos em 24/10/2026) ──
   // Ponta com degraus (com ou sem prainha) e escada lateral de 2+ degraus.
