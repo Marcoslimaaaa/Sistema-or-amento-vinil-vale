@@ -614,7 +614,7 @@ function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide
       </>}
 
       {/* PONTA EM NÍVEIS (24/10/2026) — um bloco por nível, do fundo até o
-          piso dele; o bloco de canto sobe por cima da prainha. Profundidade da
+          piso dele. Profundidade da
           conta (média de raso e fundo), a mesma que confere os degraus. */}
       {!dn&&(()=>{
         const pfv=v=>parseFloat(String(v??"").replace(",","."))||0;
@@ -623,7 +623,6 @@ function Scene({ pool, spa, disps, customPos, poolFmt, autoPositions, invertSide
         if(!pc||pc.erro)return null;
         const sx=flipH?-1:1, sz=flipV?-1:1;
         const blocos=pc.niveis.map((n,i)=>({k:"n"+i,x0:n.x0,x1:n.x1,y0:0,y1:W,alt:Math.max(0.05,D-n.prof),cor:"#7dd3fc"}));
-        if(pc.canto)pc.canto.degraus.forEach((d,i)=>blocos.push({k:"c"+i,x0:d.x0,x1:d.x1,y0:pc.canto.y0,y1:pc.canto.y1,alt:Math.max(0.05,D-d.prof),cor:"#bae6fd"}));
         return <group>{blocos.map(b=><mesh key={b.k} position={[sx*(-L/2+(b.x0+b.x1)/2), b.alt/2, sz*(-W/2+(b.y0+b.y1)/2)]}>
           <boxGeometry args={[Math.max(0.02,b.x1-b.x0), b.alt, Math.max(0.02,(b.y1-b.y0)-(b.y1-b.y0>=W-1e-6?0.1:0))]} />
           <meshStandardMaterial color={b.cor} roughness={0.8} transparent opacity={0.6} />

@@ -435,7 +435,7 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
   // antes ele saía liso, como se a prainha não existisse. Só desenho: a conta
   // dela continua a de sempre.
   const pontaCorte=pontaOk||(poolFmt==="Com prainha"&&prai.medida&&prai.comp<L
-    ?{niveis:[{tipo:"prainha",rotulo:"Prainha",x0:0,x1:prai.comp,avanco:prai.comp,prof:prai.prof}],canto:null,fim:prai.comp,prainha:null}:null);
+    ?{niveis:[{tipo:"prainha",rotulo:"Prainha",x0:0,x1:prai.comp,avanco:prai.comp,prof:prai.prof}],fim:prai.comp,prainha:null}:null);
   // dRef: bico dentro do spa mede a altura pela profundidade DO SPA, não da piscina
   const alturaBicoP=(t,f,dRef)=>alturaBico(t,f,dRef||D,devHeights);
   const caixaSpa=caixaSpaNorm(L,W,spa,customPos?.spaExt);
@@ -546,8 +546,8 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
       {stamp&&SWATCH_SLUG[stamp]&&<image href={`/swatches/${SWATCH_SLUG[stamp]}.png`} x={ox} y={oy} width={pw} height={ph} preserveAspectRatio="xMidYMid slice" clipPath="url(#poolClip2d)" opacity="0.85"/>}
       {poolFmt==="Com prainha"&&!pontaOk&&(()=>{const a=PU(0,0),b=PU(Math.min(prai.comp/L,1),1);const x0=Math.min(a.x,b.x),y0=Math.min(a.y,b.y),wq=Math.abs(b.x-a.x),hq=Math.abs(b.y-a.y);return<g><rect x={x0} y={y0} width={wq} height={hq} rx="1" fill={dark?"#1e4d7a":"#bfdbfe"} stroke="#2563eb" strokeWidth="0.5"/>{prai.medida&&<text x={x0+wq/2} y={y0+hq/2+3} textAnchor="middle" fontSize="5.5" fontWeight="700" fill={dark?"#93c5fd":"#1d4ed8"}>{prai.comp}m · {prai.prof}m</text>}</g>})()}
       {/* PONTA EM NÍVEIS (24/10/2026) — cada nível da largura toda é um
-          retângulo, do mais raso (mais claro) ao mais fundo; o bloco de canto
-          vem por cima. Rótulo deitado quando o degrau é estreito. */}
+          retângulo, do mais raso (mais claro) ao mais fundo. Rótulo deitado
+          quando o degrau é estreito. */}
       {pontaOk&&(()=>{
         const tons=dark?["#2f6aa6","#2a5f96","#245485","#1f4a76"]:["#e8f1ff","#d6e7fe","#c4dcfd","#b2d1fc"];
         const caixa=(u0,v0,u1,v1)=>{const a=PU(u0,v0),b=PU(u1,v1);return{x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),w:Math.abs(b.x-a.x),h:Math.abs(b.y-a.y)}};
@@ -558,12 +558,6 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
           const r=caixa(nv.x0/L,0,nv.x1/L,1);
           els.push(<rect key={"nv"+i} x={r.x} y={r.y} width={r.w} height={r.h} fill={tons[Math.min(i,tons.length-1)]} stroke="#2563eb" strokeWidth="0.6"/>);
           els.push(rotulo(r,`${nv.tipo==="prainha"?"PRAINHA":nv.rotulo} ${f2(nv.avanco)} · prof. ${f2(nv.prof)}m`,`${nv.tipo==="prainha"?"PRAINHA":nv.rotulo} · ${f2(nv.prof)}m`,"nt"+i,dark?"#bfdbfe":"#1d4ed8"));
-        });
-        const c=pontaOk.canto;
-        if(c)c.degraus.forEach((d,i)=>{
-          const r=caixa(d.x0/L,c.y0/W,d.x1/L,c.y1/W);
-          els.push(<rect key={"cd"+i} x={r.x} y={r.y} width={r.w} height={r.h} fill={dark?"#4b80b8":"#eef5ff"} stroke="#1d4ed8" strokeWidth="0.9"/>);
-          els.push(rotulo(r,`${d.rotulo} ${f2(d.avanco)} · prof. ${f2(d.prof)}m`,`${d.rotulo} · ${f2(d.prof)}m`,"ct"+i,dark?"#e0f2fe":"#1e3a8a"));
         });
         return<g>{els}</g>;
       })()}
@@ -652,30 +646,24 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
       {[["R","Retorno","#ef4444"],["A","Asp.","#ec4899"],["D","Dreno","#8b5cf6"],["SK","Skim.","#f59e0b"],["L","LED","#f97316"],["N","Niv.","#06b6d4"],["H","Hidro","#14b8a6"],["DQ","Ralo Q.","#7f1d1d"],["RQ","Ret. Q.","#e11d48"],["CM","Casa M.","#475569"]].map(([s,lb,c])=><div key={s} style={{display:"flex",alignItems:"center",gap:"2px"}}><div style={{width:"8px",height:"3px",borderRadius:"1px",background:c}}/><span style={{fontSize:"6px",color:t.textMuted}}>{lb}</span></div>)}
       <button className="no-pdf" onClick={()=>{setCustomPos({});setTubeOffsets({})}} style={{fontSize:"6px",padding:"1px 4px",borderRadius:"3px",border:"1px solid "+(dark?"#334155":"#e2e8f0"),background:"transparent",color:t.textMuted,cursor:"pointer",marginLeft:"auto"}}>Reset</button>
     </div>
-    <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginTop:"10px",marginBottom:"4px",textAlign:"center"}}>Corte Lateral{pontaOk?.canto?" (pelos degraus do canto)":""}</div>
+    <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginTop:"10px",marginBottom:"4px",textAlign:"center"}}>Corte Lateral</div>
     <svg viewBox={`0 0 ${svgW} ${cutH}`} style={{width:"100%",height:"auto",display:"block",background:dark?"#0f172a":"#f8fafc",borderRadius:"6px",border:"1px solid "+(dark?"#334155":"#e2e8f0")}}>
       {/* PONTA EM NÍVEIS (24/10/2026): o perfil desce em escada — borda,
-          cada degrau/prainha na sua profundidade, depois o fundo. Com bloco
-          no canto o corte passa pelos degraus, e a prainha ao lado vai
-          tracejada. Sem degrau, o perfil de sempre. */}
+          cada degrau/prainha na sua profundidade, depois o fundo. Sem
+          degrau, o perfil de sempre. */}
       {(()=>{
         const dF=x=>sloped?dMin+(dMax-dMin)*(x/L):D;
         const P=([x,d])=>`${(cox2+x*cutScale).toFixed(1)},${(coy2+d*cutScale).toFixed(1)}`;
         if(!pontaCorte)return<polygon points={sloped?(cox2+","+coy2+" "+(cox2+cpw2)+","+coy2+" "+(cox2+cpw2)+","+(coy2+hMax2)+" "+cox2+","+(coy2+hMin2)):(cox2+","+coy2+" "+(cox2+cpw2)+","+coy2+" "+(cox2+cpw2)+","+(coy2+cph2)+" "+cox2+","+(coy2+cph2))} fill={dark?"#1e3a5f":"#dbeafe"} stroke="#2563eb" strokeWidth="2"/>;
-        const c=pontaCorte.canto,pr=pontaCorte.prainha;
-        const degs=c?c.degraus:pontaCorte.niveis;
+        const degs=pontaCorte.niveis;
         const pts=[[0,0]];
         degs.forEach(n=>pts.push([n.x0,n.prof],[n.x1,n.prof]));
-        if(c&&pr)pts.push([c.fim,pr.prof],[pr.avanco,pr.prof]);
-        const xf=c?(pr?pr.avanco:c.fim):pontaCorte.fim;
+        const xf=pontaCorte.fim;
         pts.push([xf,dF(xf)],[L,dF(L)],[L,0]);
         const f2=v=>v.toFixed(2).replace(".",",");
         return<g>
           <polygon points={pts.map(P).join(" ")} fill={dark?"#1e3a5f":"#dbeafe"} stroke="#2563eb" strokeWidth="2" strokeLinejoin="round"/>
           {degs.map((n,i)=><text key={"cp"+i} x={cox2+(n.x0+n.x1)/2*cutScale} y={coy2+n.prof*cutScale-2.5} textAnchor="middle" fontSize="5" fontWeight="700" fill={dark?"#93c5fd":"#1d4ed8"}>{f2(n.prof)}</text>)}
-          {c&&pr&&<text x={cox2+(c.fim+pr.avanco)/2*cutScale} y={coy2+pr.prof*cutScale-2.5} textAnchor="middle" fontSize="5" fontWeight="700" fill={dark?"#93c5fd":"#1d4ed8"}>{f2(pr.prof)}</text>}
-          {c&&pr&&<line x1={cox2} y1={coy2+pr.prof*cutScale} x2={cox2+c.fim*cutScale} y2={coy2+pr.prof*cutScale} stroke="#2563eb" strokeWidth="0.8" strokeDasharray="3,2"/>}
-          {c&&pr&&<text x={cox2+2} y={coy2+pr.prof*cutScale+6} fontSize="4.6" fill={dark?"#93c5fd":"#1d4ed8"}>prainha ao lado</text>}
         </g>;
       })()}
       <line x1={cox2+2} y1={coy2+3} x2={cox2+cpw2-2} y2={coy2+3} stroke="#0ea5e9" strokeWidth="0.6" strokeDasharray="4,2"/>
@@ -881,7 +869,7 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
   const DnIso=(parseFloat(pool.depthMin)>0&&parseFloat(pool.depthMax)>0)?(parseFloat(pool.depthMin)+parseFloat(pool.depthMax))/2:D;
   const pontaIso=(()=>{const pc=desenho?null:pontaCfg(pool,poolFmt,L,W,DnIso);return pc&&!pc.erro?pc:null})();
   // PONTA EM NÍVEIS (24/10/2026) — cada nível uma plataforma na sua altura, do
-  // raso para o fundo; o bloco de canto sobe por cima da prainha.
+  // raso para o fundo.
   if(pontaIso){
     const X=FX,Y=FY;
     const zDe=prof=>Math.max(0,D-prof);
@@ -895,18 +883,6 @@ const IsometricView=React.forwardRef(({pool,spa,disps,dark,t,poolFmt,clientName,
       const pp=iso(X((n.x0+n.x1)/2),Y(W/2),z);
       els.push(<text key={"pn_l"+i} x={pp.x} y={pp.y-3} textAnchor="middle" fontSize="5.5" fontWeight="700" fill={dk?"#93c5fd":"#1d4ed8"} opacity="0.85">{n.tipo==="prainha"?"PRAINHA":n.rotulo} {f2(n.prof)}m</text>);
     });
-    const c=pontaIso.canto;
-    if(c){
-      const zB=zDe(c.baseProf),yIn=c.lado==="cima"?c.y1:c.y0;
-      c.degraus.forEach((d,i)=>{
-        const z=zDe(d.prof),zN=i<c.degraus.length-1?zDe(c.degraus[i+1].prof):zB;
-        els.push(<polygon key={"pc_t"+i} points={pts([[X(d.x0),Y(c.y0),z],[X(d.x1),Y(c.y0),z],[X(d.x1),Y(c.y1),z],[X(d.x0),Y(c.y1),z]])} fill={dk?"#3b6ea5":"#dbeafe"} opacity="0.75"/>);
-        els.push(<polygon key={"pc_s"+i} points={pts([[X(d.x0),Y(yIn),zB],[X(d.x1),Y(yIn),zB],[X(d.x1),Y(yIn),z],[X(d.x0),Y(yIn),z]])} fill={dk?"#2f5f94":"#bfdbfe"} stroke="#1d4ed8" strokeWidth="0.5" opacity="0.65"/>);
-        els.push(<polygon key={"pc_r"+i} points={pts([[X(d.x1),Y(c.y0),zN],[X(d.x1),Y(c.y1),zN],[X(d.x1),Y(c.y1),z],[X(d.x1),Y(c.y0),z]])} fill={dk?"#28548a":"#93c5fd"} stroke="#1d4ed8" strokeWidth="0.5" opacity="0.65"/>);
-        const pp=iso(X((d.x0+d.x1)/2),Y((c.y0+c.y1)/2),z);
-        els.push(<text key={"pc_l"+i} x={pp.x} y={pp.y-2} textAnchor="middle" fontSize="5" fontWeight="700" fill={dk?"#e0f2fe":"#1e3a8a"}>{d.rotulo}</text>);
-      });
-    }
   }
   // "Com prainha" — plataforma rasa na ponta rasa (acompanha o espelho da piscina)
   if(poolFmt==="Com prainha"&&!pontaIso){
@@ -2806,8 +2782,7 @@ export default function App(){
     // com degraus: os níveis da ponta, do mais raso ao mais fundo (só quando a medida fecha)
     const pc=pontaCfg(pool,poolFmt,L,n(pool.width),D);
     if(pc&&!pc.erro){
-      const lista=pc.canto?[...pc.canto.degraus,...pc.niveis]:pc.niveis;
-      return{txt:lista.map(x=>m2(x.prof)).join(" · ")+"m",rot:pc.prainha?"Degraus + prainha (prof.)":"Degraus (prof.)"};
+      return{txt:pc.niveis.map(x=>m2(x.prof)).join(" · ")+"m",rot:pc.prainha?"Degraus + prainha (prof.)":"Degraus (prof.)"};
     }
     if(poolFmt!=="Com prainha"||!(c>0&&c<L))return null;
     return{txt:`${m2(c)}×${m2(Math.min(p>0?p:D*0.25,Math.max(D-0.05,0.05)))}m`};
@@ -3477,8 +3452,8 @@ export default function App(){
             {/* DEGRAUS DA PONTA (24/10/2026) — "dois, três degraus com níveis
                 diferentes e depois vem uma prainha". Cada degrau: avanço (a
                 pisada, no sentido do comprimento) e profundidade da BORDA até o
-                piso dele. Largura vazia = a largura toda; menor = bloco no canto
-                (o Marcos: "os dois acontecem"). Conta em motor/niveis.js. */}
+                piso dele. Sempre de uma lateral à outra: o bloco de canto saiu
+                em 26/10 ("apenas os degraus inteiriços"). Conta em motor/niveis.js. */}
             <div style={{marginTop:"10px",paddingTop:"9px",borderTop:`1px dashed ${t.cardBorder}`}}>
               <div style={{fontSize:"10px",fontWeight:"700",color:blue,marginBottom:"8px"}}>Degraus da ponta</div>
               <LinhasDegrau linhas={pool.degraus} campoA="avanco" rotA="avanço" phA="0,30" phP="0,20" t={t} blue={blue}
@@ -3489,26 +3464,14 @@ export default function App(){
                 const Dv=ar.depthInfo?.avg||n(pool.depth);
                 const pc=pontaCfg(pool,poolFmt,n(pool.length),n(pool.width),Dv);
                 return <div style={{marginTop:"10px"}}>
-                  <div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}}>
-                    {temPrai&&<div>
-                      <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>Onde ficam os degraus</div>
-                      <Escolha t={t} blue={blue} valor={pool.degrausPos==="depois"?"depois":"antes"} onChange={v=>setPool(p=>({...p,degrausPos:v}))}
-                        opcoes={[["antes","Antes da prainha"],["depois","Depois (descendo ao fundo)"]]}/>
-                    </div>}
-                    <Inp label="Largura dos degraus (m)" value={pool.degrausLarg||""} onChange={up("degrausLarg")} t={t} placeholder="vazio = largura toda"/>
-                    {n(pool.degrausLarg)>0&&n(pool.degrausLarg)<n(pool.width)&&<div>
-                      <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>Canto (como aparece na planta)</div>
-                      <Escolha t={t} blue={blue} valor={pool.degrausLado==="baixo"?"baixo":"cima"} onChange={v=>setPool(p=>({...p,degrausLado:v}))}
-                        opcoes={[["cima","Em cima"],["baixo","Embaixo"]]}/>
-                    </div>}
-                  </div>
-                  {/* O Marcos não entendeu o "vazio = largura toda" sozinho (26/10). */}
-                  <div style={{fontSize:"8.5px",color:t.textMuted,marginTop:"6px",lineHeight:1.45}}>
-                    Largura vazia = degraus de uma lateral à outra (o normal). Preencha só para uma escada num canto, descendo da borda{temPrai?' — com prainha, só em "Antes da prainha"':""}.
-                  </div>
+                  {temPrai&&<div>
+                    <div style={{fontSize:"9px",fontWeight:"600",color:t.textMuted,marginBottom:"4px"}}>Onde ficam os degraus</div>
+                    <Escolha t={t} blue={blue} valor={pool.degrausPos==="depois"?"depois":"antes"} onChange={v=>setPool(p=>({...p,degrausPos:v}))}
+                      opcoes={[["antes","Antes da prainha"],["depois","Depois (descendo ao fundo)"]]}/>
+                  </div>}
                   <div style={{fontSize:"8.5px",color:pc?.erro?"#dc2626":t.textMuted,fontWeight:pc?.erro?"700":"400",marginTop:"6px",lineHeight:1.45}}>
                     {pc?.erro?`⚠ ${pc.erro}`
-                      :pc?`${textoPonta(pc)} — sobram ${Math.max(0,n(pool.length)-pc.fim).toFixed(2).replace(".",",")} m de fundo. Profundidade = da BORDA até o piso de cada nível, como a prainha.`
+                      :pc?`${textoPonta(pc)} — sobram ${Math.max(0,n(pool.length)-pc.fim).toFixed(2).replace(".",",")} m de fundo. Cada nível vai de uma lateral à outra. Profundidade = da BORDA até o piso de cada nível, como a prainha.`
                       :"Preencha avanço e profundidade de cada degrau."}
                   </div>
                 </div>;

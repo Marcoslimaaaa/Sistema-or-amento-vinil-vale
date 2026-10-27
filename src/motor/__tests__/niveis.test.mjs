@@ -48,6 +48,7 @@ const BASE = { length: "8", width: "4", depth: "1.40" };
 const SEM_SPA = { on: false, length: "0", width: "0", depth: "0" };
 const PONTA_A = { ...BASE, prainhaComp: "1,50", prainhaProf: "0,60",
   degraus: [{ avanco: "0,30", prof: "0,20" }, { avanco: "0,30", prof: "0,40" }] };
+// rascunho salvo quando ainda existia o bloco de canto (tirado em 26/10)
 const PONTA_B = { ...PONTA_A, degrausLarg: "1,20", degrausLado: "cima" };
 const ESCADA_C = { ...BASE, bancoOn: true, bancoLarg: "0,30", bancoProf: "0,20", bancoLado: "cima",
   bancoDegraus: [{ larg: "0,30", prof: "0,40" }] };
@@ -81,22 +82,13 @@ vd("níveis que comem a piscina inteira", pontaCfg({ ...PONTA_A, prainhaComp: "7
 vd("prainha sem profundidade, com degraus", pontaCfg({ ...PONTA_A, prainhaProf: "" }, "Com prainha", L, W, D).erro?.includes("profundidade da prainha"));
 vd("linha de degrau pela metade", pontaCfg({ ...PONTA_A, degraus: [{ avanco: "0,3", prof: "" }] }, "Com prainha", L, W, D).erro?.includes("Degrau 1"));
 
-console.log("\n— pontaCfg: bloco num canto —");
+console.log("\n— pontaCfg: degraus sempre de uma lateral à outra —");
 const pB = pontaCfg(PONTA_B, "Com prainha", L, W, D);
-eq("B: sem erro", pB.erro, null);
-eq("B: canto de cima, 0 a 1,20", [pB.canto.lado, pB.canto.y0, pB.canto.y1], ["cima", 0, 1.2]);
-eq("B: os degraus do bloco", pB.canto.degraus.map((d) => [d.rotulo, +d.x0.toFixed(2), +d.x1.toFixed(2), d.prof]), [["D1", 0, 0.3, 0.2], ["D2", 0.3, 0.6, 0.4]]);
-eq("B: o bloco senta na prainha", [pB.canto.baseProf, pB.canto.baseRotulo], [0.6, "prainha"]);
-eq("B: a prainha atravessa a largura toda", pB.niveis.map((n) => n.rotulo), ["Prainha"]);
-perto("B: o fundo começa no fim da prainha", pB.fim, 1.5);
-const pBb = pontaCfg({ ...PONTA_B, degrausLado: "baixo" }, "Com prainha", L, W, D);
-eq("B embaixo: 2,80 a 4,00", [+pBb.canto.y0.toFixed(2), +pBb.canto.y1.toFixed(2)], [2.8, 4]);
-vd("bloco mais comprido que a prainha", pontaCfg({ ...PONTA_B, prainhaComp: "0,50" }, "Com prainha", L, W, D).erro?.includes("caber dentro da prainha"));
-vd("bloco de canto só antes da prainha", pontaCfg({ ...PONTA_B, degrausPos: "depois" }, "Com prainha", L, W, D).erro?.includes("borda rasa"));
-vd("sobra menos de 10 cm ao lado", pontaCfg({ ...PONTA_B, degrausLarg: "3,95" }, "Com prainha", L, W, D).erro?.includes("10 cm"));
-eq("largura igual à da piscina = largura toda", pontaCfg({ ...PONTA_B, degrausLarg: "4,00" }, "Com prainha", L, W, D).canto, null);
-const pBf = pontaCfg({ ...BASE, degrausLarg: "1,20", degraus: [{ avanco: "0,3", prof: "0,25" }, { avanco: "0,3", prof: "0,5" }] }, "Com prainha", L, W, D);
-eq("bloco sem prainha senta no fundo", [pBf.erro, pBf.canto.baseRotulo, pBf.canto.baseProf], [null, "fundo", 1.4]);
+eq("largura de rascunho antigo é ignorada: mesmos níveis do A", pB.niveis.map((n) => [n.rotulo, n.x0, n.x1, n.prof]),
+  pontaCfg(PONTA_A, "Com prainha", L, W, D).niveis.map((n) => [n.rotulo, n.x0, n.x1, n.prof]));
+eq("nem existe mais bloco de canto", "canto" in pB, false);
+eq("e com 'depois' (o caso do Marcos) não dá mais o erro do canto", pontaCfg({ ...PONTA_B, degrausPos: "depois",
+  degraus: [{ avanco: "0,30", prof: "0,80" }, { avanco: "0,30", prof: "1,00" }] }, "Com prainha", L, W, D).erro, null);
 
 console.log("\n— células: batem com a conta ANTIGA nos casos de um nível só —");
 const caixa = medirCelulas(celulasDaPiscina({ L, W, D }));
@@ -123,13 +115,6 @@ perto("A: paredes do contorno 25,08", mA.paredes, 25.08, 1e-6);
 perto("A: espelhos 4,80", mA.espelhos, 4.8, 1e-6);
 perto("A: total 61,88", mA.total, 61.88, 1e-6);
 perto("A: volume 37,36", mA.volume, 37.36, 1e-6);
-const mB = medirCelulas(celulasDaPiscina({ L, W, D, ponta: pB }));
-perto("B: testeira rasa 1,92", mB.porParede.testeiraRasa, 1.92, 1e-6);
-perto("B: lateral de cima 9,82", mB.porParede.lateralCima, 9.82, 1e-6);
-perto("B: lateral de baixo 10,00", mB.porParede.lateralBaixo, 10, 1e-6);
-perto("B: espelhos 3,86", mB.espelhos, 3.86, 1e-6);
-perto("B: total 63,20", mB.total, 63.2, 1e-6);
-perto("B: volume 39,784", mB.volume, 39.784, 1e-6);
 const bcC = bancoCfg(ESCADA_C, "Retangular", L, W, D);
 eq("C: escada com 2 degraus", bcC.niveis, [{ larg: 0.3, prof: 0.2 }, { larg: 0.3, prof: 0.4 }]);
 perto("C: largura total 0,60", bcC.larg, 0.6, 1e-9);
@@ -143,7 +128,7 @@ console.log("\n— dentro do calcA —");
 const aA = calcA(PONTA_A, SEM_SPA, "regular", [], "Com prainha", [], {}, null);
 eq("A: chão 32,0 · paredes 29,9 · total 61,9 · volume 37,4", [aA.chao, aA.par, aA.tot, aA.vol], ["32.0", "29.9", "61.9", "37.4"]);
 const aB = calcA(PONTA_B, SEM_SPA, "regular", [], "Com prainha", [], {}, null);
-eq("B: total 63,2 · volume 39,8", [aB.tot, aB.vol], ["63.2", "39.8"]);
+eq("rascunho com largura antiga: igual ao A", [aB.tot, aB.vol], [aA.tot, aA.vol]);
 const aC = calcA(ESCADA_C, SEM_SPA, "regular", [], "Retangular", [], {}, null);
 eq("C: total 64,3 · volume 39,5", [aC.tot, aC.vol], ["64.3", "39.5"]);
 const ruim = calcA({ ...PONTA_A, prainhaProf: "1,38" }, SEM_SPA, "regular", [], "Com prainha", [], {}, null);
@@ -225,25 +210,6 @@ eq("faixa única: lateral + fundo + lateral numa peça de 20,10 × 1,50", faixa 
 eq("vincada nos 2 cantos", faixa.vincos, 2);
 perto("e economiza os 20 cm das 4 pontas", plA.metrosLineares - plAU.metrosLineares, 0.2, 0.001);
 
-console.log("\n— manta: bloco no canto —");
-const fB = facesPontaNiveis({ L, W, D, ponta: pB });
-eq("espelhos do bloco, a face do bloco e o da prainha", fB.espelhos.map((f) => f.nome),
-  ["Espelho D1 → D2", "Espelho D2 → prainha", "Lateral dos degraus", "Espelho prainha → fundo"]);
-eq("espelhos do bloco têm a largura do bloco", fB.espelhos.slice(0, 2).map((f) => f.comp), [1.2, 1.2]);
-eq("a face do bloco: 0,60 de comprimento, 0,40 de altura cheia", [fB.espelhos[2].comp, fB.espelhos[2].prof], [0.6, 0.4]);
-eq("testeira rasa inteira na altura da prainha, recortada no bloco", [fB.paredes[0].nome, fB.paredes[0].prof, fB.paredes[0].recorte.degraus], ["Testeira rasa", 0.6, [{ larg: 1.2, alt: 0.4 }]]);
-eq("lateral do lado do bloco recortada em 3 trechos", fB.paredes[1].recorte.degraus.length, 3);
-eq("lateral oposta recortada só na prainha", fB.paredes[3].recorte.degraus, [{ larg: 1.5, alt: 0.8 }]);
-const chB = chaoPontaNiveis({ L, W, D, ponta: pB });
-eq("pisadas do bloco, piso da prainha em L e o fundo", chB.map((p) => p.nome), ["Pisada D1", "Pisada D2", "Piso da prainha", "Chão · fundo"]);
-// a pisada do bloco é 0,31 × 1,21 (1 cm na testeira e na lateral); o motor corta
-// ATRAVESSANDO a bobina, que gasta 0,31 m de rolo em vez de 1,21
-eq("pisada do bloco: 0,31 × 1,21, atravessando a bobina", [chB[0].compFaixa, chB[0].alvo], [0.31, 1.21]);
-vd("o piso da prainha acompanha o L", chB[2].contorno === true);
-const plB = planoNiveis({ L, W, D, ponta: pB });
-perto("B: superfície de verdade 63,20", plB.areaUtil, 63.2, 0.01);
-vd("B: tem plano e pedido", plB.metrosLineares > 0 && plB.pedido.qtd >= 1);
-
 console.log("\n— ninhagem —");
 const nn = ninharPecas([{ nome: "a", comp: 4, largura: 0.3 }, { nome: "b", comp: 4, largura: 0.3 }, { nome: "c", comp: 4, largura: 0.9 }, { nome: "d", comp: 4, largura: 0.1 }]);
 eq("cabe tudo em uma passada: 0,3 + 0,3 + 0,9 + 3 × 0,05 = 1,65 não; 0,9 + 0,3 + 0,3 = 1,60 não", nn.length, 2);
@@ -262,8 +228,7 @@ const legadoDireto = planoManta({ comp: 6, larg: 3.5, prof: 1.4, perimetro: 19, 
 vd("prainha sem degrau continua no plano antigo", legado && !legado.niveis && legadoDireto);
 
 console.log("\n— texto do PDF —");
-eq("ponta largura toda", textoPonta(pA), "Ponta em níveis · D1 0,30 × 0,20 m → D2 0,30 × 0,40 m → Prainha 1,50 × 0,60 m → fundo · largura toda");
-eq("bloco no canto", textoPonta(pB), "Ponta em níveis · D1 0,30 × 0,20 m → D2 0,30 × 0,40 m → Prainha 1,50 × 0,60 m → fundo · degraus no canto de cima, 1,20 m de largura");
+eq("ponta em níveis", textoPonta(pA), "Ponta em níveis · D1 0,30 × 0,20 m → D2 0,30 × 0,40 m → Prainha 1,50 × 0,60 m → fundo");
 eq("escada lateral", textoBanco(bcC), "Escada lateral · 2 degraus (D1 0,30 × 0,20 m → D2 0,30 × 0,40 m) · 8,00 m de extensão");
 eq("banco simples segue com o texto de sempre", textoBanco(bc1), "Banco lateral · 0,45 m de largura × 8,00 m de extensão · assento a 0,40 m da borda (bloco de 1,00 m de altura)");
 
@@ -281,7 +246,7 @@ vd("e o orçamento trava", calcA(MARCOS, SEM_SPA, "regular", [], "Com prainha", 
 // TOTAL 76,68 m² · volume 4 × 12,74 = 50,96 m³ · fundo 10 − 1,60 = 8,40 m
 const MARCOS_OK = { ...MARCOS, degraus: [{ avanco: "0.30", prof: "0.70" }, { avanco: "0,30", prof: "0.90" }] };
 const pMarcos = pontaCfg(MARCOS_OK, "Com prainha", 10, 4, 1.4);
-eq("com a vírgula fecha", textoPonta(pMarcos), "Ponta em níveis · Prainha 1,00 × 0,50 m → D1 0,30 × 0,70 m → D2 0,30 × 0,90 m → fundo · largura toda");
+eq("com a vírgula fecha", textoPonta(pMarcos), "Ponta em níveis · Prainha 1,00 × 0,50 m → D1 0,30 × 0,70 m → D2 0,30 × 0,90 m → fundo");
 perto("sobram 8,40 m de fundo", 10 - pMarcos.fim, 8.4, 1e-9);
 const mMarcos = medirCelulas(celulasDaPiscina({ L: 10, W: 4, D: 1.4, ponta: pMarcos }));
 perto("total 76,68 (à mão)", mMarcos.total, 76.68, 1e-6);
@@ -292,8 +257,6 @@ eq("profundidade sem vírgula", pontaCfg({ ...MARCOS_OK, degraus: [{ avanco: "0.
   'Degrau 1: a profundidade "070" ficou 70,00 m. Faltou a vírgula? Digite 0,70.');
 eq("prainha (com degrau)", pontaCfg({ ...MARCOS_OK, prainhaProf: "050" }, "Com prainha", 10, 4, 1.4).erro,
   'Prainha: a profundidade "050" ficou 50,00 m. Faltou a vírgula? Digite 0,50.');
-eq("largura dos degraus", pontaCfg({ ...PONTA_A, degrausLarg: "012" }, "Com prainha", L, W, D).erro,
-  'A largura dos degraus "012" ficou 12,00 m. Faltou a vírgula? Digite 0,12.');
 eq("escada lateral: degrau 1 (campos do banco)", bancoCfg({ ...ESCADA_C, bancoLarg: "030" }, "Retangular", L, W, D).erro,
   'Degrau 1: a largura "030" ficou 30,00 m. Faltou a vírgula? Digite 0,30.');
 eq("escada lateral: degrau 2", bancoCfg({ ...ESCADA_C, bancoDegraus: [{ larg: "030", prof: "0,40" }] }, "Retangular", L, W, D).erro,
@@ -303,8 +266,8 @@ eq("escrito certo passa direto", ["0,30", "0.30", "0", "10", "1,40", " 0.5 ", ""
 eq("30 digitado inteiro: diz a soma e aponta o D2",
   pontaCfg({ ...MARCOS, degraus: [{ avanco: "0.30", prof: "0.70" }, { avanco: "30", prof: "0.90" }] }, "Com prainha", 10, 4, 1.4).erro,
   "Os níveis da ponta somam 31,30 m e a piscina tem 10,00 m: não sobra fundo. Confira o D2 (30,00 m de avanço).");
-eq("bloco no canto: aponta a prainha", pontaCfg({ ...PONTA_B, prainhaComp: "7,95" }, "Com prainha", L, W, D).erro,
-  "A ponta ocupa 7,95 m e a piscina tem 8,00 m: não sobra fundo. Confira a prainha (7,95 m de avanço).");
+eq("prainha comprida demais: aponta a prainha", pontaCfg({ ...PONTA_A, prainhaComp: "7,95" }, "Com prainha", L, W, D).erro,
+  "Os níveis da ponta somam 8,55 m e a piscina tem 8,00 m: não sobra fundo. Confira a prainha (7,95 m de avanço).");
 // Orçamento salvo não muda: sem degrau, nada disso roda.
 eq("prainha SEM degrau não passa pela trava nova", pontaCfg({ length: "6", width: "3", depth: "1.4", prainhaComp: "1", prainhaProf: "050" }, "Com prainha", 6, 3, 1.4), null);
 vd("banco de um nível também não", !String(bancoCfg({ ...BASE, bancoOn: true, bancoLarg: "045", bancoProf: "0,40" }, "Retangular", L, W, D)?.erro || "").includes("vírgula"));

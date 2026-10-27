@@ -8,8 +8,9 @@
 // O sistema só conhecia UM nível na ponta (a prainha) e UM na lateral (o banco).
 //
 // O QUE ELE DECIDIU (mesma conversa)
-//   - na ponta, os degraus ocupam a largura toda OU só um canto — "os dois
-//     acontecem";
+//   - na ponta, os degraus ocupam a largura toda. Chegou a existir um bloco
+//     num canto ("os dois acontecem"); em 26/10 ele tirou: "apenas os degraus
+//     inteiriços, para a gente não ter complicação";
 //   - a escada lateral corre a lateral inteira, como o banco de hoje;
 //   - manta: a PISADA é peça separada, e as estreitas saem lado a lado na mesma
 //     passada da bobina; a parede que acompanha os degraus sai INTEIRA, na
@@ -30,7 +31,7 @@
 // valor. Os testes provam que a conta por células dá o mesmo número nesses casos.
 
 import {
-  MANTA, cortarPeca, cortarCorrida, cortarChao, cortarChaoContorno,
+  MANTA, cortarPeca, cortarCorrida, cortarChao,
   anexoExterno, encaixarBobinas,
 } from "./manta.js";
 
@@ -97,24 +98,21 @@ export function lerDegraus(linhas, { campoA = "avanco", campoP = "prof", nome = 
  *   degraus      [{avanco, prof}] — avanço = pisada, no sentido do comprimento
  *   degrausPos   "antes" (padrão): borda → degraus → prainha → fundo
  *                "depois":         borda → prainha → degraus → fundo
- *   degrausLarg  vazio = largura toda; menor que a largura = bloco num canto
- *   degrausLado  "cima" | "baixo" — o canto do bloco, como aparece na planta
+ *   Todo nível atravessa a largura toda.
  *
- * @returns {null|{niveis, canto, fim, prainha, erro}}
- *   niveis  os que atravessam a largura toda, em ordem, com x0/x1
- *   canto   {lado, largura, y0, y1, degraus, baseProf, baseRotulo, fim} ou null
+ * @returns {null|{niveis, fim, prainha, erro}}
+ *   niveis  em ordem, com x0/x1
  *   fim     onde começa o trecho que é só fundo (é dali que a escada lateral corre)
  */
 export function pontaCfg(pool, poolFmt, L, W, D) {
   if (poolFmt !== "Com prainha") return null;
   const { lista, erro: erroLeitura } = lerDegraus(pool?.degraus);
   if (!lista.length && !erroLeitura) return null;
-  const falha = (erro) => ({ niveis: [], canto: null, fim: 0, prainha: null, erro });
+  const falha = (erro) => ({ niveis: [], fim: 0, prainha: null, erro });
   if (erroLeitura) return falha(erroLeitura);
   // Só com degrau: a prainha sozinha segue pelo caminho antigo, sem esta trava.
   const virgula = faltouVirgula(pool?.prainhaComp, "Prainha: o comprimento")
-    || faltouVirgula(pool?.prainhaProf, "Prainha: a profundidade")
-    || faltouVirgula(pool?.degrausLarg, "A largura dos degraus");
+    || faltouVirgula(pool?.prainhaProf, "Prainha: a profundidade");
   if (virgula) return falha(virgula);
   if (!(L > 0 && W > 0 && D > 0)) return falha("Faltam comprimento, largura ou profundidade da piscina.");
 
@@ -124,51 +122,8 @@ export function pontaCfg(pool, poolFmt, L, W, D) {
   }
   const prainha = praiC > 0 ? { tipo: "prainha", rotulo: "Prainha", avanco: praiC, prof: praiP } : null;
   const depois = pool?.degrausPos === "depois" && !!prainha;
-  const larg = pf(pool?.degrausLarg);
-  const lado = pool?.degrausLado === "baixo" ? "baixo" : "cima";
   const degraus = lista.map((d, i) => ({ tipo: "degrau", rotulo: `D${i + 1}`, avanco: d.a, prof: d.p }));
 
-  // ── BLOCO NUM CANTO ─────────────────────────────────────────────────────
-  if (larg > 0 && larg < W - EPS) {
-    if (pool?.degrausPos === "depois" && prainha) {
-      return falha('Degraus num canto só na borda rasa. Escolha "antes da prainha", ou deixe a largura vazia (largura toda).');
-    }
-    if (W - larg < FUNDO_MINIMO - EPS) {
-      return falha(`Degraus de ${m2(larg)} m numa piscina de ${m2(W)} m: sobra menos de 10 cm ao lado. Deixe a largura vazia para os degraus ocuparem a largura toda.`);
-    }
-    const baseProf = prainha ? prainha.prof : D;
-    const baseRotulo = prainha ? "prainha" : "fundo";
-    if (prainha && prainha.prof > D - DEGRAU_MINIMO + EPS) {
-      return falha(`A prainha (${m2(prainha.prof)} m) tem de ficar pelo menos 5 cm acima do fundo (${m2(D)} m).`);
-    }
-    let x = 0, ant = 0;
-    const blocos = [];
-    for (const d of degraus) {
-      if (d.prof < ant + DEGRAU_MINIMO - EPS) {
-        return falha(`${d.rotulo} (${m2(d.prof)} m) tem de ficar pelo menos 5 cm abaixo do ${ant > 0 ? `degrau anterior (${m2(ant)} m)` : "nível da borda"}.`);
-      }
-      blocos.push({ ...d, x0: x, x1: x + d.avanco });
-      x += d.avanco; ant = d.prof;
-    }
-    if (ant > baseProf - DEGRAU_MINIMO + EPS) {
-      return falha(`O último degrau (${m2(ant)} m) tem de ficar pelo menos 5 cm acima do ${prainha ? "piso da prainha" : "fundo"} (${m2(baseProf)} m).`);
-    }
-    if (prainha && x > prainha.avanco + EPS) {
-      return falha(`Os degraus do canto avançam ${m2(x)} m e a prainha só ${m2(prainha.avanco)} m: o bloco tem de caber dentro da prainha.`);
-    }
-    const fim = Math.max(prainha ? prainha.avanco : 0, x);
-    if (fim > L - FUNDO_MINIMO + EPS) {
-      return falha(`A ponta ocupa ${m2(fim)} m e a piscina tem ${m2(L)} m: não sobra fundo. ${confira([...(prainha ? [prainha] : []), ...blocos])}`);
-    }
-    const y0 = lado === "cima" ? 0 : W - larg;
-    return {
-      niveis: prainha ? [{ ...prainha, x0: 0, x1: prainha.avanco }] : [],
-      canto: { lado, largura: larg, y0, y1: y0 + larg, degraus: blocos, baseProf, baseRotulo, fim: x },
-      fim, prainha, erro: null,
-    };
-  }
-
-  // ── LARGURA TODA ────────────────────────────────────────────────────────
   const ordem = depois ? [prainha, ...degraus] : [...degraus, ...(prainha ? [prainha] : [])];
   let x = 0, ant = 0;
   const niveis = [];
@@ -185,7 +140,7 @@ export function pontaCfg(pool, poolFmt, L, W, D) {
   if (x > L - FUNDO_MINIMO + EPS) {
     return falha(`Os níveis da ponta somam ${m2(x)} m e a piscina tem ${m2(L)} m: não sobra fundo. ${confira(niveis)}`);
   }
-  return { niveis, canto: null, fim: x, prainha, erro: null };
+  return { niveis, fim: x, prainha, erro: null };
 }
 
 /** Quando a ponta não cabe, aponta o nível de maior avanço — quase sempre o digitado errado. */
@@ -197,18 +152,12 @@ function confira(niveis) {
 /** Uma linha por nível, do jeito que vai para o PDF e para o resumo. */
 export function textoPonta(p) {
   if (!p || p.erro) return null;
-  const lista = p.canto
-    ? [...p.canto.degraus, ...(p.niveis || [])]
-    : (p.niveis || []);
-  const partes = lista.map((n) => `${n.rotulo} ${m2(n.avanco)} × ${m2(n.prof)} m`);
-  const onde = p.canto
-    ? ` · degraus no canto ${p.canto.lado === "cima" ? "de cima" : "de baixo"}, ${m2(p.canto.largura)} m de largura`
-    : " · largura toda";
-  return `Ponta em níveis · ${partes.join(" → ")} → fundo${onde}`;
+  const partes = (p.niveis || []).map((n) => `${n.rotulo} ${m2(n.avanco)} × ${m2(n.prof)} m`);
+  return `Ponta em níveis · ${partes.join(" → ")} → fundo`;
 }
 
 // ═══ A PISCINA EM CÉLULAS ═══════════════════════════════════════════════════
-// Degrau, prainha, bloco de canto e escada lateral são todos retângulos em
+// Degrau, prainha e escada lateral são todos retângulos em
 // níveis diferentes. Picando a piscina numa grade pelas linhas de todos eles,
 // cada quadradinho tem UM piso — e aí parede, espelho e volume saem exatos em
 // qualquer combinação, sem uma fórmula especial para cada caso.
@@ -236,9 +185,6 @@ export function celulasDaPiscina({ L, W, D, ponta = null, prainhaLegada = null, 
       rets.push({ x0: banco.x0 || 0, x1: L, y0, y1, prof: n.prof });
       y = b;
     }
-  }
-  if (ponta?.canto) {
-    for (const d of ponta.canto.degraus) rets.push({ x0: d.x0, x1: d.x1, y0: ponta.canto.y0, y1: ponta.canto.y1, prof: d.prof });
   }
   const corte = (vals, max) => [...new Set([0, max, ...vals.filter((v) => v > EPS && v < max - EPS)].map((v) => arred(v, 6)))].sort((a, b) => a - b);
   const xs = corte(rets.flatMap((r) => [r.x0, r.x1]), L);
@@ -309,7 +255,6 @@ export function facesPontaNiveis({ L, W, D, ponta, faixaUnica = false }) {
   const paredes = [];
   const r = (v) => arred(v, 4);
   const niveis = ponta.niveis || [];
-  const canto = ponta.canto;
 
   // recorte de uma lateral: onde o pé da parede sobe, a peça cheia é cortada
   const recorteLateral = (trechos) => {
@@ -317,55 +262,19 @@ export function facesPontaNiveis({ L, W, D, ponta, faixaUnica = false }) {
     return degraus.length ? { larg: r(degraus.reduce((s, d) => s + d.larg, 0)), alt: r(Math.max(...degraus.map((d) => d.alt))), degraus } : null;
   };
 
-  if (!canto) {
-    // ESPELHOS — largura toda: da borda até o 1º nível (é a testeira rasa) e de nível em nível
-    espelhos.push({ nome: "Testeira rasa", comp: W, prof: r(niveis[0].prof) });
-    niveis.forEach((n, i) => {
-      const prox = niveis[i + 1];
-      espelhos.push({
-        nome: `Espelho ${n.rotulo} → ${prox ? prox.rotulo : "fundo"}`,
-        comp: W, prof: r((prox ? prox.prof : D) - n.prof),
-      });
-    });
-    const rec = recorteLateral(niveis.map((n) => ({ comp: n.avanco, alt: D - n.prof })));
-    paredes.push({ nome: "Lateral 1", comp: L, prof: D, recorte: rec });
-    paredes.push({ nome: "Testeira funda", comp: W, prof: D });
-    paredes.push({ nome: "Lateral 2", comp: L, prof: D, recorte: rec });
-  } else {
-    // ESPELHOS — bloco no canto: de degrau em degrau, o último cai na prainha (ou no fundo)
-    const ds = canto.degraus;
-    ds.forEach((d, i) => {
-      const prox = ds[i + 1];
-      espelhos.push({
-        nome: `Espelho ${d.rotulo} → ${prox ? prox.rotulo : canto.baseRotulo}`,
-        comp: canto.largura, prof: r((prox ? prox.prof : canto.baseProf) - d.prof),
-      });
-    });
-    // a face do bloco que olha para a piscina: topo em escada, pé no piso de baixo
+  // ESPELHOS: da borda até o 1º nível (é a testeira rasa) e de nível em nível
+  espelhos.push({ nome: "Testeira rasa", comp: W, prof: r(niveis[0].prof) });
+  niveis.forEach((n, i) => {
+    const prox = niveis[i + 1];
     espelhos.push({
-      nome: "Lateral dos degraus",
-      comp: canto.fim, prof: r(canto.baseProf - ds[0].prof),
-      recorte: recorteLateral(ds.slice(1).map((d) => ({ comp: d.avanco, alt: d.prof - ds[0].prof }))),
+      nome: `Espelho ${n.rotulo} → ${prox ? prox.rotulo : "fundo"}`,
+      comp: W, prof: r((prox ? prox.prof : D) - n.prof),
     });
-    if (ponta.prainha) {
-      espelhos.push({ nome: "Espelho prainha → fundo", comp: W, prof: r(D - ponta.prainha.prof) });
-    }
-    // testeira rasa: no trecho do bloco o pé é o 1º degrau; no resto, o piso de baixo
-    paredes.push({
-      nome: "Testeira rasa", comp: W, prof: r(canto.baseProf),
-      recorte: recorteLateral([{ comp: canto.largura, alt: canto.baseProf - ds[0].prof }]),
-    });
-    // a lateral do lado do bloco sobe nos degraus; a outra só na prainha
-    const doLado = recorteLateral([
-      ...ds.map((d) => ({ comp: d.avanco, alt: D - d.prof })),
-      ...(ponta.prainha && ponta.prainha.avanco > canto.fim + EPS
-        ? [{ comp: ponta.prainha.avanco - canto.fim, alt: D - ponta.prainha.prof }] : []),
-    ]);
-    const oposta = ponta.prainha ? recorteLateral([{ comp: ponta.prainha.avanco, alt: D - ponta.prainha.prof }]) : null;
-    paredes.push({ nome: "Lateral do lado dos degraus", comp: L, prof: D, recorte: doLado });
-    paredes.push({ nome: "Testeira funda", comp: W, prof: D });
-    paredes.push({ nome: "Lateral oposta", comp: L, prof: D, recorte: oposta });
-  }
+  });
+  const rec = recorteLateral(niveis.map((n) => ({ comp: n.avanco, alt: D - n.prof })));
+  paredes.push({ nome: "Lateral 1", comp: L, prof: D, recorte: rec });
+  paredes.push({ nome: "Testeira funda", comp: W, prof: D });
+  paredes.push({ nome: "Lateral 2", comp: L, prof: D, recorte: rec });
 
   if (faixaUnica) {
     // as duas laterais e a testeira funda viram UMA corrida vincada nos cantos
@@ -384,38 +293,12 @@ export function chaoPontaNiveis({ L, W, D, ponta }, cfg = MANTA) {
   const R = cfg.rebarbaParede, Z = cfg.rebarbaDescida;
   const partes = [];
   const niveis = ponta.niveis || [];
-  const canto = ponta.canto;
   const nomePiso = (n) => (n.tipo === "prainha" ? "Piso da prainha" : `Pisada ${n.rotulo}`);
 
-  if (!canto) {
-    niveis.forEach((n, i) => {
-      partes.push(cortarChao(n.avanco, W, cfg, nomePiso(n), { comp: [i === 0 ? R : Z, Z], larg: [R, R] }));
-    });
-    partes.push(cortarChao(L - ponta.fim, W, cfg, "Chão · fundo", { comp: [Z, R], larg: [R, R] }));
-    return partes;
-  }
-
-  // pisadas do bloco: contra a testeira rasa só a 1ª; contra a lateral, 1 cm;
-  // do lado da piscina a pisada encosta no topo da lateral dos degraus (zero)
-  canto.degraus.forEach((d, i) => {
-    partes.push(cortarChao(d.avanco, canto.largura, cfg, nomePiso(d), { comp: [i === 0 ? R : Z, Z], larg: [R, Z] }));
+  niveis.forEach((n, i) => {
+    partes.push(cortarChao(n.avanco, W, cfg, nomePiso(n), { comp: [i === 0 ? R : Z, Z], larg: [R, R] }));
   });
-  // piso de baixo (prainha, ou o fundo quando não há prainha): o retângulo
-  // menos o bloco — um L, cortado em faixas que acompanham o desenho
-  const fimBase = ponta.prainha ? ponta.prainha.avanco : L;
-  const { y0, y1, fim } = canto;
-  const ladoCima = canto.lado === "cima";
-  const yLivre0 = ladoCima ? y1 : 0, yLivre1 = ladoCima ? W : y0;
-  const poligono = fim >= fimBase - EPS
-    ? [{ x: 0, y: yLivre0 }, { x: fimBase, y: yLivre0 }, { x: fimBase, y: yLivre1 }, { x: 0, y: yLivre1 }]
-    : ladoCima
-      ? [{ x: fim, y: 0 }, { x: fimBase, y: 0 }, { x: fimBase, y: W }, { x: 0, y: W }, { x: 0, y: y1 }, { x: fim, y: y1 }]
-      : [{ x: 0, y: 0 }, { x: fimBase, y: 0 }, { x: fimBase, y: W }, { x: fim, y: W }, { x: fim, y: y0 }, { x: 0, y: y0 }];
-  const base = cortarChaoContorno(poligono, cfg, ponta.prainha ? "Piso da prainha" : "Chão · fundo");
-  if (base) partes.push(base);
-  if (ponta.prainha) {
-    partes.push(cortarChao(L - ponta.prainha.avanco, W, cfg, "Chão · fundo", { comp: [Z, R], larg: [R, R] }));
-  }
+  partes.push(cortarChao(L - ponta.fim, W, cfg, "Chão · fundo", { comp: [Z, R], larg: [R, R] }));
   return partes;
 }
 
