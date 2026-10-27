@@ -142,5 +142,22 @@ console.log("\ndesenho livre — parede trecho a trecho e degrau interno (achado
   ok("banco: paredes 21,6 (contorno no assento + espelho do banco)", perto(r.par,21.6), r.par, 21.6);
 }
 
+console.log("\nfora de esquadro com diagonal (achado 4.2c, 26/10/2026)");
+{
+  // 8,00 / 4,00 / 8,00 / 4,00 com o canto a 88°: diagonais 9,07 e 8,82 (medido
+  // no plano de 24/10). A área quase não muda (31,98 × 32,00); a forma muda.
+  const W4=[{l:"8",h:"1.4"},{l:"4",h:"1.4"},{l:"8",h:"1.4"},{l:"4",h:"1.4"}];
+  const sem=calcA({length:"8",width:"4",depth:"1.4"},SPA_OFF,"irregular",W4,"Retangular",[],{},null);
+  ok("sem diagonal: igual a antes (32,0) e sem forma",sem.chao==="32.0"&&sem.quadrilatero===null,sem.chao,"32.0");
+  const r=calcA({length:"8",width:"4",depth:"1.4",diagAC:"9.07",diagBD:"8.82"},SPA_OFF,"irregular",W4,"Retangular",[],{},null);
+  ok("com as 2 diagonais: chão 31,98",perto(r.quadrilatero.area,31.98,0.01),r.quadrilatero.area,31.98);
+  ok("a segunda diagonal confere (8,82 medida × 8,817 da forma)",r.quadrilatero.conferencia.ok,JSON.stringify(r.quadrilatero.conferencia),"ok");
+  ok("volume pela forma real (31,98 × 1,40 = 44,8)",perto(r.vol,44.8),r.vol,44.8);
+  const errada=calcA({length:"8",width:"4",depth:"1.4",diagAC:"9.07",diagBD:"9.20"},SPA_OFF,"irregular",W4,"Retangular",[],{},null);
+  ok("diagonal que não confere: avisa (38 cm)",!errada.quadrilatero.conferencia.ok&&!errada.invalido,JSON.stringify(errada.quadrilatero.conferencia),"aviso");
+  const naoFecha=calcA({length:"8",width:"4",depth:"1.4",diagAC:"13"},SPA_OFF,"irregular",W4,"Retangular",[],{},null);
+  ok("diagonal impossível trava com o motivo",naoFecha.invalido?.includes("não fecha"),naoFecha.invalido,"não fecha");
+}
+
 console.log(`\n${total-falhas}/${total} passaram`);
 process.exit(falhas?1:0);

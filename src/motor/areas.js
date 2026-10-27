@@ -11,6 +11,7 @@ import { bancoCfg, ajusteBanco } from "./banco.js";
 import { geometriaTriangular, geometriaComBanco } from "./triangular.js";
 import { contornoOitavada, medidasCirculo, erroBancoRedondo } from "./formatos.js";
 import { pontaCfg, celulasDaPiscina, medirCelulas } from "./niveis.js";
+import { quadrilateroPorDiagonais } from "./quadrilatero.js";
 
 export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
   const pf2=v=>parseFloat(String(v??"").replace(",","."))||0;
@@ -67,6 +68,15 @@ export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
   const invalido=(motivo)=>({chao:"0.0",par:"0.0",sChao:"0.0",sPar:"0.0",tot:"0.0",vol:"0.0",perim:"0.0",chaoTot:"0.0",
     depthInfo:{avg:D,min:realDMin,max:realDMax,sloped:false},banco:null,invalido:motivo,
     extraChao:"0.0",extraPar:"0.0",sqChao:"0.0",sqPar:"0.0",srChao:"0.0",srPar:"0.0"});
+
+  // ── FORA DE ESQUADRO COM DIAGONAL (achado 4.2c, 26/10/2026) ──────────────
+  // Com os 4 lados e pelo menos uma diagonal, o chão e o volume são os da forma
+  // REAL (motor/quadrilatero.js), não comprimento × largura. A segunda diagonal
+  // confere a trena. Sem diagonal nada muda: orçamento antigo segue igual.
+  const quad=wMode==="irregular"&&!desenho&&(walls||[]).length===4&&(poolFmt==="Retangular"||poolFmt==="Retangular irregular")
+    ?quadrilateroPorDiagonais(walls.map(w=>pf2(w.l)),pf2(pool.diagAC),pf2(pool.diagBD)):null;
+  if(quad?.erro)return invalido(quad.erro);
+  if(quad)chao=quad.area*(L>0?Linc/L:1);
 
   // ── CIRCULAR ─────────────────────────────────────────────────────────────
   // Area, perimetro e volume saem da CONTA EXATA (pi r2), nao do poligono que
@@ -224,7 +234,7 @@ export const calcA=(pool,spa,wMode,walls,poolFmt,extras,spaType,desenho)=>{
   const ajB=celM?{chao:0,parede:0,volume:0}:ajusteBanco(bco,{D,prainhaProf:temPrainha?Math.min(praiP>0?praiP:D*0.25,Math.max(D-0.05,0.05)):0});
   chao+=ajB.chao;par+=ajB.parede;
   const srVol=st.redondo?(isRndSq?srC2*srL2*srP:Math.PI*srR*srR*srP):0;
-  const vol=(celM?celM.volume:dM?dM.vol:(temPrainha?praiVol:(isOval?(Math.PI*a*b):isOitavada?(L*W-4*(ch*ch/2)):L*W)*D))+(spa.on?sL*sW*sD:0)+(st.quadrado?sqC*sqL*sqP:0)+srVol+ajB.volume;
+  const vol=(celM?celM.volume:dM?dM.vol:(temPrainha?praiVol:(isOval?(Math.PI*a*b):isOitavada?(L*W-4*(ch*ch/2)):quad?quad.area:L*W)*D))+(spa.on?sL*sW*sD:0)+(st.quadrado?sqC*sqL*sqP:0)+srVol+ajB.volume;
   const depthInfo={avg:D,min:realDMin,max:realDMax,sloped:dMin>0&&dMax>0&&dMin!==dMax};
-  return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:(sChao+fmtSpaChao).toFixed(1),sPar:(sPar+fmtSpaPar).toFixed(1),tot:(chao+par+sChao+sPar+fmtSpaChao+fmtSpaPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao+fmtSpaChao).toFixed(1),depthInfo,banco:bco,extraChao:extraChao.toFixed(1),extraPar:extraPar.toFixed(1),sqChao:sqChao.toFixed(1),sqPar:sqPar.toFixed(1),srChao:srChao.toFixed(1),srPar:srPar.toFixed(1)};
+  return{chao:chao.toFixed(1),par:par.toFixed(1),sChao:(sChao+fmtSpaChao).toFixed(1),sPar:(sPar+fmtSpaPar).toFixed(1),tot:(chao+par+sChao+sPar+fmtSpaChao+fmtSpaPar).toFixed(1),vol:vol.toFixed(1),perim:(perim+sPerim).toFixed(1),chaoTot:(chao+sChao+fmtSpaChao).toFixed(1),depthInfo,banco:bco,extraChao:extraChao.toFixed(1),extraPar:extraPar.toFixed(1),sqChao:sqChao.toFixed(1),sqPar:sqPar.toFixed(1),srChao:srChao.toFixed(1),srPar:srPar.toFixed(1),quadrilatero:quad};
 };

@@ -81,6 +81,7 @@ import { pedirPermissao, permissaoNotificacao, suportaNotificacao, notificarSLA,
 import { sendWA, sendWAFile, blobParaBase64, getChannelStatus, dentroDaJanela, horasRestantesDaJanela, botFetch, registrarTokenProvider, marcarOrcamentoEnviado, desfazerOrcamentoEnviado, pausarFollowup, CANAL } from "./services/wa.js";
 import { parseMoney } from "./services/dinheiro.js";
 import { normalizarConversa } from "./services/conversa.js";
+import { angulosDosCantos } from "./motor/quadrilatero.js";
 import { planoMantaDoOrcamento, quantidadeEfetiva, totalDoOrcamento, condicoesPagamento, precoMudou, resumoMedidas, medidasParaEstoque } from "./motor/orcamento.js";
 
 // Firebase config — chaves públicas (visíveis no browser), segurança via Firestore Rules
@@ -540,6 +541,21 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
           // Spa de Canto: centrado no canto
           const cornerCenter=(canto)=>{if(canto==="top-left")return{cx:ox,cy:oy,tx:-0.45,ty:-0.45};if(canto==="top-right")return{cx:ox+pw,cy:oy,tx:0.45,ty:-0.45};if(canto==="bottom-left")return{cx:ox,cy:oy+ph,tx:-0.45,ty:0.45};return{cx:ox+pw,cy:oy+ph,tx:0.45,ty:0.45}};
           return<>{hasR&&(()=>{const c=cornerCenter(spaType.rCanto);if(isRndSquare)return<><rect x={c.cx-rqW/2} y={c.cy-rqH/2} width={rqW} height={rqH} rx="2" fill={spaFill} stroke={spaStroke} strokeWidth="1.5" strokeDasharray="4,2"/><text x={c.cx+rqW/2*c.tx} y={c.cy+rqH/2*c.ty+2} textAnchor="middle" fontSize="6" fill="#1d4ed8" fontWeight="700">SPA</text></>;return<><circle cx={c.cx} cy={c.cy} r={rRad} fill={spaFill} stroke={spaStroke} strokeWidth="1.5" strokeDasharray="4,2"/><text x={c.cx+rRad*c.tx} y={c.cy+rRad*c.ty+2} textAnchor="middle" fontSize="6" fill="#1d4ed8" fontWeight="700">SPA</text></>})()}{hasQ&&(()=>{const p=wallPos(spaType.qCanto,sqW2,sqH2);return<><rect x={p.x} y={p.y} width={sqW2} height={sqH2} rx="2" fill={spaFill} stroke={spaStroke} strokeWidth="1.5" strokeDasharray="4,2"/><text x={p.x+sqW2/2} y={p.y+sqH2/2+3} textAnchor="middle" fontSize="6" fill="#1d4ed8" fontWeight="700">SPA Q</text></>})()}<rect x={ox} y={oy} width={pw} height={ph} rx="1" fill={fill} stroke={stroke} strokeWidth="2"/></>};
+        // FORA DE ESQUADRO COM DIAGONAL (26/10/2026): a forma REAL, montada
+        // pelos lados e pela diagonal (motor/quadrilatero.js), na mesma escala
+        // da planta. Sem diagonal segue o trapézio de antes, só ilustrativo.
+        const qd=wMode==="irregular"&&ar?.quadrilatero?.vertices?.length===4?ar.quadrilatero:null;
+        if(qd){
+          const vs=qd.vertices,mx=Math.min(...vs.map(v=>v.x)),my=Math.min(...vs.map(v=>v.y));
+          const P=v=>({x:ox+(v.x-mx)*scale,y:oy+(v.y-my)*scale});
+          const ps=vs.map(P),nomes=["A","B","C","D"];
+          const cx=ps.reduce((s2,q)=>s2+q.x,0)/4,cy=ps.reduce((s2,q)=>s2+q.y,0)/4;
+          return<><polygon points={ps.map(q=>`${q.x},${q.y}`).join(" ")} fill={fill} stroke={stroke} strokeWidth="2"/>
+            <line x1={ps[0].x} y1={ps[0].y} x2={ps[2].x} y2={ps[2].y} stroke="#f59e0b" strokeWidth="0.8" strokeDasharray="4,3"/>
+            <line x1={ps[1].x} y1={ps[1].y} x2={ps[3].x} y2={ps[3].y} stroke="#f59e0b" strokeWidth="0.8" strokeDasharray="4,3"/>
+            {ps.map((q,i)=><text key={"qv"+i} x={q.x+(q.x<cx?-7:4)} y={q.y+(q.y<cy?-3:8)} fontSize="7" fontWeight="800" fill="#b45309">{nomes[i]}</text>)}
+            <text x={cx} y={oy-7} textAnchor="middle" fontSize="7" fill="#b45309" fontWeight="700">Fora de esquadro · forma medida pelas diagonais</text></>;
+        }
         if(wMode==="irregular"&&walls.length>=2){const w0=parseFloat(walls[0]?.l)||L,w1=parseFloat(walls[1]?.l)||W,w2=parseFloat(walls[2]?.l)||L,w3=parseFloat(walls[3]?.l)||W;const topW=Math.min(w0/L,1.2)*pw,botW=Math.min(w2/L,1.2)*pw,leftH=Math.min(w3/W,1.2)*ph,rightH=Math.min(w1/W,1.2)*ph;const offT=(pw-topW)/2,offB=(pw-botW)/2;const pts=`${ox+offT},${oy} ${ox+offT+topW},${oy} ${ox+offB+botW},${oy+Math.max(leftH,rightH)} ${ox+offB},${oy+Math.max(leftH,rightH)}`;return<><polygon points={pts} fill={fill} stroke={stroke} strokeWidth="2" strokeDasharray="6,2"/><text x={ox+pw/2} y={oy-7} textAnchor="middle" fontSize="7" fill="#f59e0b" fontWeight="700">⚠ Fora de esquadro</text></>;};
         return<rect x={ox} y={oy} width={pw} height={ph} rx="1" fill={fill} stroke={stroke} strokeWidth="2"/>;
       })()}
@@ -3668,6 +3684,27 @@ export default function App(){
                 {walls.length>2&&<button onClick={()=>rmWall(i)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:"12px"}}>✕</button>}
               </div>)}
               <Btn onClick={addWall} style={{marginTop:"4px",fontSize:"9px"}}>+ Parede</Btn>
+              {/* DIAGONAIS (achado 4.2c, 26/10/2026): 4 lados não dizem se a
+                  piscina está torta; a diagonal diz. Com uma, a forma fecha; com
+                  as duas, a segunda confere a trena. */}
+              {walls.length===4&&(()=>{
+                const qd=ar.quadrilatero;
+                const f2=v=>v.toFixed(2).replace(".",",");
+                return <div style={{marginTop:"10px",paddingTop:"9px",borderTop:`1px dashed ${t.cardBorder}`}}>
+                  <div style={{fontSize:"10px",fontWeight:"700",color:blue,marginBottom:"4px"}}>Diagonais</div>
+                  <div style={{fontSize:"9px",color:t.textSec,marginBottom:"6px",lineHeight:1.45}}>Cantos: <b>A</b> = P4 com P1 · <b>B</b> = P1 com P2 · <b>C</b> = P2 com P3 · <b>D</b> = P3 com P4. Uma diagonal já dá a forma real; a segunda confere a medida.</div>
+                  <div className="vv-pool-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}}>
+                    <Inp label="Diagonal A→C (m)" value={pool.diagAC||""} onChange={up("diagAC")} t={t} placeholder={qd&&!qd.erro&&!(parseFloat(String(pool.diagAC||"").replace(",","."))>0)?f2(qd.diagonais.AC):"medida na obra"}/>
+                    <Inp label="Diagonal B→D (m)" value={pool.diagBD||""} onChange={up("diagBD")} t={t} placeholder={qd&&!qd.erro&&!(parseFloat(String(pool.diagBD||"").replace(",","."))>0)?f2(qd.diagonais.BD):"medida na obra"}/>
+                  </div>
+                  <div style={{fontSize:"8.5px",marginTop:"6px",lineHeight:1.45,color:ar.invalido?"#dc2626":t.textMuted,fontWeight:ar.invalido?"700":"400"}}>
+                    {ar.invalido?`⚠ ${ar.invalido}`
+                      :qd?<>Forma real: <b>{f2(qd.area)} m²</b> de chão em planta (no esquadro seriam {f2((parseFloat(walls[0].l)||0)*(parseFloat(walls[1].l)||0))}). Ângulos: {angulosDosCantos(qd.vertices).map((g,i)=>`${"ABCD"[i]} ${g.toFixed(1).replace(".",",")}°`).join(" · ")}.
+                        {qd.conferencia&&<span style={{color:qd.conferencia.ok?"#15803d":"#b45309",fontWeight:"700"}}> {qd.conferencia.ok?"✓":"⚠"} B→D medida {f2(qd.conferencia.medida)}, a forma pede {f2(qd.conferencia.calculada)} ({qd.conferencia.diferenca>=0?"+":"−"}{Math.abs(qd.conferencia.diferenca*100).toFixed(1).replace(".",",")} cm){qd.conferencia.ok?"":": remeça uma das diagonais"}.</span>}</>
+                      :"Sem diagonal o chão sai comprimento × largura, como se estivesse no esquadro."}
+                  </div>
+                </div>;
+              })()}
             </div>}
             {wMode==="regular"&&<div style={{fontSize:"10px",color:t.textSec}}>{poolFmt==="Oval"?`Paredes calculadas automaticamente: Perímetro elipse × profundidade (Diâm. maior: ${pool.length}m, Diâm. menor: ${pool.width}m)`:`Paredes calculadas automaticamente: 2×(${pool.length}×${pool.depth}) + 2×(${pool.width}×${pool.depth})`}</div>}
           </div>
