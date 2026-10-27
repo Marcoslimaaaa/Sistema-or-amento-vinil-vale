@@ -14,7 +14,7 @@
 //
 // Tudo aqui é puro (sem React): testado em __tests__/orcamento.test.mjs.
 
-import { planoManta, facesRetangulo, facesComPrainha, facesComBanco, facesDoContorno, cortarChaoContorno } from "./manta.js";
+import { MANTA, planoManta, facesRetangulo, facesComPrainha, facesComBanco, facesDoContorno, cortarChaoContorno } from "./manta.js";
 import { contornoEfetivo, medirDesenho } from "./formas.js";
 import { bancoCfg } from "./banco.js";
 import { planoTriangular } from "./triangular.js";
@@ -50,10 +50,15 @@ export function spaDaManta(spa, L, W, D) {
  *
  * @param {object} o      { pool, poolFmt, spa, wMode, desenho }
  * @param {object} ar     resultado do calcA para o mesmo orçamento
- * @param {object} [opts] { aproveitarSobra } — a tira que sobra da última faixa
+ * @param {object} [opts] { aproveitarSobra } — a tira que sobra da última faixa;
+ *   { bobina: {largura, comprimento} } — outra bobina que não a 1,55 × 25 (a
+ *   calculadora Corte da Manta tem o catálogo dos fabricantes)
  * @returns {object|null} o plano, ou null quando não há medida para cortar
  */
-export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar, { aproveitarSobra = false } = {}) {
+export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar, { aproveitarSobra = false, bobina = null } = {}) {
+  const cfg = bobina && bobina.largura > 0
+    ? { ...MANTA, larguraBobina: bobina.largura, comprimentoBobina: bobina.comprimento > 0 ? bobina.comprimento : MANTA.comprimentoBobina }
+    : MANTA;
   // Medida que não fecha (motor/areas.js zerou a área e disse por quê): sem
   // plano de corte também. Na manta armada o preço sai do PLANO, não da área —
   // se o plano seguisse existindo, o total não zeraria junto com a área.
@@ -79,7 +84,7 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
   // desenho livre / formato irregular: as faixas seguem o contorno real
   const contorno = desenho && (desenho.vertices || []).length >= 3 ? contornoEfetivo(desenho) : null;
   if (contorno && contorno.length >= 3) {
-    const chao = cortarChaoContorno(contorno, undefined, "Chão · desenho");
+    const chao = cortarChaoContorno(contorno, cfg, "Chão · desenho");
     // parede trecho a trecho, na profundidade de quem encosta nela, e o degrau
     // interno (prainha, escada) como espelho — achado 4.2a, 26/10/2026
     const md = medirDesenho(desenho, D, rampa);
@@ -96,13 +101,13 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
       : facesDoContorno(contorno, D);
     const spC = spaDaManta(spa, L, W, D);
     const base = planoManta({ comp: L, larg: W, prof: D, perimetro, areaReal,
-      faces: [...paredes, ...spC.facesExtra], anexos: spC.anexos, aproveitarSobra });
+      faces: [...paredes, ...spC.facesExtra], anexos: spC.anexos, aproveitarSobra }, cfg);
     // troca o chão retangular pelo chão que acompanha o desenho
     const diff = chao.metrosLineares - base.chao.metrosLineares;
     return { ...base, chao: { partes: [chao], metrosLineares: chao.metrosLineares,
       emendas: chao.emendas, soldaLinear: chao.soldaLinear },
       metrosLineares: +(base.metrosLineares + diff).toFixed(2),
-      areaCobravel: +((base.metrosLineares + diff) * 1.55).toFixed(2), contorno: true };
+      areaCobravel: +(base.areaCobravel + diff * cfg.larguraBobina).toFixed(2), contorno: true };
   }
 
   // PONTA EM NÍVEIS (degraus + prainha) tem plano próprio, com as regras que o
@@ -117,7 +122,7 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
       L, W, D, ponta, rampa,
       faixaUnica: !!pool.paredeFaixaUnica && (wMode || "regular") !== "irregular",
       areaReal, anexos: sp.anexos, facesExtra: sp.facesExtra,
-    });
+    }, cfg);
   }
   if (ponta?.erro) return null;
 
@@ -127,8 +132,8 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
   if (poolFmt === "Triangular" || (poolFmt === "Oitavada" && pool.bancoOn)) {
     const banco = pool.bancoOn ? { larg: num(pool.bancoLarg), prof: num(pool.bancoProf) } : null;
     const pt = poolFmt === "Triangular"
-      ? planoTriangular({ a: num(pool.triA), b: num(pool.triB), c: num(pool.triC), prof: Dparede, banco })
-      : planoTriangular({ contorno: contornoOitavada(L, W, num(pool.chanfro)), prof: Dparede, banco });
+      ? planoTriangular({ a: num(pool.triA), b: num(pool.triB), c: num(pool.triC), prof: Dparede, banco }, cfg)
+      : planoTriangular({ contorno: contornoOitavada(L, W, num(pool.chanfro)), prof: Dparede, banco }, cfg);
     return pt.erro ? null : pt;
   }
 
@@ -136,7 +141,7 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
   // fechar, e o plano horizontal sai do QUADRADO que envolve.
   if (poolFmt === "Circular") {
     const pc = planoCircular({ diametro: num(pool.diametro), prof: Dparede,
-      banco: pool.bancoOn ? { larg: num(pool.bancoLarg), prof: num(pool.bancoProf) } : null });
+      banco: pool.bancoOn ? { larg: num(pool.bancoLarg), prof: num(pool.bancoProf) } : null }, cfg);
     return pc.erro ? null : pc;
   }
 
@@ -153,7 +158,7 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
       : facesRetangulo(L, W, D, rampa));
   const sp = spaDaManta(spa, L, W, D);
   return planoManta({ comp: L, larg: W, prof: D, perimetro, areaReal, praiComp: praiC,
-    faces: [...faces, ...sp.facesExtra], anexos: sp.anexos, aproveitarSobra });
+    faces: [...faces, ...sp.facesExtra], anexos: sp.anexos, aproveitarSobra }, cfg);
 }
 
 /**

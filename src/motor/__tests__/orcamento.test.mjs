@@ -156,5 +156,29 @@ const pC = plano({ length: "4", width: "4", depth: "1.60", diametro: "4" }, "Cir
 eq("redonda Ø4 × 1,60: a faixinha da tira entra no pedido", pC.passadas.filter((x) => x.faixinhas).length, 1);
 perto("e cobra só 0,20 × 12,62", pC.areaCobravel - (pC.metrosLineares - 12.62) * 1.55, 0.2 * 12.62, 0.02);
 
+console.log("\n— outra bobina (catálogo da Corte da Manta) —");
+{
+  const ar = calcA(RAMPA, SPA_OFF, "regular", [], "Retangular", [], {}, null);
+  const comBobina = (largura, comprimento) => planoMantaDoOrcamento({ pool: RAMPA, poolFmt: "Retangular", spa: SPA_OFF, wMode: "regular", desenho: null }, ar, { bobina: { largura, comprimento } });
+  const larga = comBobina(2.05, 25);
+  eq("Alkorplan extra largo 2,05: a parede de 1,90 cabe sem faixinha", peca(larga, "Testeira funda"), [4.1, 1.9]);
+  eq("e o chão de 4,00 sai em 2 faixas", larga.chao.partes[0].faixas, 2);
+  perto("cobra os 40,44 m × 2,05", larga.areaCobravel, 40.44 * 2.05);
+  eq("Sansuy 1,40 × 60: faixinha de 0,55 (1,90 − 1,40 + 5 de solda)", peca(comBobina(1.4, 60), "Testeira funda"), [4.1, 1.9, [4.1, 0.55]]);
+  eq("sem bobina escolhida segue a 1,55 × 25 (83,23)", plano(RAMPA).areaCobravel, 83.23);
+}
+{
+  // desenho livre: trocar o chão pelo do contorno não pode apagar o desconto
+  // da faixinha (antes recalculava tudo × 1,55). A piscina do Gilberto em
+  // manta: 117,09 → 104,83 m².
+  const V = [[0, 0], [10, 0], [10, 3], [6.3, 3], [6.3, 5], [2.3, 5], [2.3, 3], [1.3, 3], [0, 1.7]].map(([x, y]) => ({ x, y: 5 - y }));
+  const des = { vertices: V, formas: [{ id: "p1", tipo: "prainha", operacao: "uniao", cxM: 4.3, cyM: 1, larguraM: 4, comprimentoM: 2, profundidadeM: 0.6 }] };
+  const pg = { length: "10", width: "5", depth: "", depthMin: "1.2", depthMax: "1.6" };
+  const ag = calcA(pg, SPA_OFF, "regular", [], "Personalizado", [], {}, des);
+  const pd = planoMantaDoOrcamento({ pool: pg, poolFmt: "Personalizado", spa: SPA_OFF, wMode: "regular", desenho: des }, ag);
+  const tiras = pd.paredes.complementos.passadas.flatMap((x) => x.itens).reduce((s, f) => s + f.largura * f.comp, 0);
+  perto("desenho: cobra peça cheia × 1,55 + faixinha na largura dela", pd.areaCobravel, (pd.metrosLineares - pd.paredes.complementos.metrosLineares) * 1.55 + tiras);
+}
+
 console.log(`\norcamento.test: ${ok} testes ok${falhas ? `, ${falhas} FALHA(S)` : ""}`);
 process.exit(falhas ? 1 : 0);
