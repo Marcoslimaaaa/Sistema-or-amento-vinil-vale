@@ -32,7 +32,7 @@
 
 import {
   MANTA, cortarPeca, cortarCorrida, cortarChao,
-  anexoExterno, encaixarBobinas, areaCobravelDe,
+  anexoExterno, anexoCanto, encaixarBobinas, areaCobravelDe,
 } from "./manta.js";
 
 const pf = (v) => parseFloat(String(v ?? "").replace(",", ".")) || 0;
@@ -372,7 +372,8 @@ export function planoNiveis({ L, W, D, ponta, faixaUnica = false, areaReal = nul
   const partesChao = chaoPontaNiveis({ L, W, D, ponta }, cfg);
 
   // ── ANEXOS (spa externo): peça própria, ninhada junto ──
-  const anexosCalc = (anexos || []).map((a) => anexoExterno(a, cfg)).filter(Boolean);
+  // canto usa o modelo de três quartos, como no plano de sempre (planoManta)
+  const anexosCalc = (anexos || []).map((a) => (a.encaixe === "canto" ? anexoCanto(a, cfg) : anexoExterno(a, cfg))).filter(Boolean);
 
   // ── PASSADAS ──
   // parede: a peça principal tem no máximo a largura da bobina; o que falta

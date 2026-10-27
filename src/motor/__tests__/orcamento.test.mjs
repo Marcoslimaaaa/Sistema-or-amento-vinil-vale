@@ -7,6 +7,7 @@ import { areaCobravelDe } from "../manta.js";
 let ok = 0, falhas = 0;
 const eq = (n, r, e) => { const p = JSON.stringify(r) === JSON.stringify(e); p ? ok++ : falhas++;
   console.log(`  ${p ? "ok " : "FALHA"} ${n}${p ? "" : `\n       esperado ${JSON.stringify(e)}\n       veio     ${JSON.stringify(r)}`}`); };
+const vd = (n, c) => eq(n, !!c, true);
 const perto = (n, r, e, tol = 0.01) => { const p = Math.abs(r - e) <= tol; p ? ok++ : falhas++;
   console.log(`  ${p ? "ok " : "FALHA"} ${n}${p ? ` [${Number(r).toFixed(2)}]` : `\n       esperado ${e} ± ${tol}, veio ${r}`}`); };
 
@@ -178,6 +179,25 @@ console.log("\n— outra bobina (catálogo da Corte da Manta) —");
   const pd = planoMantaDoOrcamento({ pool: pg, poolFmt: "Personalizado", spa: SPA_OFF, wMode: "regular", desenho: des }, ag);
   const tiras = pd.paredes.complementos.passadas.flatMap((x) => x.itens).reduce((s, f) => s + f.largura * f.comp, 0);
   perto("desenho: cobra peça cheia × 1,55 + faixinha na largura dela", pd.areaCobravel, (pd.metrosLineares - pd.paredes.complementos.metrosLineares) * 1.55 + tiras);
+}
+
+console.log("\n— anexos externos (os da Corte da Manta) —");
+{
+  const pool = { length: "8", width: "4", depth: "1.40" };
+  const ar = calcA(pool, SPA_OFF, "regular", [], "Retangular", [], {}, null);
+  const base = planoMantaDoOrcamento({ pool, poolFmt: "Retangular", spa: SPA_OFF, wMode: "regular", desenho: null }, ar);
+  const lado = planoMantaDoOrcamento({ pool, poolFmt: "Retangular", spa: SPA_OFF, wMode: "regular", desenho: null }, ar,
+    { anexos: [{ nome: "Prainha externa", comp: 2, larg: 2, prof: 0.5, encaixe: "lado" }] });
+  eq("anexo de lado entra com piso e 3 paredes", [lado.anexos.length, lado.anexos[0].paredes.qtdPecas], [1, 3]);
+  vd("e soma manta", lado.metrosLineares > base.metrosLineares);
+  const canto = planoMantaDoOrcamento({ pool, poolFmt: "Retangular", spa: SPA_OFF, wMode: "regular", desenho: null }, ar,
+    { anexos: [{ nome: "Spa", forma: "redondo", diametro: 2, prof: 0.8, encaixe: "canto" }] });
+  eq("redondo no canto: cinta curva numa peça", canto.anexos[0].paredes.qtdPecas, 1);
+  const pD = { ...pool, prainhaComp: "1,50", prainhaProf: "0,60", degraus: [{ avanco: "0,30", prof: "0,20" }] };
+  const arD = calcA(pD, SPA_OFF, "regular", [], "Com prainha", [], {}, null);
+  const comDegrau = planoMantaDoOrcamento({ pool: pD, poolFmt: "Com prainha", spa: SPA_OFF, wMode: "regular", desenho: null }, arD,
+    { anexos: [{ nome: "Spa", forma: "redondo", diametro: 2, prof: 0.8, encaixe: "canto" }] });
+  eq("com degraus, o anexo de canto também usa o modelo de canto", comDegrau.anexos[0].forma, "redondo");
 }
 
 console.log(`\norcamento.test: ${ok} testes ok${falhas ? `, ${falhas} FALHA(S)` : ""}`);

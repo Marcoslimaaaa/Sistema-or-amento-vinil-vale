@@ -52,10 +52,13 @@ export function spaDaManta(spa, L, W, D) {
  * @param {object} ar     resultado do calcA para o mesmo orçamento
  * @param {object} [opts] { aproveitarSobra } — a tira que sobra da última faixa;
  *   { bobina: {largura, comprimento} } — outra bobina que não a 1,55 × 25 (a
- *   calculadora Corte da Manta tem o catálogo dos fabricantes)
+ *   calculadora Corte da Manta tem o catálogo dos fabricantes);
+ *   { anexos } — anexos externos (prainha externa, banco, plataforma), de lado
+ *   ou de canto, no formato de manta.js; a Corte da Manta já tinha e o
+ *   orçamento não usa
  * @returns {object|null} o plano, ou null quando não há medida para cortar
  */
-export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar, { aproveitarSobra = false, bobina = null } = {}) {
+export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar, { aproveitarSobra = false, bobina = null, anexos: anexosExtra = [] } = {}) {
   const cfg = bobina && bobina.largura > 0
     ? { ...MANTA, larguraBobina: bobina.largura, comprimentoBobina: bobina.comprimento > 0 ? bobina.comprimento : MANTA.comprimentoBobina }
     : MANTA;
@@ -101,7 +104,7 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
       : facesDoContorno(contorno, D);
     const spC = spaDaManta(spa, L, W, D);
     const base = planoManta({ comp: L, larg: W, prof: D, perimetro, areaReal,
-      faces: [...paredes, ...spC.facesExtra], anexos: spC.anexos, aproveitarSobra }, cfg);
+      faces: [...paredes, ...spC.facesExtra], anexos: [...spC.anexos, ...anexosExtra], aproveitarSobra }, cfg);
     // troca o chão retangular pelo chão que acompanha o desenho
     const diff = chao.metrosLineares - base.chao.metrosLineares;
     return { ...base, chao: { partes: [chao], metrosLineares: chao.metrosLineares,
@@ -121,7 +124,7 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
     return planoNiveis({
       L, W, D, ponta, rampa,
       faixaUnica: !!pool.paredeFaixaUnica && (wMode || "regular") !== "irregular",
-      areaReal, anexos: sp.anexos, facesExtra: sp.facesExtra,
+      areaReal, anexos: [...sp.anexos, ...anexosExtra], facesExtra: sp.facesExtra,
     }, cfg);
   }
   if (ponta?.erro) return null;
@@ -158,7 +161,7 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
       : facesRetangulo(L, W, D, rampa));
   const sp = spaDaManta(spa, L, W, D);
   return planoManta({ comp: L, larg: W, prof: D, perimetro, areaReal, praiComp: praiC,
-    faces: [...faces, ...sp.facesExtra], anexos: sp.anexos, aproveitarSobra }, cfg);
+    faces: [...faces, ...sp.facesExtra], anexos: [...sp.anexos, ...anexosExtra], aproveitarSobra }, cfg);
 }
 
 /**
