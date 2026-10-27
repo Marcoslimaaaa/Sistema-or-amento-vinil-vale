@@ -3468,7 +3468,7 @@ export default function App(){
               {/* Com degraus antes, a prainha não começa na borda: o que sobra de
                   fundo sai do pontaCfg (achado no teste local de 24/10 — dizia
                   6,50 m com 5,90 m de verdade). Sem degrau, o texto é o antigo. */}
-              {(pool.degraus||[]).length?"Comprimento = a pisada da prainha, no sentido do comprimento":"Comprimento = quanto a prainha avança da borda rasa antes de cair para a parte funda"} ({(()=>{const n=v=>parseFloat(String(v??"").replace(",","."))||0;const comD=(pool.degraus||[]).length>0;
+              {(pool.degraus||[]).length?"Comprimento = só a parte plana da prainha, sem os degraus (cada degrau soma o avanço dele)":"Comprimento = quanto a prainha avança da borda rasa antes de cair para a parte funda"} ({(()=>{const n=v=>parseFloat(String(v??"").replace(",","."))||0;const comD=(pool.degraus||[]).length>0;
                 if(!(n(pool.prainhaComp)>0))return comD?"vazio = só os degraus, sem prainha":"deixe vazio para a prainha ficar só ilustrativa, sem entrar no cálculo";
                 if(comD){const pc=pontaCfg(pool,poolFmt,n(pool.length),n(pool.width),ar.depthInfo?.avg||n(pool.depth));return pc&&!pc.erro?`com os degraus, sobram ${Math.max(0,n(pool.length)-pc.fim).toFixed(2)}m de parte funda`:"com os degraus, veja o aviso abaixo";}
                 return `sobram ${Math.max(0,n(pool.length)-n(pool.prainhaComp)).toFixed(2)}m de parte funda`;})()}).
@@ -3501,6 +3501,10 @@ export default function App(){
                       <Escolha t={t} blue={blue} valor={pool.degrausLado==="baixo"?"baixo":"cima"} onChange={v=>setPool(p=>({...p,degrausLado:v}))}
                         opcoes={[["cima","Em cima"],["baixo","Embaixo"]]}/>
                     </div>}
+                  </div>
+                  {/* O Marcos não entendeu o "vazio = largura toda" sozinho (26/10). */}
+                  <div style={{fontSize:"8.5px",color:t.textMuted,marginTop:"6px",lineHeight:1.45}}>
+                    Largura vazia = degraus de uma lateral à outra (o normal). Preencha só para uma escada num canto, descendo da borda{temPrai?' — com prainha, só em "Antes da prainha"':""}.
                   </div>
                   <div style={{fontSize:"8.5px",color:pc?.erro?"#dc2626":t.textMuted,fontWeight:pc?.erro?"700":"400",marginTop:"6px",lineHeight:1.45}}>
                     {pc?.erro?`⚠ ${pc.erro}`
