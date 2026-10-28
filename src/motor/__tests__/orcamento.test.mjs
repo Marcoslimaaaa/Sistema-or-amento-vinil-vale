@@ -56,6 +56,26 @@ eq("spa desligado não entra", spaDaManta({ on: false }, 6, 3, 1.4), { anexos: [
 eq("tanque separado leva a divisória como parede", spaDaManta({ on: true, length: "2", width: "1.5", depth: "0.8", side: "top" }, 6, 3, 1.4).facesExtra.length, 1);
 eq("mesmo tanque não tem divisória", spaDaManta({ on: true, integrado: true, length: "2", width: "1.5", depth: "0.8", side: "top" }, 6, 3, 1.4).facesExtra.length, 0);
 
+console.log("\n— paredes do spa numa peça só (Marcos, 28/10/2026) —");
+{
+  // o caso que ele mandou: 4×3×1,40 com spa 1×1×0,60 no mesmo tanque
+  const pool = { length: "4", width: "3", depth: "1.4" };
+  const spa = { on: true, integrado: true, length: "1", width: "1", depth: "0.6", side: "top" };
+  const ar = calcA(pool, spa, "regular", [], "Retangular", [], undefined, null);
+  const plano = (s, wMode = "regular") => planoMantaDoOrcamento({ pool, poolFmt: "Retangular", spa: s, wMode, desenho: null }, ar);
+  const solto = plano(spa), unica = plano({ ...spa, faixaUnica: true });
+  eq("sem marcar: 3 peças de 1,10, como sempre", solto.anexos[0].paredes.pecas.map((p) => p.comp), [1.1, 1.1, 1.1]);
+  eq("sem marcar: os números do orçamento não mudam", [solto.metrosLineares, solto.areaCobravel, solto.solda.total], [25.66, 39.77, 31.12]);
+  eq("marcado: uma peça de 1+1+1 com 5 cm em cada ponta", unica.anexos[0].paredes.pecas.map((p) => [p.comp, p.altura, p.corrida]), [[3.1, 0.7, true]]);
+  perto("marcado: some a solda dos 2 cantos (2 × 0,70)", solto.solda.total - unica.solda.total, 1.4);
+  perto("marcado no spa pequeno gasta mais bobina: a faixa de 3,10 sai sozinha", unica.metrosLineares - solto.metrosLineares, 0.9);
+  eq("fora de esquadro: a manta não vinca, volta para 3 peças", plano({ ...spa, faixaUnica: true }, "irregular").anexos[0].paredes.qtdPecas, 3);
+  const spa2 = { ...spa, length: "2", width: "2", depth: "0.7" };
+  const ar2 = calcA(pool, spa2, "regular", [], "Retangular", [], undefined, null);
+  const p2 = (s) => planoMantaDoOrcamento({ pool, poolFmt: "Retangular", spa: s, wMode: "regular", desenho: null }, ar2);
+  perto("spa 2×2: a faixa única gasta MENOS bobina", p2(spa2).metrosLineares - p2({ ...spa2, faixaUnica: true }).metrosLineares, 0.2);
+}
+
 console.log("\n— condições de pagamento —");
 const c1 = condicoesPagamento(10000, { pixD: 5, entPct: 50, balPct: 50, noFee: 5, btcD: 15 });
 eq("pix com 5%", c1.pix, 9500);

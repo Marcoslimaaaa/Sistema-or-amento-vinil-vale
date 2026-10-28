@@ -31,13 +31,16 @@ const num = (v) => parseFloat(String(v ?? "").replace(",", ".")) || 0;
 // O motor já sabe cortar anexo encostado (motor/manta.js, anexoExterno): a face
 // que encosta não é parede, é linha de solda. Quando o spa é tanque SEPARADO
 // essa face existe dos dois lados, então a divisória entra como parede extra.
-export function spaDaManta(spa, L, W, D) {
+// `spa.faixaUnica`: as paredes do spa numa peça só, vincada nos cantos — só
+// com a estrutura no esquadro, igual à cinta da prainha.
+export function spaDaManta(spa, L, W, D, { esquadro = true } = {}) {
   const sL = num(spa?.length), sW = num(spa?.width), sD = num(spa?.depth);
   if (!(spa?.on && sL > 0 && sW > 0 && sD > 0)) return { anexos: [], facesExtra: [] };
   const lado = (spa.side === "left" || spa.side === "right") ? W : L;
   const cont = Math.min(sL, lado || sL);
   return {
-    anexos: [{ nome: "Spa", comp: cont, larg: sW, prof: sD, encaixe: "lado" }],
+    anexos: [{ nome: "Spa", comp: cont, larg: sW, prof: sD, encaixe: "lado",
+      faixaUnica: !!spa.faixaUnica && esquadro }],
     facesExtra: spa.integrado === true ? [] : [{ nome: "Divisória do spa", comp: cont, prof: sD }],
   };
 }
@@ -83,6 +86,7 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
   const praiP = num(pool.prainhaProf);
   const perimetro = parseFloat(ar?.perim) || 0;
   const areaReal = parseFloat(ar?.tot) || 0;
+  const esquadro = (wMode || "regular") !== "irregular";
 
   // desenho livre / formato irregular: as faixas seguem o contorno real
   const contorno = desenho && (desenho.vertices || []).length >= 3 ? contornoEfetivo(desenho) : null;
@@ -102,7 +106,7 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
         })),
       ]
       : facesDoContorno(contorno, D);
-    const spC = spaDaManta(spa, L, W, D);
+    const spC = spaDaManta(spa, L, W, D, { esquadro });
     const base = planoManta({ comp: L, larg: W, prof: D, perimetro, areaReal,
       faces: [...paredes, ...spC.facesExtra], anexos: [...spC.anexos, ...anexosExtra], aproveitarSobra }, cfg);
     // troca o chão retangular pelo chão que acompanha o desenho
@@ -120,7 +124,7 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
   // só vale com a estrutura no esquadro — fora de esquadro a manta não vinca.
   const ponta = pontaCfg(pool, poolFmt, L, W, D);
   if (ponta && !ponta.erro) {
-    const sp = spaDaManta(spa, L, W, D);
+    const sp = spaDaManta(spa, L, W, D, { esquadro });
     return planoNiveis({
       L, W, D, ponta, rampa,
       faixaUnica: !!pool.paredeFaixaUnica && (wMode || "regular") !== "irregular",
@@ -159,7 +163,7 @@ export function planoMantaDoOrcamento({ pool, poolFmt, spa, wMode, desenho }, ar
     : (bcM && bcM.medida
       ? facesComBanco(L, W, D, bcM.larg, bcM.prof, bcM.niveis, rampa)
       : facesRetangulo(L, W, D, rampa));
-  const sp = spaDaManta(spa, L, W, D);
+  const sp = spaDaManta(spa, L, W, D, { esquadro });
   return planoManta({ comp: L, larg: W, prof: D, perimetro, areaReal, praiComp: praiC,
     faces: [...faces, ...sp.facesExtra], anexos: [...sp.anexos, ...anexosExtra], aproveitarSobra }, cfg);
 }

@@ -3887,6 +3887,40 @@ export default function App(){
                 </div>
               </div>
 
+              {/* SPA NO PLANO (28/10/2026). O spa entrava nos Lineares, na manta e
+                  na solda, mas as peças dele não apareciam: no 4×3×1,40 com spa
+                  1×1×0,60 a tela listava 14,40 + 8,04 m e o total dizia 25,66 —
+                  os 3,22 m do spa sem nome. A opção da peça só é do Marcos: no
+                  spa as paredes dão para sair inteiras, vincadas nos cantos. */}
+              {(manta.anexos||[]).map((a,i)=><div key={i} style={{marginTop:"12px",paddingTop:"10px",borderTop:`1px solid ${t.cardBorder}`}}>
+                <div style={{fontSize:"9px",fontWeight:"700",color:t.textSec,textTransform:"uppercase",letterSpacing:".5px",marginBottom:"5px"}}>{a.nome} — piso + {a.paredes.qtdPecas} peça{a.paredes.qtdPecas===1?"":"s"} de parede</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}} className="vv-g2">
+                  <div>
+                    {a.paredes.pecas.map((p,j)=><div key={j} style={linha}>
+                      <span style={{color:t.textSec}}>{p.nome.replace(`${a.nome} · `,"")}{p.corrida?<span style={{color:"#b45309",fontWeight:"700"}}> ↩ vincada</span>:""}</span>
+                      <b style={{color:t.text,whiteSpace:"nowrap"}}>{m2(p.comp)} × {m2(p.altura)}</b>
+                    </div>)}
+                  </div>
+                  <div>
+                    <div style={linha}>
+                      <span style={{color:t.textSec}}>piso</span>
+                      <b style={{color:t.text,whiteSpace:"nowrap"}}>{a.piso.compFaixa!=null?`${a.piso.faixas} × ${m2(a.piso.compFaixa)}`:(a.piso.pecas||[]).map(f=>m2(f.comp)).join(" · ")}</b>
+                    </div>
+                    <div style={{fontSize:"9px",color:t.textMuted,paddingLeft:"6px"}}>solda do {a.nome.toLowerCase()}: {m2(a.solda.total)} m</div>
+                  </div>
+                </div>
+              </div>)}
+              {manta.anexoNinho?.metrosLineares>0&&<div style={{fontSize:"9px",color:t.textMuted,marginTop:"3px"}}>{m2(manta.anexoNinho.metrosLineares)} m lineares{manta.anexoNinho.passadas?.some(x=>(x.itens||[]).length>1)?" (peças baixas saem lado a lado na largura da bobina)":""}</div>}
+              {spa?.on&&(manta.anexos||[]).some(a=>a.nome==="Spa")&&<div style={{marginTop:"8px",background:t.card,borderRadius:"8px",padding:"9px 10px",border:`1px solid ${t.cardBorder}`}}>
+                <label style={{display:"flex",alignItems:"center",gap:"7px",cursor:wMode==="irregular"?"not-allowed":"pointer",fontSize:"10.5px",fontWeight:"600",color:wMode==="irregular"?t.textMuted:t.text}}>
+                  <input type="checkbox" disabled={wMode==="irregular"} checked={!!spa.faixaUnica&&wMode!=="irregular"} onChange={e=>setSpa(p=>({...p,faixaUnica:e.target.checked}))} style={{cursor:"inherit",width:"15px",height:"15px"}}/>
+                  Paredes do spa numa peça só (vincada nos cantos)
+                </label>
+                <div style={{fontSize:"9px",color:t.textMuted,marginTop:"4px",lineHeight:1.45}}>
+                  {wMode==="irregular"?"Paredes fora de esquadro: a manta não acomoda no vinco, então o spa sai em peças.":"Tira a solda dos cantos. Em spa pequeno pode gastar mais bobina: as peças soltas saem duas lado a lado na largura, a faixa comprida sai sozinha. Confira os Lineares marcando e desmarcando."}
+                </div>
+              </div>}
+
               {/* PASSADAS NA BOBINA — a soma delas é que vira os "Lineares".
                   As listas de cima somam peça por peça e, quando duas peças saem
                   lado a lado na MESMA passada (triângulo, redonda, oitavada com
@@ -3943,7 +3977,7 @@ export default function App(){
               </div>
 
               <div style={{fontSize:"9.5px",color:t.textSec,marginTop:"8px",lineHeight:1.5}}>
-                Solda: {m2(manta.solda.emendaChao)} m de emenda no chão · {m2(manta.solda.chaoNaParede)} m de chão na parede · {m2(manta.solda.cantosParede)} m de canto vertical.
+                Solda: {m2(manta.solda.emendaChao)} m de emenda no chão · {m2(manta.solda.chaoNaParede)} m de chão na parede · {m2(manta.solda.cantosParede)} m de canto vertical{(manta.anexos||[]).length>0&&manta.solda.anexos>0?<> · {m2(manta.solda.anexos)} m {(manta.anexos||[]).length===1?`do ${manta.anexos[0].nome.toLowerCase()}`:"dos anexos"}</>:""}.
                 A ponta da bobina volta para a prateleira e <b>não</b> entra no orçamento.
               </div>
 

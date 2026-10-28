@@ -635,6 +635,13 @@ export function encaixarBobinas(pecas, cfg = MANTA) {
  *   encaixe "canto" → encostado por dois lados:  sobram 2 paredes
  *
  * `comp` é sempre o lado que encosta na piscina.
+ *
+ * `faixaUnica`: as paredes saem numa peça só, vincada nos cantos (spa de
+ * 1×1 = 1,00 + 1,00 + 1,00 com 5 cm em cada ponta, em vez de 3 peças de
+ * 1,10). Tira a solda dos cantos, mas nem sempre gasta menos bobina: peça
+ * baixa solta sai duas lado a lado na largura, a faixa comprida sai sozinha.
+ * Por isso é escolha de quem orça (Marcos, 28/10/2026). Fora de esquadro
+ * quem chama não liga — a manta não acomoda no vinco.
  */
 export function anexoExterno(a, cfg = MANTA) {
   const nome = a.nome || "Anexo";
@@ -643,12 +650,13 @@ export function anexoExterno(a, cfg = MANTA) {
   if (!(comp > 0 && larg > 0 && prof > 0)) return null;
 
   const piso = cortarChao(comp, larg, cfg, `${nome} · piso`);
+  const grupo = a.faixaUnica ? `${nome} · paredes` : undefined;
   const faces = canto
-    ? [{ nome: `${nome} · parede oposta`, comp, prof },
-       { nome: `${nome} · lateral`, comp: larg, prof }]
-    : [{ nome: `${nome} · parede oposta`, comp, prof },
-       { nome: `${nome} · lateral 1`, comp: larg, prof },
-       { nome: `${nome} · lateral 2`, comp: larg, prof }];
+    ? [{ nome: `${nome} · parede oposta`, comp, prof, grupo },
+       { nome: `${nome} · lateral`, comp: larg, prof, grupo }]
+    : [{ nome: `${nome} · parede oposta`, comp, prof, grupo },
+       { nome: `${nome} · lateral 1`, comp: larg, prof, grupo },
+       { nome: `${nome} · lateral 2`, comp: larg, prof, grupo }];
   const paredes = cortarParedes(faces, cfg);
   // onde ele encosta na piscina: não vira parede, vira solda
   const contato = arred(canto ? comp + larg : comp);
