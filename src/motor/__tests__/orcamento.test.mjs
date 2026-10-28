@@ -213,6 +213,13 @@ console.log("\n— anexos externos (os da Corte da Manta) —");
   const canto = planoMantaDoOrcamento({ pool, poolFmt: "Retangular", spa: SPA_OFF, wMode: "regular", desenho: null }, ar,
     { anexos: [{ nome: "Spa", forma: "redondo", diametro: 2, prof: 0.8, encaixe: "canto" }] });
   eq("redondo no canto: cinta curva numa peça", canto.anexos[0].paredes.qtdPecas, 1);
+  const cantoRet = (faixaUnica) => planoMantaDoOrcamento({ pool, poolFmt: "Retangular", spa: SPA_OFF, wMode: "regular", desenho: null }, ar,
+    { anexos: [{ nome: "Prainha externa", comp: 2, larg: 2, prof: 0.5, encaixe: "canto", faixaUnica }] });
+  eq("canto retangular: 4 paredes soltas sem marcar", cantoRet(false).anexos[0].paredes.qtdPecas, 4);
+  eq("canto retangular numa peça só: 1+2+2+1 com 5 cm nas pontas", cantoRet(true).anexos[0].paredes.pecas.map((p) => [p.comp, p.corrida]), [[6.1, true]]);
+  const ladoUnica = planoMantaDoOrcamento({ pool, poolFmt: "Retangular", spa: SPA_OFF, wMode: "regular", desenho: null }, ar,
+    { anexos: [{ nome: "Prainha externa", comp: 2, larg: 2, prof: 0.5, encaixe: "lado", faixaUnica: true }] });
+  eq("anexo de lado numa peça só: 2+2+2 com 5 cm nas pontas", ladoUnica.anexos[0].paredes.pecas.map((p) => p.comp), [6.1]);
   const pD = { ...pool, prainhaComp: "1,50", prainhaProf: "0,60", degraus: [{ avanco: "0,30", prof: "0,20" }] };
   const arD = calcA(pD, SPA_OFF, "regular", [], "Com prainha", [], {}, null);
   const comDegrau = planoMantaDoOrcamento({ pool: pD, poolFmt: "Com prainha", spa: SPA_OFF, wMode: "regular", desenho: null }, arD,

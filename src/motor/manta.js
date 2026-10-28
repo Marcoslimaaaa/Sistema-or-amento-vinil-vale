@@ -768,7 +768,10 @@ export function anexoCanto(a, cfg = MANTA) {
   if (!(comp > 0 && larg > 0)) return null;
   const c = contornoCantoRetangular(comp, larg);
   const piso = cortarChaoContorno(c.poligono, cfg, `${nome} · piso`);
-  const paredes = cortarParedes(c.expostas.map(f => ({ nome: `${nome} · ${f.nome}`, comp: f.comp, prof })), cfg);
+  // `faixaUnica`: as 4 paredes expostas numa peça só, vincada nos 3 cantos —
+  // a mesma escolha do anexo de lado
+  const grupo = a.faixaUnica ? `${nome} · paredes` : undefined;
+  const paredes = cortarParedes(c.expostas.map(f => ({ nome: `${nome} · ${f.nome}`, comp: f.comp, prof, grupo })), cfg);
   return {
     nome, forma: "retangular", encaixe: "canto",
     medidas: { comp: arred(comp), larg: arred(larg), prof: arred(prof) },
