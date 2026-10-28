@@ -243,6 +243,9 @@ const PIPE=[
   {id:"perdido",label:"Perdido",icon:"❌",color:"#dc2626"},
 ];
 const CO={name:"Vinil Vale Revestimentos e Capas para Piscinas Ltda",short:"Vinil Vale",addr:"Rodovia SP 139, KM 3, s/n, Jardim Hatori II, Registro-SP",cnpj:"42.749.688/0001-57",ie:"574.128.060.119",ph1:"(13) 99730-5949",ph2:"(13) 99678-1966",email:"vinilvale@hotmail.com",insta:"@vinilvaleoficial"};
+// Material hidráulico no PDF: o orçamento grava a escolha; sem escolha gravada
+// vai na construção e na reforma, e não no revestimento em vinil.
+export const materialNoPdf=(d)=>typeof d?.materialPdf==="boolean"?d.materialPdf:d?.svcType!=="revestimento";
 const SVC=[{id:"construcao",label:"Construção de Piscina",icon:"🏗️",lucide:Hammer},{id:"revestimento",label:"Revestimento em Vinil",icon:"🎨",lucide:Paintbrush},{id:"reforma",label:"Reforma de Piscina",icon:"🔧",lucide:Wrench}];
 // Contorno em fracao (0..1) do retangulo que o envolve — e o referencial em
 // que as posicoes dos bicos vivem.
@@ -389,7 +392,7 @@ const ladoDaPrainha=(desenho,poolFmt,extras)=>{
   return null;
 };
 
-export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,dark,poolFmt,ar,autoPositions,blue,t,tubeOffsets={},setTubeOffsets=()=>{},invertSide=false,wMode="regular",walls=[],stamp="",spaType={redondo:false,quadrado:true},extras=[],desenho=null,flipH=false,flipV=false,ladoPrainha=null,raloQuenteParede=false,devHeights={}})=>{
+export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDragging,dark,poolFmt,ar,autoPositions,blue,t,tubeOffsets={},setTubeOffsets=()=>{},invertSide=false,wMode="regular",walls=[],stamp="",spaType={redondo:false,quadrado:true},extras=[],desenho=null,flipH=false,flipV=false,ladoPrainha=null,raloQuenteParede=false,devHeights={},mostrarMaterial=true})=>{
     // const SYSTEMS=["retorno","hidro","aspiracao","dreno","skimmer","nivelador"];
   const L=parseFloat(pool.length)||6,W=parseFloat(pool.width)||3,D=parseFloat(pool.depth)||1.4;
   const svgW=700,svgH=420,pad=50;
@@ -707,7 +710,10 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
       })()}
       {sloped&&<text x={cox2+cpw2+16} y={coy2+hMax2/2+3} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{dMax}m</text>}
     </svg>
-    <div style={{marginTop:"8px",background:dark?"#1e293b":"#fff",borderRadius:"6px",padding:"8px",border:"1px solid "+(dark?"#334155":"#e2e8f0")}}>
+    {/* No PDF a lista de tubo/curva/te só vai quando o orçamento pede: é
+        material de construção. No revestimento em vinil ela não entra
+        (Marcos, 28/10/2026) — a tela segue mostrando sempre. */}
+    {mostrarMaterial&&<div style={{marginTop:"8px",background:dark?"#1e293b":"#fff",borderRadius:"6px",padding:"8px",border:"1px solid "+(dark?"#334155":"#e2e8f0")}}>
       <div style={{fontSize:"9px",fontWeight:"700",color:blue,marginBottom:"6px"}}>MATERIAL HIDRAULICO</div>
       {SYSTEMS.filter(s2=>window._sysData?.[s2]).map(sysType=>{const sd=window._sysData[sysType];const col=tubeColors[sysType];return <div key={"mat_"+sysType} style={{marginBottom:"6px",padding:"4px 6px",background:dark?"#0f172a":"#f8fafc",borderRadius:"4px",borderLeft:"3px solid "+col}}>
         <div style={{fontSize:"8px",fontWeight:"700",color:col,marginBottom:"2px"}}>{ROTULO_SIS[sysType]||sysType} ({sd.bicos}x) · {sd.diam===34?'Ø3/4"':"Ø50mm"}</div>
@@ -725,7 +731,7 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
           {(disps.nivelador||0)>0&&<div style={{marginTop:"2px",color:t.textMuted}}>Nivelador ({disps.nivelador}x): sem canamento</div>}
         </>})()}
       </div>
-    </div>
+    </div>}
     <div style={{display:"flex",gap:"8px",marginTop:"6px",flexWrap:"wrap",fontSize:"7px",color:t.textMuted}}>
       <span>Area: {ar.tot}m2</span><span>Chao: {ar.chaoTot}m2</span><span>Paredes: {ar.par}m2</span><span>Perim: {ar.perim}m</span><span>Vol: {ar.vol}m3</span>
     </div>
@@ -1709,7 +1715,7 @@ const QP=({d,onBack,onSave,autoPositions,onEntregue,aviso})=>{
           return <div data-pdf-section="planta" style={{padding:"14px 28px",borderTop:"2px solid #e2e8f0"}}>
           <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"4px"}}><div style={{width:"3px",height:"14px",background:gold,borderRadius:"2px"}}/><div style={{fontSize:"11px",fontWeight:"700",color:navy,textTransform:"uppercase",letterSpacing:".5px"}}>Planta Hidráulica</div></div>
           <div style={{fontSize:"8px",color:"#999",fontStyle:"italic",marginBottom:"10px",marginLeft:"9px"}}>* Planta meramente ilustrativa, podendo sofrer alterações na execução.</div>
-          {inc2d&&<PlantaView pool={dPool} spa={d.spa||spa} disps={d.disps||DISPS_PADRAO} customPos={d.customPos||{}} setCustomPos={()=>{}} dragging={null} setDragging={()=>{}} dark={false} poolFmt={d.poolFmt||"Retangular"} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc",stampBg:"#e2e8f0"}} invertSide={d.invertSide||false} wMode={d.wMode||"regular"} walls={d.walls||[]} spaType={dSpaType} extras={d.extras||[]} desenho={dDesenho} flipH={dFlipH} flipV={dFlipV} ladoPrainha={dLadoPrainha} raloQuenteParede={!!d.raloQuenteParede} devHeights={d.devHeights||{}}/>}
+          {inc2d&&<PlantaView pool={dPool} spa={d.spa||spa} disps={d.disps||DISPS_PADRAO} customPos={d.customPos||{}} setCustomPos={()=>{}} dragging={null} setDragging={()=>{}} dark={false} poolFmt={d.poolFmt||"Retangular"} ar={ar} autoPositions={autoPositions} blue="#0055a4" t={{text:"#1a1a2e",textSec:"#4a5568",textMuted:"#718096",card:"#fff",cardBorder:"#e2e8f0",sectionBg:"#f8fafc",stampBg:"#e2e8f0"}} invertSide={d.invertSide||false} wMode={d.wMode||"regular"} walls={d.walls||[]} spaType={dSpaType} extras={d.extras||[]} desenho={dDesenho} flipH={dFlipH} flipV={dFlipV} ladoPrainha={dLadoPrainha} raloQuenteParede={!!d.raloQuenteParede} devHeights={d.devHeights||{}} mostrarMaterial={materialNoPdf(d)}/>}
           {incIso&&<>
             {inc2d&&<div style={{fontSize:"9px",fontWeight:"600",color:"#718096",marginTop:"12px",marginBottom:"4px",textAlign:"center"}}>Vista Isométrica</div>}
             <div style={{width:inc2d?"62%":"78%",margin:"0 auto"}}>
@@ -1794,6 +1800,7 @@ export default function App(){
   const [flipV,setFlipV]=useState(false); // frente ↔ fundo
   const [includePlanta,setIncludePlanta]=useState(true);
   const [includeIso,setIncludeIso]=useState(true);
+  const [materialPdf,setMaterialPdf]=useState(null); // null = conforme o tipo de serviço
   const [isoView,setIsoView]=useState(false);
   // manta armada: aproveitar a tira que sobra da última faixa é decisão de quem
   // projeta, não automatismo — por isso nasce desligado (ver motor/manta.js)
@@ -2853,7 +2860,7 @@ export default function App(){
   const addM=()=>setItems(p=>[...p,{id:Date.now(),n:"Novo item",q:1,c:0,m:gM,nt:"",on:true,un:"un"}]);
   const apM=()=>{setItems(p=>p.map(i=>({...i,m:gM})));setFbMsg("Margem aplicada!");setTimeout(()=>setFbMsg(""),1500)};
 
-  const gData=()=>({client,pool,items,guar,ci,pay,totOv:totOv,vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,includeIso,disps,customPos,isoView,invertSide,flipH,flipV,devHeights,raloQuenteParede,desenho,mantaAproveita});
+  const gData=()=>({client,pool,items,guar,ci,pay,totOv:totOv,vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,includeIso,disps,customPos,isoView,invertSide,flipH,flipV,devHeights,raloQuenteParede,desenho,mantaAproveita,materialPdf});
   const save=()=>{
     const errs={};
     if(!client.name||client.name.trim()==="")errs.clientName="Nome obrigatório";
@@ -2910,7 +2917,7 @@ export default function App(){
   };
   const toClient=(id)=>{const nh=hist.map(q=>q.id===id?{...q,status:"fechou",closedDate:new Date().toLocaleDateString("pt-BR")}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item){autoStockOut(item);syncFinancas(item);}setFbMsg("✅ Cliente fechado!");setTimeout(()=>setFbMsg(""),3000)};
   const toBack=id=>{const nh=hist.map(q=>q.id===id?{...q,status:"lead",closedDate:undefined}:q);setHist(nh);saveLS(nh);const item=nh.find(q=>q.id===id);if(item)syncFinancas(item);setFbMsg("Voltou p/ lead");setTimeout(()=>setFbMsg(""),2000)};
-  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setMantaAproveita(!!d.mantaAproveita);setShowFormaEd(false);setEditingId(q.id);setTab("cliente");setAvisoPreco((()=>{const m=precoMudou(q,!!vinilOpt(d.vinilT).armada);return m?{id:q.id,...m}:null})());setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
+  const load=q=>{const d=q.data;setCl(d.client);setPool(d.pool);setItems(d.items);setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);setPN(d.propNum);setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setMantaAproveita(!!d.mantaAproveita);setMaterialPdf(typeof d.materialPdf==="boolean"?d.materialPdf:null);setShowFormaEd(false);setEditingId(q.id);setTab("cliente");setAvisoPreco((()=>{const m=precoMudou(q,!!vinilOpt(d.vinilT).armada);return m?{id:q.id,...m}:null})());setFbMsg("Carregado!");setTimeout(()=>setFbMsg(""),1500)};
   // ═══ RASCUNHO DO VINI ═══
   // Abre no editor o que o bot preencheu pela conversa. O tipo de servico
   // refaz itens, garantia, condicoes e prazo pelo mesmo caminho do botao de
@@ -2925,7 +2932,7 @@ export default function App(){
     setCl(e.client);
     setPool(p=>({...p,...e.pool}));
     if(e.poolFmt)setPF(e.poolFmt);
-    setDesenho(null);setWM("regular");setWalls([]);setExtras([]);setMantaAproveita(false);
+    setDesenho(null);setWM("regular");setWalls([]);setExtras([]);setMantaAproveita(false);setMaterialPdf(null);
     setEditingId(null);setAvisoPreco(null);setTab("cliente");
     setRascunhoAtivo({id:r.id,aplicado:{svcType:e.svcType,poolFmt:e.poolFmt,client:e.client,pool:{...e.pool}}});
     setFbMsg("Rascunho do Vini carregado — confira antes de salvar");setTimeout(()=>setFbMsg(""),3500);
@@ -2981,7 +2988,7 @@ export default function App(){
       salvarRascunho({data,editingId,tab});
     },800);
     return()=>clearTimeout(id);
-  },[client,pool,items,guar,ci,pay,totOv,vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,includeIso,disps,customPos,isoView,invertSide,flipH,flipV,devHeights,raloQuenteParede,desenho,mantaAproveita,editingId,tab]);
+  },[client,pool,items,guar,ci,pay,totOv,vinilT,svcType,propNum,poolFmt,mo,gM,execDays,stamp,spa,spaType,wMode,walls,extras,includePlanta,includeIso,disps,customPos,isoView,invertSide,flipH,flipV,devHeights,raloQuenteParede,desenho,mantaAproveita,materialPdf,editingId,tab]);
 
   // Arquivo do app não veio do servidor: salva na hora, marcando que a volta é
   // automática, e só então oferece o recarregamento.
@@ -3009,7 +3016,7 @@ export default function App(){
   const atualizarApp=()=>{window.location.reload()};
   const avisos=<Avisos chunkQuebrado={chunkQuebrado} onAtualizar={atualizarApp} rascunho={view==="editor"?rascunho:null} onRecuperar={()=>recuperarRascunho(rascunho)} onDescartar={descartarRascunho}/>;
 
-  const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setMantaAproveita(!!d.mantaAproveita);setShowFormaEd(false);setEditingId(null);setAvisoPreco(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
+  const cloneQ=q=>{const d=q.data;setCl({name:"",phone:"",address:"",city:"",cpf:"",rg:"",email:"",birthday:""});setPool(d.pool);setItems(d.items.map(i=>({...i,id:Date.now()+Math.random()})));setG(d.guar);setCI(d.ci);setPay(d.pay);setTO(d.totOv);setVT(d.vinilT);setST2(d.svcType);const now=new Date();setPN(String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear());setPF(d.poolFmt);setMO(d.mo);setGM(d.gM);setED(d.execDays);setSt(d.stamp||"");setSpa(d.spa||{on:false,length:"2",width:"2",depth:"0.8",side:"top"});setSpaType(d.spaType||{redondo:false,quadrado:true});setWM(d.wMode||"regular");setWalls(d.walls||[]);setExtras(d.extras||[]);setDisps(d.disps||DISPS_PADRAO);setCustomPos(d.customPos||{});setIncludePlanta(d.includePlanta!==undefined?d.includePlanta:true);setIncludeIso(d.includeIso!==undefined?d.includeIso:true);setIsoView(d.isoView||false);setInvertSide(d.invertSide||false);setFlipH(!!d.flipH);setFlipV(!!d.flipV);setDevHeights(d.devHeights||{retorno:"",hidro:"",drenoQuente:"",retornoQuente:""});setRaloQuenteParede(!!d.raloQuenteParede);setDesenho(d.desenho||null);setMantaAproveita(!!d.mantaAproveita);setMaterialPdf(typeof d.materialPdf==="boolean"?d.materialPdf:null);setShowFormaEd(false);setEditingId(null);setAvisoPreco(null);setTab("cliente");setFbMsg("Orçamento clonado! Preencha os dados do cliente.");setTimeout(()=>setFbMsg(""),3000)};
   // Excluir apaga do aparelho E da nuvem, sem lixeira. O 🗑 fica colado no
   // "Clonar" e, no celular, um toque errado perdia o orçamento do cliente para
   // sempre — era a única ação destrutiva do sistema sem pergunta (zerar o
@@ -5174,6 +5181,7 @@ export default function App(){
           <div style={{display:"flex",gap:"8px",marginBottom:"10px",alignItems:"center",flexWrap:"wrap"}}>
             {!show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={includePlanta} onChange={e=>setIncludePlanta(e.target.checked)}/> 2D no PDF</label>}
             {!show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={includeIso} onChange={e=>setIncludeIso(e.target.checked)}/> Isométrica no PDF</label>}
+            {!show3D&&<label title="Lista de tubo, curva longa e te que vai embaixo da planta. Sem marcar nada: vai na construção e na reforma, não no revestimento em vinil." style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={materialNoPdf({materialPdf,svcType})} onChange={e=>setMaterialPdf(e.target.checked)}/> Material hidráulico no PDF</label>}
             {!isoView&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={invertSide} onChange={e=>{setInvertSide(e.target.checked);setCustomPos({})}}/> Inverter lado</label>}
             {/* Virar a piscina: a casa de máquinas é fixa no terreno, quem gira é a piscina */}
             <div style={{display:"flex",alignItems:"center",gap:"6px",background:t.sectionBg,padding:"3px 8px",borderRadius:"6px",border:"1px solid "+t.cardBorder}}>
