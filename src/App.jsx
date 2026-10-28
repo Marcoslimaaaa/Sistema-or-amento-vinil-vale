@@ -243,9 +243,9 @@ const PIPE=[
   {id:"perdido",label:"Perdido",icon:"❌",color:"#dc2626"},
 ];
 const CO={name:"Vinil Vale Revestimentos e Capas para Piscinas Ltda",short:"Vinil Vale",addr:"Rodovia SP 139, KM 3, s/n, Jardim Hatori II, Registro-SP",cnpj:"42.749.688/0001-57",ie:"574.128.060.119",ph1:"(13) 99730-5949",ph2:"(13) 99678-1966",email:"vinilvale@hotmail.com",insta:"@vinilvaleoficial"};
-// Material hidráulico no PDF: o orçamento grava a escolha; sem escolha gravada
-// vai na construção e na reforma, e não no revestimento em vinil.
-export const materialNoPdf=(d)=>typeof d?.materialPdf==="boolean"?d.materialPdf:d?.svcType!=="revestimento";
+// Material hidráulico no PDF: só quando o orçamento marca. Nasce desmarcado em
+// qualquer tipo de serviço (Marcos, 28/10/2026).
+export const materialNoPdf=(d)=>d?.materialPdf===true;
 const SVC=[{id:"construcao",label:"Construção de Piscina",icon:"🏗️",lucide:Hammer},{id:"revestimento",label:"Revestimento em Vinil",icon:"🎨",lucide:Paintbrush},{id:"reforma",label:"Reforma de Piscina",icon:"🔧",lucide:Wrench}];
 // Contorno em fracao (0..1) do retangulo que o envolve — e o referencial em
 // que as posicoes dos bicos vivem.
@@ -710,9 +710,9 @@ export const PlantaView=({pool,spa,disps,customPos,setCustomPos,dragging,setDrag
       })()}
       {sloped&&<text x={cox2+cpw2+16} y={coy2+hMax2/2+3} textAnchor="middle" fontSize="7" fontWeight="600" fill="#64748b">{dMax}m</text>}
     </svg>
-    {/* No PDF a lista de tubo/curva/te só vai quando o orçamento pede: é
-        material de construção. No revestimento em vinil ela não entra
-        (Marcos, 28/10/2026) — a tela segue mostrando sempre. */}
+    {/* No PDF a lista de tubo/curva/te só vai quando o orçamento marca
+        "Material hidráulico no PDF" (Marcos, 28/10/2026) — a tela segue
+        mostrando sempre. */}
     {mostrarMaterial&&<div style={{marginTop:"8px",background:dark?"#1e293b":"#fff",borderRadius:"6px",padding:"8px",border:"1px solid "+(dark?"#334155":"#e2e8f0")}}>
       <div style={{fontSize:"9px",fontWeight:"700",color:blue,marginBottom:"6px"}}>MATERIAL HIDRAULICO</div>
       {SYSTEMS.filter(s2=>window._sysData?.[s2]).map(sysType=>{const sd=window._sysData[sysType];const col=tubeColors[sysType];return <div key={"mat_"+sysType} style={{marginBottom:"6px",padding:"4px 6px",background:dark?"#0f172a":"#f8fafc",borderRadius:"4px",borderLeft:"3px solid "+col}}>
@@ -5181,7 +5181,7 @@ export default function App(){
           <div style={{display:"flex",gap:"8px",marginBottom:"10px",alignItems:"center",flexWrap:"wrap"}}>
             {!show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={includePlanta} onChange={e=>setIncludePlanta(e.target.checked)}/> 2D no PDF</label>}
             {!show3D&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={includeIso} onChange={e=>setIncludeIso(e.target.checked)}/> Isométrica no PDF</label>}
-            {!show3D&&<label title="Lista de tubo, curva longa e te que vai embaixo da planta. Sem marcar nada: vai na construção e na reforma, não no revestimento em vinil." style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={materialNoPdf({materialPdf,svcType})} onChange={e=>setMaterialPdf(e.target.checked)}/> Material hidráulico no PDF</label>}
+            {!show3D&&<label title="Lista de tubo, curva longa e te que vai embaixo da planta. Só entra no PDF marcada." style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={materialNoPdf({materialPdf,svcType})} onChange={e=>setMaterialPdf(e.target.checked)}/> Material hidráulico no PDF</label>}
             {!isoView&&<label style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"10px",color:t.text,cursor:"pointer"}}><input type="checkbox" checked={invertSide} onChange={e=>{setInvertSide(e.target.checked);setCustomPos({})}}/> Inverter lado</label>}
             {/* Virar a piscina: a casa de máquinas é fixa no terreno, quem gira é a piscina */}
             <div style={{display:"flex",alignItems:"center",gap:"6px",background:t.sectionBg,padding:"3px 8px",borderRadius:"6px",border:"1px solid "+t.cardBorder}}>
