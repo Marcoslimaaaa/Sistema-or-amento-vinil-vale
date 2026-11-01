@@ -90,6 +90,13 @@ eq("entrada + saldo = total", c0.ent + c0.bal, 5555.1);
 const cv = condicoesPagamento(1000, undefined);
 eq("sem condições: entrada padrão de 50%", cv.ent, 500);
 eq("sem parcelas não divide por zero", condicoesPagamento(1000, { noFee: 0 }).inst, 1000);
+// Construção: 50% entrada + 30% durante a execução + 20% na entrega.
+const c3 = condicoesPagamento(80000, { entPct: 50, midPct: 30, balPct: 20 });
+eq("construção: entrada 50%", c3.ent, 40000);
+eq("construção: parcela do meio 30%", c3.mid, 24000);
+eq("construção: entrega 20%", c3.bal, 16000);
+eq("construção: as 3 parcelas fecham o total", c3.ent + c3.mid + c3.bal, 80000);
+eq("orçamento antigo sem a parcela do meio: zero", c1.mid, 0);
 
 console.log("\n— preço que mudou desde que foi salvo —");
 const dSalvo = { pool: { length: "6", width: "3", depth: "1.40" }, poolFmt: "Retangular", items: itens, mo: "", totOv: "" };

@@ -281,16 +281,20 @@ export function medidasParaEstoque(d) {
  * Zero é valor de verdade: "entrada 0% + saldo 100%" existe na base. O PDF
  * fazia `pay.entPct || 50` e mostrava "0% + 100%" com uma entrada de 50% do
  * total — as duas parcelas somavam 150%.
+ *
+ * `midPct` é a parcela do meio (construção: 50% + 30% + 20%). Orçamento
+ * salvo antes dela não tem o campo e continua em duas parcelas.
  */
 export function condicoesPagamento(total, pay) {
   const p = (v, padrao) => { const n = parseFloat(v); return Number.isFinite(n) ? n : padrao; };
   const pixD = p(pay?.pixD, 0), btcD = p(pay?.btcD, 0);
-  const entPct = p(pay?.entPct, 50), balPct = p(pay?.balPct, 50);
+  const entPct = p(pay?.entPct, 50), midPct = p(pay?.midPct, 0), balPct = p(pay?.balPct, 50);
   const noFee = p(pay?.noFee, 1) || 1;
   return {
     pix: total * (1 - pixD / 100),
     btc: total * (1 - btcD / 100),
     ent: total * entPct / 100,
+    mid: total * midPct / 100,
     bal: total * balPct / 100,
     inst: total / noFee,
   };
