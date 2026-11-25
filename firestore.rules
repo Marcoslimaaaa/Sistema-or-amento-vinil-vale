@@ -2,12 +2,25 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // E-mail só vale como identidade se o Firebase confirmou que a pessoa é
+    // dona da caixa. O cadastro por e-mail/senha está aberto (pela API, mesmo
+    // sem tela de cadastro no app): qualquer um cria conta com um e-mail da
+    // lista que ainda não tem conta, e o token sai com email_verified = false.
+    // Sem esta checagem, isso bastava para ler conversas, leads e contatos
+    // (achado de 25/11/2026). Login com Google já chega confirmado.
+    // Toda lista de e-mail destas regras tem de passar por aqui.
+    function emailConfirmado() {
+      return request.auth != null
+        && request.auth.token.get('email_verified', false) == true;
+    }
+
     // Só a equipe da Vinil Vale acessa dados compartilhados de clientes.
-    // Qualquer conta Google consegue LOGAR no app, mas não passa daqui.
+    // Qualquer pessoa consegue criar conta e LOGAR no app, mas não passa daqui.
     // Para dar acesso a alguém novo, adicione o e-mail à lista e rode:
     //   firebase deploy --only firestore:rules
+    // (o bot tem a mesma lista: PANEL_ALLOWED_EMAILS / src/middleware/auth.js)
     function isEquipe() {
-      return request.auth != null
+      return emailConfirmado()
         && request.auth.token.email in [
           'vinilvale@hotmail.com',
           'vinilvale.ads@gmail.com',
@@ -19,7 +32,7 @@ service cloud.firestore {
     // Lista separada de propósito — a isEquipe() acima continua sendo a única
     // porta para orçamento, contato, lead e conversa de WhatsApp.
     function isConteudo() {
-      return request.auth != null
+      return emailConfirmado()
         && request.auth.token.email in [
           'vinilvale@hotmail.com',
           'vinilvale.ads@gmail.com',

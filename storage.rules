@@ -13,6 +13,11 @@ service firebase.storage {
     match /central-conteudo/{allPaths=**} {
       allow read: if true;
       allow write: if request.auth != null
+        // E-mail precisa estar confirmado (ver emailConfirmado() no
+        // firestore.rules). Sem isso, quem criasse conta com um e-mail da
+        // lista que ainda não tem conta subia arquivo de leitura pública
+        // (até 300 MB cada) no bucket da empresa.
+        && request.auth.token.get('email_verified', false) == true
         && request.auth.token.email in [
           'vinilvale@hotmail.com',
           'vinilvale.ads@gmail.com',
