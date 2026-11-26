@@ -19,10 +19,12 @@ service cloud.firestore {
     // Para dar acesso a alguém novo, adicione o e-mail à lista e rode:
     //   firebase deploy --only firestore:rules
     // (o bot tem a mesma lista: PANEL_ALLOWED_EMAILS / src/middleware/auth.js)
+    // vinilvale@hotmail.com saiu das listas em 26/11/2026: é o e-mail de
+    // contato dos PDFs e nunca teve conta no sistema. Para voltar com ele,
+    // primeiro criar a conta e confirmar o e-mail, depois pôr aqui.
     function isEquipe() {
       return emailConfirmado()
         && request.auth.token.email in [
-          'vinilvale@hotmail.com',
           'vinilvale.ads@gmail.com',
           'marcoslimablockchain@gmail.com'
         ];
@@ -34,7 +36,6 @@ service cloud.firestore {
     function isConteudo() {
       return emailConfirmado()
         && request.auth.token.email in [
-          'vinilvale@hotmail.com',
           'vinilvale.ads@gmail.com',
           'marcoslimablockchain@gmail.com',
           'thamires.andrade171@gmail.com'
